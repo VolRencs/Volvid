@@ -14,7 +14,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=flat-square&logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-4.1.0-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-1.0.0-orange?style=flat-square)
 
 </div>
 
