@@ -377,23 +377,37 @@ def _ffmpeg_args() -> list[str]:
     return ["--ffmpeg-location", FFMPEG_RESOLVED] if FFMPEG_RESOLVED else []
 
 
-def _playlist_args(url: str, items: list[int] | None) -> list[str]:
-    """Собирает доп. аргументы yt-dlp для плейлиста."""
+def _playlist_args(
+    url: str,
+    items: list[int] | None,
+    force_single: bool = False,
+) -> list[str]:
+    """Собирает доп. аргументы yt-dlp для плейлиста.
+
+    force_single=True — пользователь явно выбрал «только это видео»
+    из ссылки, которая содержит &list=. Принудительно добавляем
+    --no-playlist даже если URL технически является плейлистом.
+    """
     args: list[str] = []
-    if is_playlist_url(url):
+    if not force_single and is_playlist_url(url):
         if items:
             args += ["--playlist-items", _fmt_indices(items)]
         # Не прерываемся на ошибках отдельных видео
         args += ["--ignore-errors"]
     else:
-        # Для одиночного видео — игнорируем возможный плейлист в ссылке
+        # Одиночное видео — игнорируем плейлист в ссылке
         args += ["--no-playlist"]
     return args
 
 
-def _try_formats(url: str, fmt_chain: list[str], extra_args: list[str] | None = None) -> bool:
+def _try_formats(
+    url: str,
+    fmt_chain: list[str],
+    extra_args: list[str] | None = None,
+    force_single: bool = False,
+) -> bool:
     """Перебирает форматы по цепочке до первого успеха."""
-    tmpl = OUTPUT_TMPL_PLAYLIST if is_playlist_url(url) else OUTPUT_TMPL
+    tmpl = OUTPUT_TMPL_PLAYLIST if (is_playlist_url(url) and not force_single) else OUTPUT_TMPL
     extra = extra_args or []
     for i, fmt in enumerate(fmt_chain):
         if i > 0:
@@ -664,14 +678,18 @@ def _fmt_indices(indices: list[int]) -> str:
 #  РЕЖИМЫ СКАЧИВАНИЯ
 # ══════════════════════════════════════════════════════════════════════════════
 
-def download_best(url: str, playlist_items: list[int] | None = None) -> bool:
+def download_best(
+    url: str,
+    playlist_items: list[int] | None = None,
+    force_single: bool = False,
+) -> bool:
     log_info("Скачиваю в лучшем качестве…")
-    extra = _playlist_args(url, playlist_items)
+    extra = _playlist_args(url, playlist_items, force_single)
     ok = _try_formats(url, [
         "bestvideo+bestaudio/best",
         "bestvideo+bestaudio",
         "best",
-    ], extra_args=extra)
+    ], extra_args=extra, force_single=force_single)
     if ok:
         log_ok(f"Готово! → {DL_DIR}")
     else:
@@ -679,14 +697,18 @@ def download_best(url: str, playlist_items: list[int] | None = None) -> bool:
     return ok
 
 
-def download_360p(url: str, playlist_items: list[int] | None = None) -> bool:
+def download_360p(
+    url: str,
+    playlist_items: list[int] | None = None,
+    force_single: bool = False,
+) -> bool:
     log_info("Скачиваю в экономичном качестве (360p)…")
-    extra = _playlist_args(url, playlist_items)
+    extra = _playlist_args(url, playlist_items, force_single)
     ok = _try_formats(url, [
         "bestvideo[height<=360]+bestaudio/best[height<=360]",
         "best[height<=360]",
         "worst",
-    ], extra_args=extra)
+    ], extra_args=extra, force_single=force_single)
     if ok:
         log_ok(f"Готово! → {DL_DIR}")
     else:
@@ -694,10 +716,14 @@ def download_360p(url: str, playlist_items: list[int] | None = None) -> bool:
     return ok
 
 
-def download_mp3(url: str, playlist_items: list[int] | None = None) -> bool:
+def download_mp3(
+    url: str,
+    playlist_items: list[int] | None = None,
+    force_single: bool = False,
+) -> bool:
     log_info("Извлекаю аудио в MP3 (лучшее качество VBR)…")
-    extra = _playlist_args(url, playlist_items)
-    tmpl  = OUTPUT_TMPL_PLAYLIST if is_playlist_url(url) else OUTPUT_TMPL
+    extra = _playlist_args(url, playlist_items, force_single)
+    tmpl  = OUTPUT_TMPL_PLAYLIST if (is_playlist_url(url) and not force_single) else OUTPUT_TMPL
     ok = _run(
         *_ffmpeg_args(),
         "--extract-audio",
@@ -795,6 +821,7 @@ def download_loop(session: Session) -> None:
 
         # ── Определяем: плейлист или одиночное видео ──────────────────────
         playlist_items: list[int] | None = None
+        force_single: bool = False
         playlist_result = ask_playlist_mode(url)
 
         if playlist_result is not None:
@@ -805,12 +832,16 @@ def download_loop(session: Session) -> None:
                 if playlist_items else "весь плейлист"
             )
             log_info(f"Режим плейлиста — {count_str}")
+        elif is_playlist_url(url):
+            # Принудительно запрещаем скачивание плейлиста
+            force_single = True
+            log_info("Режим: одиночное видео (плейлист проигнорирован)")
 
         quality = ask_quality()
         label   = _LABELS[quality]
 
         log_sep()
-        ok = _HANDLERS[quality](url, playlist_items)
+        ok = _HANDLERS[quality](url, playlist_items, force_single)
 
         # В сессию записываем с пометкой о плейлисте
         rec_label = label
