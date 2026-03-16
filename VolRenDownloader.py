@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 import platform
 import re
-import shutil
 import stat
 import subprocess
 import sys
@@ -51,7 +50,16 @@ def _ffmpeg_url() -> str:
         return "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz"
     return "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
 
-FFMPEG_BIN = DEPS_DIR / ("ffmpeg.exe" if IS_WINDOWS else "ffmpeg")
+FFMPEG_BIN  = DEPS_DIR / ("ffmpeg.exe"  if IS_WINDOWS else "ffmpeg")
+YTDLP_BIN   = DEPS_DIR / ("yt-dlp.exe" if IS_WINDOWS else "yt-dlp")
+
+# URL standalone-бинарника yt-dlp (GitHub releases, всегда последняя версия)
+def _ytdlp_url() -> str:
+    if IS_WINDOWS:
+        return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    if ARCH in ("aarch64", "arm64"):
+        return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64"
+    return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
 
 # Паттерн YouTube-ссылок (видео, shorts, live, плейлисты)
 _YT_RE = re.compile(
@@ -192,45 +200,50 @@ def install_ffmpeg() -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  УСТАНОВКА yt-dlp В _deps/
+#  УСТАНОВКА yt-dlp — STANDALONE БИНАРНИК (без pip, без модулей)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _yt_dlp_importable() -> bool:
-    """True если yt_dlp можно импортировать с учётом DEPS_DIR в sys.path."""
-    if str(DEPS_DIR) not in sys.path:
-        sys.path.insert(0, str(DEPS_DIR))
+def _ytdlp_ready() -> bool:
+    """True если бинарник yt-dlp уже есть и исполняем."""
+    if not YTDLP_BIN.exists():
+        return False
     try:
-        import importlib
-        importlib.import_module("yt_dlp")
-        return True
-    except ModuleNotFoundError:
+        r = subprocess.run([str(YTDLP_BIN), "--version"],
+                           capture_output=True, timeout=10)
+        return r.returncode == 0
+    except Exception:
         return False
 
 
 def install_yt_dlp() -> None:
-    """Устанавливает yt-dlp в DEPS_DIR через pip --target."""
+    """
+    Скачивает standalone-бинарник yt-dlp прямо с GitHub releases.
+    Не требует pip, не требует прав root, не трогает системный Python.
+    """
     DEPS_DIR.mkdir(parents=True, exist_ok=True)
-    log_info("Устанавливаю yt-dlp в _deps/…")
-    result = subprocess.run(
-        [
-            sys.executable, "-m", "pip", "install",
-            "--target", str(DEPS_DIR),
-            "--quiet",
-            "yt-dlp",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        log_err("Не удалось установить yt-dlp:")
-        log_err(result.stderr.strip())
+    url = _ytdlp_url()
+    log_info(f"Скачиваю yt-dlp ({ARCH}, {'Windows' if IS_WINDOWS else 'Linux'})…")
+    log_info(f"Источник: {url}")
+    try:
+        _download_file(url, YTDLP_BIN)
+    except Exception as exc:
+        log_err(f"Ошибка скачивания yt-dlp: {exc}")
+        log_err("Проверь интернет-соединение и попробуй снова.")
         sys.exit(1)
 
-    # Перезагружаем sys.path чтобы новый пакет стал доступен
-    if str(DEPS_DIR) not in sys.path:
-        sys.path.insert(0, str(DEPS_DIR))
+    # На Linux/macOS — ставим бит исполнения
+    if not IS_WINDOWS:
+        YTDLP_BIN.chmod(
+            YTDLP_BIN.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH
+        )
 
-    log_ok("yt-dlp установлен в _deps/")
+    if _ytdlp_ready():
+        log_ok(f"yt-dlp готов: {YTDLP_BIN.name}")
+    else:
+        log_err("Бинарник скачан, но не запускается. Попробуй скачать вручную:")
+        log_err(f"  {url}")
+        log_err(f"  → положи файл в {DEPS_DIR}")
+        sys.exit(1)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -269,15 +282,18 @@ def check_ffmpeg() -> None:
 
 
 def check_yt_dlp() -> None:
-    if _yt_dlp_importable():
-        import yt_dlp  # noqa: F401
-        log_ok(f"yt-dlp найден в _deps/")
+    if _ytdlp_ready():
+        try:
+            ver = subprocess.run(
+                [str(YTDLP_BIN), "--version"],
+                capture_output=True, text=True, timeout=10,
+            ).stdout.strip()
+        except Exception:
+            ver = "?"
+        log_ok(f"yt-dlp {ver}  (_deps/{YTDLP_BIN.name})")
         return
-    log_warn("yt-dlp не найден в _deps/.")
+    log_warn(f"yt-dlp не найден в _deps/.")
     install_yt_dlp()
-    if not _yt_dlp_importable():
-        log_err("yt-dlp недоступен даже после установки. Завершение.")
-        sys.exit(1)
 
 
 def run_checks() -> None:
@@ -351,18 +367,9 @@ def ask_continue() -> bool:
 #  ДВИЖОК ЗАГРУЗКИ
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _yt_cmd() -> list[str]:
-    """Базовая команда yt-dlp через локальный Python с DEPS_DIR в пути."""
-    return [sys.executable, "-m", "yt_dlp"]
-
-
 def _run(*args: str) -> bool:
-    """Запускает yt-dlp с DEPS_DIR в PYTHONPATH, возвращает True при успехе."""
-    env = os.environ.copy()
-    # Добавляем _deps в PYTHONPATH чтобы subprocess тоже видел yt_dlp
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"{DEPS_DIR}{os.pathsep}{existing}" if existing else str(DEPS_DIR)
-    result = subprocess.run([*_yt_cmd(), *args], env=env)
+    """Запускает yt-dlp бинарник напрямую, возвращает True при успехе."""
+    result = subprocess.run([str(YTDLP_BIN), *args])
     return result.returncode == 0
 
 
@@ -449,59 +456,66 @@ def _fmt_duration(seconds: int) -> str:
 
 def fetch_playlist_info(url: str) -> PlaylistInfo | None:
     """
-    Получает метаданные плейлиста через yt_dlp Python API (без скачивания).
+    Получает метаданные плейлиста через yt-dlp бинарник (--flat-playlist --dump-json).
+    Не требует Python-модуля yt_dlp вообще.
     Возвращает PlaylistInfo или None при ошибке.
     """
-    if str(DEPS_DIR) not in sys.path:
-        sys.path.insert(0, str(DEPS_DIR))
-    try:
-        import yt_dlp  # noqa: F401 — импортируем из _deps
-        from yt_dlp import YoutubeDL
-    except ImportError:
-        log_err("yt-dlp недоступен для получения данных плейлиста.")
-        return None
-
-    opts = {
-        "quiet":         True,
-        "no_warnings":   True,
-        "extract_flat":  "in_playlist",   # только метаданные, без скачивания
-        "skip_download": True,
-        "ignoreerrors":  True,
-    }
+    import json as _json
 
     log_info("Получаю информацию о плейлисте…")
     try:
-        with YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        result = subprocess.run(
+            [
+                str(YTDLP_BIN),
+                "--flat-playlist",       # только метаданные, без скачивания
+                "--dump-json",           # каждое видео — отдельная JSON-строка в stdout
+                "--quiet",
+                "--ignore-errors",
+                "--no-warnings",
+                url,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        log_err("Превышено время ожидания при получении плейлиста.")
+        return None
     except Exception as exc:
-        log_err(f"Не удалось получить данные плейлиста: {exc}")
+        log_err(f"Не удалось запустить yt-dlp: {exc}")
         return None
 
-    if not info:
-        log_err("Пустой ответ от YouTube.")
-        return None
-
-    # Если это одиночное видео — возвращаем None (не плейлист)
-    if info.get("_type") not in ("playlist", "multi_video") and "entries" not in info:
-        return None
-
-    raw_entries = list(info.get("entries") or [])
-    if not raw_entries:
+    # Каждая строка stdout — JSON одного видео
+    lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
+    if not lines:
         log_warn("Плейлист пуст или все видео недоступны.")
         return None
 
     entries: list[PlaylistEntry] = []
-    for i, e in enumerate(raw_entries, start=1):
-        if not e:
+    playlist_title = "playlist"
+    for i, line in enumerate(lines, start=1):
+        try:
+            e = _json.loads(line)
+        except _json.JSONDecodeError:
             continue
+        # Заголовок плейлиста берём из первого элемента
+        if i == 1:
+            playlist_title = (
+                e.get("playlist_title")
+                or e.get("playlist")
+                or "playlist"
+            )
         entries.append(PlaylistEntry(
             index    = i,
             title    = e.get("title") or e.get("id") or f"Видео {i}",
-            url      = e.get("url") or e.get("webpage_url") or "",
+            url      = e.get("url") or e.get("webpage_url") or url,
             duration = int(e.get("duration") or 0),
         ))
 
-    playlist_title = info.get("title") or info.get("id") or "playlist"
+    if not entries:
+        log_warn("Не удалось разобрать ни одного видео из плейлиста.")
+        return None
+
     return PlaylistInfo(title=playlist_title, entries=entries)
 
 
@@ -705,26 +719,16 @@ def download_mp3(url: str, playlist_items: list[int] | None = None) -> bool:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def update_deps() -> None:
-    """Обновляет yt-dlp и переустанавливает ffmpeg."""
+    """Перекачивает бинарники yt-dlp и ffmpeg на последние версии."""
     print(BANNER)
     log_info("Обновляю зависимости…")
     log_sep()
 
-    # Обновить yt-dlp
+    # Обновить yt-dlp — просто скачать бинарник заново
     log_info("Обновляю yt-dlp…")
-    result = subprocess.run(
-        [
-            sys.executable, "-m", "pip", "install",
-            "--target", str(DEPS_DIR),
-            "--upgrade", "--quiet",
-            "yt-dlp",
-        ],
-        capture_output=True, text=True,
-    )
-    if result.returncode == 0:
-        log_ok("yt-dlp обновлён.")
-    else:
-        log_err(f"Ошибка обновления yt-dlp: {result.stderr.strip()}")
+    if YTDLP_BIN.exists():
+        YTDLP_BIN.unlink()
+    install_yt_dlp()
 
     # Переустановить ffmpeg
     log_info("Переустанавливаю ffmpeg…")
