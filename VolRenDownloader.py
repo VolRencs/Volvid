@@ -36,24 +36,21 @@ OUTPUT_TMPL_PLAYLIST = str(DL_DIR / "%(playlist_title)s" / "%(playlist_index)s -
 IS_WINDOWS = sys.platform == "win32"
 ARCH       = platform.machine().lower()    # amd64 / x86_64 / aarch64 / arm64
 
-# ─── URL ffmpeg по платформе ──────────────────────────────────────────────────
-# Windows x64 — BtbN GitHub builds (актуальные, без регистрации)
-# Linux       — johnvansickle static builds (один бинарник без зависимостей)
+# ─── URL ffmpeg ────────────────────────────────────────────────────────────────
+
+_BTBN = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
 
 def _ffmpeg_url() -> str:
     if IS_WINDOWS:
-        return (
-            "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
-            "ffmpeg-master-latest-win64-gpl.zip"
-        )
+        return _BTBN + "ffmpeg-master-latest-win64-gpl.zip"
     if ARCH in ("aarch64", "arm64"):
-        return "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz"
-    return "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+        return _BTBN + "ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
+    return _BTBN + "ffmpeg-master-latest-linux64-gpl.tar.xz"
 
 FFMPEG_BIN  = DEPS_DIR / ("ffmpeg.exe"  if IS_WINDOWS else "ffmpeg")
 YTDLP_BIN   = DEPS_DIR / ("yt-dlp.exe" if IS_WINDOWS else "yt-dlp")
 
-# URL standalone-бинарника yt-dlp (GitHub releases, всегда последняя версия)
+# URL standalone-бинарника yt-dlp
 def _ytdlp_url() -> str:
     if IS_WINDOWS:
         return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
@@ -161,7 +158,7 @@ def _extract_ffmpeg_from_zip(archive: Path) -> None:
 
 
 def _extract_ffmpeg_from_tar(archive: Path) -> None:
-    """Извлекает ffmpeg/ffprobe из Linux static tar.xz (johnvansickle)."""
+    """Извлекает ffmpeg/ffprobe из Linux static tar.xz (BtbN builds)."""
     with tarfile.open(archive, "r:xz") as tf:
         for member in tf.getmembers():
             name = Path(member.name).name
@@ -200,7 +197,7 @@ def install_ffmpeg() -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  УСТАНОВКА yt-dlp — STANDALONE БИНАРНИК (без pip, без модулей)
+#  УСТАНОВКА yt-dlp В _deps/
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _ytdlp_ready() -> bool:

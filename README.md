@@ -188,8 +188,8 @@ python VolRenDownloader.py --update
 | ОС | Архитектура | yt-dlp | ffmpeg |
 |---|---|---|---|
 | Windows | x64 | `yt-dlp.exe` (GitHub) | BtbN build (GitHub) |
-| Linux | x86_64 | `yt-dlp_linux` (GitHub) | johnvansickle static |
-| Linux | arm64 / aarch64 | `yt-dlp_linux_aarch64` (GitHub) | johnvansickle static |
+| Linux | x86_64 | `yt-dlp_linux` (GitHub) | BtbN build (GitHub) |
+| Linux | arm64 / aarch64 | `yt-dlp_linux_aarch64` (GitHub) | BtbN build (GitHub)|
 
 ---
 
@@ -225,7 +225,6 @@ ffmpeg нужен для склейки видео+аудио и конверт�
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Unlicense | github.com/yt-dlp/yt-dlp |
 | [ffmpeg](https://ffmpeg.org) | LGPL 2.1+ / GPL 2+ | ffmpeg.org |
 | [BtbN FFmpeg Builds](https://github.com/BtbN/FFmpeg-Builds) | GPL | github.com/BtbN |
-| [johnvansickle ffmpeg](https://johnvansickle.com/ffmpeg/) | GPL | johnvansickle.com |
 
 Сам скрипт `VolRenDownloader.py` — **MIT License**.
 
