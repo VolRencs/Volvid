@@ -1,5 +1,5 @@
 """
-VolRen Video/Audio Downloader  —  версия 1.0.0
+VolRen Video/Audio Downloader  —  версия 2.0.0
 Автор : VolRen
 Инфо  : Все зависимости (ffmpeg, yt-dlp) скачиваются автоматически
         в папку _deps/ рядом со скриптом. Ничего не устанавливается
@@ -9,6 +9,7 @@ VolRen Video/Audio Downloader  —  версия 1.0.0
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import re
@@ -17,90 +18,63 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import urllib.request
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  КОНСТАНТЫ
+#  КОНФИГ
 # ══════════════════════════════════════════════════════════════════════════════
 
-VERSION    = "1.0.0"
+VERSION    = "2.0.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEPS_DIR   = SCRIPT_DIR / "_deps"          # все зависимости сюда
-DL_DIR     = SCRIPT_DIR / "downloads"      # сюда сохраняются видео/аудио
-OUTPUT_TMPL          = str(DL_DIR / "%(title)s.%(ext)s")
-OUTPUT_TMPL_PLAYLIST = str(DL_DIR / "%(playlist_title)s" / "%(playlist_index)s - %(title)s.%(ext)s")
+DEPS_DIR   = SCRIPT_DIR / "_deps"
+DL_DIR     = SCRIPT_DIR / "downloads"
 
 IS_WINDOWS = sys.platform == "win32"
-ARCH       = platform.machine().lower()    # amd64 / x86_64 / aarch64 / arm64
+ARCH       = platform.machine().lower()
 
-# ─── URL ffmpeg ────────────────────────────────────────────────────────────────
+FFMPEG_BIN = DEPS_DIR / ("ffmpeg.exe"  if IS_WINDOWS else "ffmpeg")
+YTDLP_BIN  = DEPS_DIR / ("yt-dlp.exe" if IS_WINDOWS else "yt-dlp")
 
 _BTBN = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
 
 def _ffmpeg_url() -> str:
-    if IS_WINDOWS:
-        return _BTBN + "ffmpeg-master-latest-win64-gpl.zip"
-    if ARCH in ("aarch64", "arm64"):
-        return _BTBN + "ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
-    return _BTBN + "ffmpeg-master-latest-linux64-gpl.tar.xz"
+    if IS_WINDOWS:                   return _BTBN + "ffmpeg-master-latest-win64-gpl.zip"
+    if ARCH in ("aarch64", "arm64"): return _BTBN + "ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
+    return                                  _BTBN + "ffmpeg-master-latest-linux64-gpl.tar.xz"
 
-FFMPEG_BIN  = DEPS_DIR / ("ffmpeg.exe"  if IS_WINDOWS else "ffmpeg")
-YTDLP_BIN   = DEPS_DIR / ("yt-dlp.exe" if IS_WINDOWS else "yt-dlp")
-
-# URL standalone-бинарника yt-dlp
 def _ytdlp_url() -> str:
-    if IS_WINDOWS:
-        return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-    if ARCH in ("aarch64", "arm64"):
-        return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64"
-    return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
-
-# Паттерн YouTube-ссылок (видео, shorts, live, плейлисты)
-_YT_RE = re.compile(
-    r"(youtube\.com/(watch\?.*v=|shorts/|live/|playlist\?list=)|youtu\.be/)[\w\-]{1,}",
-    re.IGNORECASE,
-)
-
-# Паттерн для определения что ссылка — плейлист
-_PLAYLIST_RE = re.compile(
-    r"youtube\.com/(playlist\?|.*[?&]list=)[\w\-]{10,}",
-    re.IGNORECASE,
-)
+    if IS_WINDOWS:                   return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    if ARCH in ("aarch64", "arm64"): return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64"
+    return                                  "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  ЦВЕТА
+#  ЦВЕТА И ВЫВОД
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _enable_ansi() -> None:
-    """Включает ANSI-escape на Windows через виртуальный терминал."""
-    if IS_WINDOWS:
-        os.system("")          # простейший способ включить VT в cmd/powershell
-
-
-_enable_ansi()
-
+if IS_WINDOWS:
+    os.system("")  # включает VT-режим в cmd/powershell
 
 class C:
-    RESET   = "\033[0m"
-    BOLD    = "\033[1m"
-    RED     = "\033[91m"
-    GREEN   = "\033[92m"
-    YELLOW  = "\033[93m"
-    CYAN    = "\033[96m"
-    MAGENTA = "\033[95m"
-    GRAY    = "\033[90m"
-    WHITE   = "\033[97m"
+    RESET  = "\033[0m";  BOLD   = "\033[1m"
+    RED    = "\033[91m"; GREEN  = "\033[92m"
+    YELLOW = "\033[93m"; CYAN   = "\033[96m"
+    GRAY   = "\033[90m"; WHITE  = "\033[97m"
 
+_print_lock = threading.Lock()
 
-def log_ok(msg: str)   -> None: print(f"{C.GREEN}  ✔  {msg}{C.RESET}")
-def log_err(msg: str)  -> None: print(f"{C.RED}  ✘  {msg}{C.RESET}")
-def log_info(msg: str) -> None: print(f"{C.CYAN}  →  {msg}{C.RESET}")
-def log_warn(msg: str) -> None: print(f"{C.YELLOW}  !  {msg}{C.RESET}")
-def log_sep()          -> None: print(f"{C.GRAY}{'─' * 56}{C.RESET}")
+def _print(*a, **kw)   -> None:
+    with _print_lock: print(*a, **kw)
 
+def log_ok(m: str)   -> None: _print(f"{C.GREEN}  ✔  {m}{C.RESET}")
+def log_err(m: str)  -> None: _print(f"{C.RED}  ✘  {m}{C.RESET}")
+def log_info(m: str) -> None: _print(f"{C.CYAN}  →  {m}{C.RESET}")
+def log_warn(m: str) -> None: _print(f"{C.YELLOW}  !  {m}{C.RESET}")
+def log_sep()        -> None: _print(f"{C.GRAY}{'─' * 56}{C.RESET}")
 
 BANNER = f"""{C.CYAN}
  ╔══════════════════════════════════════════════════════╗
@@ -110,144 +84,97 @@ BANNER = f"""{C.CYAN}
 {C.RESET}"""
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  ПРОГРЕСС-БАР ДЛЯ СКАЧИВАНИЯ
+#  УСТАНОВКА ЗАВИСИМОСТЕЙ
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _progress_hook(block_num: int, block_size: int, total_size: int) -> None:
-    """Reporthook для urllib.request.urlretrieve — рисует прогресс в одну строку."""
-    if total_size <= 0:
-        downloaded = block_num * block_size
-        print(f"\r  {C.CYAN}↓{C.RESET}  {downloaded / 1_048_576:.1f} МБ…", end="", flush=True)
-        return
-    done     = min(block_num * block_size, total_size)
-    pct      = done / total_size
-    bar_len  = 30
-    filled   = int(bar_len * pct)
-    bar      = "█" * filled + "░" * (bar_len - filled)
-    mb_done  = done / 1_048_576
-    mb_total = total_size / 1_048_576
-    print(
-        f"\r  {C.CYAN}↓{C.RESET}  [{bar}] {pct*100:5.1f}%  "
-        f"{mb_done:.1f}/{mb_total:.1f} МБ",
-        end="",
-        flush=True,
-    )
+def _progress_hook(n: int, bs: int, total: int) -> None:
+    done = min(n * bs, total) if total > 0 else n * bs
+    if total > 0:
+        pct = done / total
+        bar = "█" * int(30 * pct) + "░" * (30 - int(30 * pct))
+        print(f"\r  {C.CYAN}↓{C.RESET}  [{bar}] {pct*100:5.1f}%  {done/1e6:.1f}/{total/1e6:.1f} МБ",
+              end="", flush=True)
+    else:
+        print(f"\r  {C.CYAN}↓{C.RESET}  {done/1e6:.1f} МБ…", end="", flush=True)
 
 
 def _download_file(url: str, dest: Path) -> None:
-    """Скачивает файл по URL в dest, показывая прогресс."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     urllib.request.urlretrieve(url, dest, reporthook=_progress_hook)
-    print()   # перевод строки после прогресс-бара
+    print()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  УСТАНОВКА ffmpeg В _deps/
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _extract_ffmpeg_from_zip(archive: Path) -> None:
-    """Извлекает ffmpeg.exe из Windows zip-архива BtbN."""
-    with zipfile.ZipFile(archive) as zf:
-        for member in zf.namelist():
-            name = Path(member).name
-            if name in ("ffmpeg.exe", "ffprobe.exe"):
-                data = zf.read(member)
-                out  = DEPS_DIR / name
-                out.write_bytes(data)
-                log_ok(f"Извлечён: {name}")
-
-
-def _extract_ffmpeg_from_tar(archive: Path) -> None:
-    """Извлекает ffmpeg/ffprobe из Linux static tar.xz (BtbN builds)."""
-    with tarfile.open(archive, "r:xz") as tf:
-        for member in tf.getmembers():
-            name = Path(member.name).name
-            if name in ("ffmpeg", "ffprobe") and member.isfile():
-                member.name = name          # сбрасываем путь — кладём плоско
-                tf.extract(member, path=DEPS_DIR)
-                bin_path = DEPS_DIR / name
-                # Даём права на исполнение
-                bin_path.chmod(bin_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-                log_ok(f"Извлечён: {name}")
+def _extract_ffmpeg(archive: Path) -> None:
+    """Извлекает ffmpeg/ffprobe из zip (Windows) или tar.xz (Linux) в DEPS_DIR."""
+    if archive.suffix == ".zip":
+        targets = {"ffmpeg.exe", "ffprobe.exe"}
+        with zipfile.ZipFile(archive) as zf:
+            for member in zf.namelist():
+                name = Path(member).name
+                if name in targets:
+                    (DEPS_DIR / name).write_bytes(zf.read(member))
+                    log_ok(f"Извлечён: {name}")
+    else:
+        targets = {"ffmpeg", "ffprobe"}
+        with tarfile.open(archive, "r:xz") as tf:
+            for m in tf.getmembers():
+                name = Path(m.name).name
+                if name in targets and m.isfile():
+                    m.name = name
+                    tf.extract(m, path=DEPS_DIR)
+                    p = DEPS_DIR / name
+                    p.chmod(p.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+                    log_ok(f"Извлечён: {name}")
 
 
 def install_ffmpeg() -> None:
-    """Скачивает и распаковывает ffmpeg в DEPS_DIR."""
     DEPS_DIR.mkdir(parents=True, exist_ok=True)
-    url = _ffmpeg_url()
     ext = ".zip" if IS_WINDOWS else ".tar.xz"
-
+    log_info(f"Скачиваю ffmpeg ({ARCH}, {'Windows' if IS_WINDOWS else 'Linux'})…")
     with tempfile.TemporaryDirectory() as tmp:
         archive = Path(tmp) / f"ffmpeg{ext}"
-        log_info(f"Скачиваю ffmpeg ({ARCH}, {'Windows' if IS_WINDOWS else 'Linux'})…")
         try:
-            _download_file(url, archive)
-        except Exception as exc:
-            log_err(f"Ошибка скачивания ffmpeg: {exc}")
-            log_err("Проверь интернет-соединение и попробуй снова.")
+            _download_file(_ffmpeg_url(), archive)
+        except Exception as e:
+            log_err(f"Ошибка скачивания ffmpeg: {e}")
             sys.exit(1)
-
         log_info("Распаковываю…")
-        if IS_WINDOWS:
-            _extract_ffmpeg_from_zip(archive)
-        else:
-            _extract_ffmpeg_from_tar(archive)
-
+        _extract_ffmpeg(archive)
     log_ok(f"ffmpeg установлен в: {DEPS_DIR}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  УСТАНОВКА yt-dlp В _deps/
-# ══════════════════════════════════════════════════════════════════════════════
-
 def _ytdlp_ready() -> bool:
-    """True если бинарник yt-dlp уже есть и исполняем."""
-    if not YTDLP_BIN.exists():
-        return False
+    if not YTDLP_BIN.exists(): return False
     try:
-        r = subprocess.run([str(YTDLP_BIN), "--version"],
-                           capture_output=True, timeout=10)
-        return r.returncode == 0
+        return subprocess.run([str(YTDLP_BIN), "--version"],
+                              capture_output=True, timeout=10).returncode == 0
     except Exception:
         return False
 
 
 def install_yt_dlp() -> None:
-    """
-    Скачивает standalone-бинарник yt-dlp прямо с GitHub releases.
-    Не требует pip, не требует прав root, не трогает системный Python.
-    """
     DEPS_DIR.mkdir(parents=True, exist_ok=True)
     url = _ytdlp_url()
     log_info(f"Скачиваю yt-dlp ({ARCH}, {'Windows' if IS_WINDOWS else 'Linux'})…")
     log_info(f"Источник: {url}")
     try:
         _download_file(url, YTDLP_BIN)
-    except Exception as exc:
-        log_err(f"Ошибка скачивания yt-dlp: {exc}")
-        log_err("Проверь интернет-соединение и попробуй снова.")
+    except Exception as e:
+        log_err(f"Ошибка скачивания yt-dlp: {e}")
         sys.exit(1)
-
-    # На Linux/macOS — ставим бит исполнения
     if not IS_WINDOWS:
-        YTDLP_BIN.chmod(
-            YTDLP_BIN.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH
-        )
-
+        YTDLP_BIN.chmod(YTDLP_BIN.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
     if _ytdlp_ready():
         log_ok(f"yt-dlp готов: {YTDLP_BIN.name}")
     else:
-        log_err("Бинарник скачан, но не запускается. Попробуй скачать вручную:")
-        log_err(f"  {url}")
-        log_err(f"  → положи файл в {DEPS_DIR}")
+        log_err("Бинарник скачан, но не запускается.")
         sys.exit(1)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ПРОВЕРКИ ОКРУЖЕНИЯ
 # ══════════════════════════════════════════════════════════════════════════════
 
-FFMPEG_RESOLVED: str | None = None   # заполняется в run_checks()
+FFMPEG_RESOLVED: str | None = None
 
 
 def check_python() -> None:
@@ -262,40 +189,34 @@ def check_ffmpeg() -> None:
     global FFMPEG_RESOLVED
     if FFMPEG_BIN.exists():
         FFMPEG_RESOLVED = str(FFMPEG_BIN)
-        log_ok(f"ffmpeg найден в _deps/")
+        log_ok("ffmpeg найден в _deps/")
         return
-    # Предлагаем скачать
     log_warn("ffmpeg не найден в _deps/.")
-    ans = _ask(f"  {C.BOLD}Скачать ffmpeg автоматически?{C.RESET} {C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  ").lower()
-    if ans in ("д", "да", "y", "yes", ""):
+    if _ask(f"  {C.BOLD}Скачать ffmpeg?{C.RESET} {C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "
+            ).lower() in ("д", "да", "y", "yes", ""):
         install_ffmpeg()
         if FFMPEG_BIN.exists():
             FFMPEG_RESOLVED = str(FFMPEG_BIN)
-            log_ok("ffmpeg готов к работе.")
+            log_ok("ffmpeg готов.")
         else:
             log_err("ffmpeg не найден после установки. Режимы 1 и 3 недоступны.")
     else:
-        log_warn("ffmpeg пропущен. Режимы «Лучшее качество» и «MP3» работать не будут.")
+        log_warn("ffmpeg пропущен. Режимы «Лучшее качество» и «MP3» недоступны.")
 
 
 def check_yt_dlp() -> None:
     if _ytdlp_ready():
-        try:
-            ver = subprocess.run(
-                [str(YTDLP_BIN), "--version"],
-                capture_output=True, text=True, timeout=10,
-            ).stdout.strip()
-        except Exception:
-            ver = "?"
+        ver = subprocess.run([str(YTDLP_BIN), "--version"],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
         log_ok(f"yt-dlp {ver}  (_deps/{YTDLP_BIN.name})")
         return
-    log_warn(f"yt-dlp не найден в _deps/.")
+    log_warn("yt-dlp не найден в _deps/.")
     install_yt_dlp()
 
 
 def run_checks() -> None:
-    log_info(f"Папка зависимостей: {DEPS_DIR}")
-    log_info(f"Папка загрузок    : {DL_DIR}")
+    log_info(f"Зависимости: {DEPS_DIR}")
+    log_info(f"Загрузки   : {DL_DIR}")
     log_sep()
     check_python()
     check_ffmpeg()
@@ -303,10 +224,14 @@ def run_checks() -> None:
     DL_DIR.mkdir(parents=True, exist_ok=True)
     log_sep()
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  ВВОД ПОЛЬЗОВАТЕЛЯ
 # ══════════════════════════════════════════════════════════════════════════════
+
+_YT_RE = re.compile(
+    r"(youtube\.com/(watch\?.*v=|shorts/|live/|playlist\?list=)|youtu\.be/)[\w\-]{1,}",
+    re.IGNORECASE,
+)
 
 def _ask(prompt: str) -> str:
     try:
@@ -316,122 +241,61 @@ def _ask(prompt: str) -> str:
         raise KeyboardInterrupt
 
 
-def validate_url(url: str) -> tuple[bool, str]:
-    if not url:
-        return False, "Ссылка не может быть пустой."
-    if not _YT_RE.search(url):
-        return False, "Не похоже на YouTube-ссылку. Поддерживаются: обычные, Shorts, Live, плейлисты."
-    return True, ""
-
-
 def ask_url() -> str:
     while True:
         url = _ask(f"\n{C.BOLD}  Ссылка на видео:{C.RESET} ")
-        ok, reason = validate_url(url)
-        if ok:
+        if not url:
+            log_err("Ссылка не может быть пустой.")
+        elif not _YT_RE.search(url):
+            log_err("Не похоже на YouTube-ссылку.")
+        else:
             return url
-        log_err(reason)
-        log_info("Попробуй ещё раз.")
 
 
 def ask_quality() -> str:
-    no_ffmpeg = f"  {C.GRAY}[нужен ffmpeg]{C.RESET}" if not FFMPEG_RESOLVED else ""
+    noff = f"  {C.GRAY}[нужен ffmpeg]{C.RESET}" if not FFMPEG_RESOLVED else ""
     print(f"\n{C.BOLD}  Выбери качество:{C.RESET}")
-    print(f"  {C.CYAN}1{C.RESET}  — Лучшее качество (HD / 4K){no_ffmpeg}")
+    print(f"  {C.CYAN}1{C.RESET}  — Лучшее качество (HD / 4K){noff}")
     print(f"  {C.CYAN}2{C.RESET}  — Экономичное (360p)")
-    print(f"  {C.CYAN}3{C.RESET}  — Только звук (MP3){no_ffmpeg}")
+    print(f"  {C.CYAN}3{C.RESET}  — Только звук (MP3){noff}")
     while True:
-        choice = _ask(f"\n{C.BOLD}  Твой выбор [1/2/3]:{C.RESET} ")
-        if choice in ("1", "2", "3"):
-            return choice
+        ch = _ask(f"\n{C.BOLD}  Твой выбор [1/2/3]:{C.RESET} ")
+        if ch in ("1", "2", "3"): return ch
         log_err("Введи 1, 2 или 3.")
 
 
 def ask_continue() -> bool:
     while True:
-        ans = _ask(
-            f"\n{C.BOLD}  Скачать ещё?  {C.RESET}"
-            f"{C.CYAN}[д]{C.RESET} / {C.RED}[н]{C.RESET}  "
-        ).lower()
-        if ans in ("д", "да", "y", "yes", ""):
-            return True
-        if ans in ("н", "нет", "n", "no"):
-            return False
+        ans = _ask(f"\n{C.BOLD}  Скачать ещё?  {C.RESET}"
+                   f"{C.CYAN}[д]{C.RESET} / {C.RED}[н]{C.RESET}  ").lower()
+        if ans in ("д","да","y","yes",""): return True
+        if ans in ("н","нет","n","no"):    return False
         log_err("Введи 'д' или 'н'.")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  ДВИЖОК ЗАГРУЗКИ
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _run(*args: str) -> bool:
-    """Запускает yt-dlp бинарник напрямую, возвращает True при успехе."""
-    result = subprocess.run([str(YTDLP_BIN), *args])
-    return result.returncode == 0
-
-
-def _ffmpeg_args() -> list[str]:
-    return ["--ffmpeg-location", FFMPEG_RESOLVED] if FFMPEG_RESOLVED else []
-
-
-def _playlist_args(
-    url: str,
-    items: list[int] | None,
-    force_single: bool = False,
-) -> list[str]:
-    """Собирает доп. аргументы yt-dlp для плейлиста.
-
-    force_single=True — пользователь явно выбрал «только это видео»
-    из ссылки, которая содержит &list=. Принудительно добавляем
-    --no-playlist даже если URL технически является плейлистом.
-    """
-    args: list[str] = []
-    if not force_single and is_playlist_url(url):
-        if items:
-            args += ["--playlist-items", _fmt_indices(items)]
-        # Не прерываемся на ошибках отдельных видео
-        args += ["--ignore-errors"]
-    else:
-        # Одиночное видео — игнорируем плейлист в ссылке
-        args += ["--no-playlist"]
-    return args
-
-
-def _try_formats(
-    url: str,
-    fmt_chain: list[str],
-    extra_args: list[str] | None = None,
-    force_single: bool = False,
-) -> bool:
-    """Перебирает форматы по цепочке до первого успеха."""
-    tmpl = OUTPUT_TMPL_PLAYLIST if (is_playlist_url(url) and not force_single) else OUTPUT_TMPL
-    extra = extra_args or []
-    for i, fmt in enumerate(fmt_chain):
-        if i > 0:
-            log_warn(f"Пробую запасной вариант {i}: {fmt}")
-        success = _run(
-            *_ffmpeg_args(),
-            "-f", fmt,
-            "--merge-output-format", "mp4",
-            "-o", tmpl,
-            *extra,
-            url,
-        )
-        if success:
-            return True
-    return False
-
+def ask_workers(total_videos: int) -> int:
+    """Спрашивает количество параллельных потоков для плейлиста."""
+    max_w = min(5, total_videos)
+    print(f"\n{C.BOLD}  Параллельная загрузка:{C.RESET}  {C.GRAY}(видео: {total_videos}){C.RESET}")
+    for i in range(1, max_w + 1):
+        note = f"  {C.GRAY}(рекомендуется){C.RESET}" if i == 3 else ""
+        seq  = "  — Последовательно" if i == 1 else f"  — {i} потока(ов)"
+        print(f"  {C.CYAN}{i}{C.RESET}{seq}{note}")
+    while True:
+        ch = _ask(f"\n{C.BOLD}  Потоков [1-{max_w}]:{C.RESET} ")
+        if ch.isdigit() and 1 <= int(ch) <= max_w: return int(ch)
+        log_err(f"Введи число от 1 до {max_w}.")
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  ПЛЕЙЛИСТ — ОПРЕДЕЛЕНИЕ, ПОЛУЧЕНИЕ ДАННЫХ, ВЫБОР
+#  ПЛЕЙЛИСТ
 # ══════════════════════════════════════════════════════════════════════════════
 
 @dataclass
 class PlaylistEntry:
-    index: int        # порядковый номер в плейлисте (1-based)
-    title: str
-    url:   str
-    duration: int = 0  # секунды, 0 если неизвестно
+    index:    int
+    title:    str
+    url:      str
+    duration: int = 0
 
 
 @dataclass
@@ -440,230 +304,28 @@ class PlaylistInfo:
     entries: list[PlaylistEntry]
 
     @property
-    def count(self) -> int:
-        return len(self.entries)
+    def count(self) -> int: return len(self.entries)
 
 
 def is_playlist_url(url: str) -> bool:
-    """True если URL указывает на плейлист (не просто видео с параметром list=)."""
-    # playlist?list= — точно плейлист
-    if re.search(r"youtube\.com/playlist\?", url, re.IGNORECASE):
-        return True
-    # watch?v=...&list= — видео внутри плейлиста, спрашиваем пользователя
-    if re.search(r"[?&]list=[\w\-]{10,}", url, re.IGNORECASE):
-        return True
-    return False
+    return bool(
+        re.search(r"youtube\.com/playlist\?", url, re.I) or
+        re.search(r"[?&]list=[\w\-]{10,}", url, re.I)
+    )
 
 
-def _fmt_duration(seconds: int) -> str:
-    if seconds <= 0:
-        return "  ??:??"
-    m, s = divmod(seconds, 60)
-    h, m = divmod(m, 60)
-    if h:
-        return f"{h:2d}:{m:02d}:{s:02d}"
-    return f"   {m:2d}:{s:02d}"
+def _fmt_duration(s: int) -> str:
+    if s <= 0: return "  ??:??"
+    m, s = divmod(s, 60); h, m = divmod(m, 60)
+    return f"{h:2d}:{m:02d}:{s:02d}" if h else f"   {m:2d}:{s:02d}"
 
 
-def fetch_playlist_info(url: str) -> PlaylistInfo | None:
-    """
-    Получает метаданные плейлиста через yt-dlp бинарник (--flat-playlist --dump-json).
-    Не требует Python-модуля yt_dlp вообще.
-    Возвращает PlaylistInfo или None при ошибке.
-    """
-    import json as _json
-
-    log_info("Получаю информацию о плейлисте…")
-    try:
-        result = subprocess.run(
-            [
-                str(YTDLP_BIN),
-                "--flat-playlist",       # только метаданные, без скачивания
-                "--dump-json",           # каждое видео — отдельная JSON-строка в stdout
-                "--quiet",
-                "--ignore-errors",
-                "--no-warnings",
-                url,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-    except subprocess.TimeoutExpired:
-        log_err("Превышено время ожидания при получении плейлиста.")
-        return None
-    except Exception as exc:
-        log_err(f"Не удалось запустить yt-dlp: {exc}")
-        return None
-
-    # Каждая строка stdout — JSON одного видео
-    lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
-    if not lines:
-        log_warn("Плейлист пуст или все видео недоступны.")
-        return None
-
-    entries: list[PlaylistEntry] = []
-    playlist_title = "playlist"
-    for i, line in enumerate(lines, start=1):
-        try:
-            e = _json.loads(line)
-        except _json.JSONDecodeError:
-            continue
-        # Заголовок плейлиста берём из первого элемента
-        if i == 1:
-            playlist_title = (
-                e.get("playlist_title")
-                or e.get("playlist")
-                or "playlist"
-            )
-        entries.append(PlaylistEntry(
-            index    = i,
-            title    = e.get("title") or e.get("id") or f"Видео {i}",
-            url      = e.get("url") or e.get("webpage_url") or url,
-            duration = int(e.get("duration") or 0),
-        ))
-
-    if not entries:
-        log_warn("Не удалось разобрать ни одного видео из плейлиста.")
-        return None
-
-    return PlaylistInfo(title=playlist_title, entries=entries)
-
-
-def _print_playlist(info: PlaylistInfo, start: int = 0, page: int = 25) -> int:
-    """
-    Выводит страницу из page видео начиная с индекса start.
-    Возвращает индекс следующей непоказанной записи.
-    """
-    end = min(start + page, info.count)
-    for e in info.entries[start:end]:
-        dur   = _fmt_duration(e.duration)
-        title = e.title if len(e.title) <= 55 else e.title[:52] + "…"
-        num   = f"{C.CYAN}{e.index:>4}{C.RESET}"
-        print(f"  {num}.  {title:<55}  {C.GRAY}{dur}{C.RESET}")
-    return end
-
-
-def _parse_selection(raw: str, max_idx: int) -> list[int] | None:
-    """
-    Парсит строку выбора вида:  «все» / «1-10» / «1,3,5-8,12»
-    Возвращает отсортированный список индексов (1-based) или None при ошибке.
-    """
-    raw = raw.strip().lower()
-    if raw in ("а", "all", "все", "всё", "*"):
-        return list(range(1, max_idx + 1))
-
-    result: set[int] = set()
-    parts = re.split(r"[,;\s]+", raw)
-    for part in parts:
-        part = part.strip()
-        if not part:
-            continue
-        m_range = re.fullmatch(r"(\d+)\s*[-–]\s*(\d+)", part)
-        m_single = re.fullmatch(r"(\d+)", part)
-        if m_range:
-            a, b = int(m_range.group(1)), int(m_range.group(2))
-            if a > b:
-                a, b = b, a
-            if a < 1 or b > max_idx:
-                log_err(f"Диапазон {a}-{b} выходит за пределы 1–{max_idx}.")
-                return None
-            result.update(range(a, b + 1))
-        elif m_single:
-            n = int(m_single.group(1))
-            if n < 1 or n > max_idx:
-                log_err(f"Номер {n} выходит за пределы 1–{max_idx}.")
-                return None
-            result.add(n)
-        else:
-            log_err(f"Непонятный ввод: «{part}». Используй числа, диапазоны (1-5) или «а» для всех.")
-            return None
-
-    if not result:
-        log_err("Не выбрано ни одного видео.")
-        return None
-    return sorted(result)
-
-
-def ask_playlist_mode(url: str) -> tuple[str, list[int] | None] | None:
-    """
-    Если URL — плейлист, спрашивает пользователя что качать.
-    Возвращает (url_для_скачивания, список_номеров_или_None_для_всех)
-    или None если пользователь выбрал «скачать как одиночное видео».
-    """
-    if not is_playlist_url(url):
-        return None
-
-    # Если watch?v=...&list= — сначала спросим: плейлист или одно видео?
-    is_watch_with_list = bool(re.search(r"youtube\.com/watch\?.*v=[\w\-]{11}.*[?&]list=", url, re.I))
-    if is_watch_with_list:
-        print(f"\n{C.YELLOW}  !  Ссылка содержит и видео, и плейлист.{C.RESET}")
-        print(f"  {C.CYAN}1{C.RESET}  — Скачать только это видео")
-        print(f"  {C.CYAN}2{C.RESET}  — Открыть плейлист и выбрать")
-        while True:
-            ch = _ask(f"\n{C.BOLD}  Твой выбор [1/2]:{C.RESET} ")
-            if ch == "1":
-                return None   # одиночное
-            if ch == "2":
-                break
-            log_err("Введи 1 или 2.")
-
-    info = fetch_playlist_info(url)
-    if not info:
-        log_warn("Не удалось загрузить плейлист. Попробую как одиночное видео.")
-        return None
-
-    # ── Показываем плейлист ────────────────────────────────────────────────
-    print(f"\n{C.BOLD}{C.WHITE}  Плейлист: «{info.title}»{C.RESET}  "
-          f"{C.GRAY}({info.count} видео){C.RESET}")
-    log_sep()
-
-    shown = _print_playlist(info, start=0, page=25)
-
-    # Пагинация: если видео больше 25 — предлагаем показать ещё
-    while shown < info.count:
-        remaining = info.count - shown
-        ans = _ask(
-            f"\n{C.GRAY}  … ещё {remaining} видео. "
-            f"Показать? {C.RESET}{C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "
-        ).lower()
-        if ans in ("д", "да", "y", "yes", ""):
-            shown = _print_playlist(info, start=shown, page=25)
-        else:
-            break
-
-    log_sep()
-
-    # ── Выбор что качать ──────────────────────────────────────────────────
-    print(f"\n{C.BOLD}  Что скачать?{C.RESET}")
-    print(f"  {C.CYAN}а{C.RESET}   — Все {info.count} видео")
-    print(f"  {C.CYAN}1-5{C.RESET} — Диапазон номеров  (например: 1-10)")
-    print(f"  {C.CYAN}1,3{C.RESET} — Конкретные номера (например: 1,4,7)")
-    print(f"  {C.CYAN}Смесь{C.RESET}: 1-3,7,10-12")
-
-    while True:
-        raw = _ask(f"\n{C.BOLD}  Выбор:{C.RESET} ")
-        indices = _parse_selection(raw, info.count)
-        if indices is not None:
-            break
-
-    if len(indices) == info.count:
-        log_info(f"Выбраны все {info.count} видео.")
-        return url, None      # --playlist-items не нужен → качаем всё
-    else:
-        log_info(f"Выбрано: {len(indices)} видео  ({_fmt_indices(indices)})")
-        return url, indices
-
-
-def _fmt_indices(indices: list[int]) -> str:
-    """Красиво форматирует список номеров: [1,2,3,5,6] → '1-3,5-6'."""
-    if not indices:
-        return ""
-    parts: list[str] = []
-    start = end = indices[0]
-    for n in indices[1:]:
-        if n == end + 1:
-            end = n
+def _fmt_indices(idx: list[int]) -> str:
+    """[1,2,3,5,6] → '1-3,5-6'"""
+    if not idx: return ""
+    parts, start, end = [], idx[0], idx[0]
+    for n in idx[1:]:
+        if n == end + 1: end = n
         else:
             parts.append(f"{start}-{end}" if start != end else str(start))
             start = end = n
@@ -671,100 +333,283 @@ def _fmt_indices(indices: list[int]) -> str:
     return ",".join(parts)
 
 
+def fetch_playlist_info(url: str) -> PlaylistInfo | None:
+    log_info("Получаю информацию о плейлисте…")
+    try:
+        result = subprocess.run(
+            [str(YTDLP_BIN), "--flat-playlist", "--dump-json",
+             "--quiet", "--ignore-errors", "--no-warnings", url],
+            capture_output=True, text=True, timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        log_err("Таймаут при получении плейлиста.")
+        return None
+    except Exception as e:
+        log_err(f"Ошибка yt-dlp: {e}")
+        return None
+
+    lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
+    if not lines:
+        log_warn("Плейлист пуст или недоступен.")
+        return None
+
+    entries: list[PlaylistEntry] = []
+    pl_title = "playlist"
+    for i, line in enumerate(lines, 1):
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if i == 1:
+            pl_title = e.get("playlist_title") or e.get("playlist") or "playlist"
+        entries.append(PlaylistEntry(
+            index    = i,
+            title    = e.get("title") or e.get("id") or f"Видео {i}",
+            url      = e.get("url") or e.get("webpage_url") or url,
+            duration = int(e.get("duration") or 0),
+        ))
+
+    return PlaylistInfo(title=pl_title, entries=entries) if entries else None
+
+
+def _print_playlist_page(info: PlaylistInfo, start: int = 0, page: int = 25) -> int:
+    end = min(start + page, info.count)
+    for e in info.entries[start:end]:
+        title = e.title if len(e.title) <= 55 else e.title[:52] + "…"
+        print(f"  {C.CYAN}{e.index:>4}{C.RESET}.  {title:<55}  {C.GRAY}{_fmt_duration(e.duration)}{C.RESET}")
+    return end
+
+
+def _parse_selection(raw: str, max_idx: int) -> list[int] | None:
+    raw = raw.strip().lower()
+    if raw in ("а", "all", "все", "всё", "*"):
+        return list(range(1, max_idx + 1))
+    result: set[int] = set()
+    for part in re.split(r"[,;\s]+", raw):
+        if not part: continue
+        if m := re.fullmatch(r"(\d+)\s*[-–]\s*(\d+)", part):
+            a, b = sorted((int(m.group(1)), int(m.group(2))))
+            if a < 1 or b > max_idx:
+                log_err(f"Диапазон {a}-{b} вне 1–{max_idx}.")
+                return None
+            result.update(range(a, b + 1))
+        elif m := re.fullmatch(r"(\d+)", part):
+            n = int(m.group(1))
+            if not 1 <= n <= max_idx:
+                log_err(f"Номер {n} вне 1–{max_idx}.")
+                return None
+            result.add(n)
+        else:
+            log_err(f"Непонятный ввод: «{part}».")
+            return None
+    return sorted(result) if result else None
+
+
+def ask_playlist_mode(url: str) -> tuple[str, PlaylistInfo, list[PlaylistEntry]] | None:
+    """
+    Возвращает (url, info, выбранные_entries) или None для одиночного видео.
+    """
+    if not is_playlist_url(url):
+        return None
+
+
+    if re.search(r"youtube\.com/watch\?.*v=[\w\-]{11}.*[?&]list=", url, re.I):
+        print(f"\n{C.YELLOW}  !  Ссылка содержит и видео, и плейлист.{C.RESET}")
+        print(f"  {C.CYAN}1{C.RESET}  — Только это видео")
+        print(f"  {C.CYAN}2{C.RESET}  — Открыть плейлист")
+        while True:
+            ch = _ask(f"\n{C.BOLD}  Твой выбор [1/2]:{C.RESET} ")
+            if ch == "1": return None
+            if ch == "2": break
+            log_err("Введи 1 или 2.")
+
+    info = fetch_playlist_info(url)
+    if not info:
+        log_warn("Не удалось загрузить плейлист. Скачиваю как одиночное видео.")
+        return None
+
+    print(f"\n{C.BOLD}{C.WHITE}  Плейлист: «{info.title}»{C.RESET}  "
+          f"{C.GRAY}({info.count} видео){C.RESET}")
+    log_sep()
+
+    shown = _print_playlist_page(info)
+    while shown < info.count:
+        if _ask(f"\n{C.GRAY}  … ещё {info.count - shown}. Показать? {C.RESET}"
+                f"{C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "
+                ).lower() in ("д","да","y","yes",""):
+            shown = _print_playlist_page(info, start=shown)
+        else:
+            break
+    log_sep()
+
+    print(f"\n{C.BOLD}  Что скачать?{C.RESET}")
+    print(f"  {C.CYAN}а{C.RESET}      — Все {info.count} видео")
+    print(f"  {C.CYAN}1-5{C.RESET}    — Диапазон  (например: 1-10)")
+    print(f"  {C.CYAN}1,3,7{C.RESET}  — Конкретные номера")
+    print(f"  {C.CYAN}Смесь{C.RESET}: 1-3,7,10-12")
+
+    while True:
+        indices = _parse_selection(_ask(f"\n{C.BOLD}  Выбор:{C.RESET} "), info.count)
+        if indices is not None: break
+
+    idx_set  = set(indices)
+    selected = [e for e in info.entries if e.index in idx_set]
+
+    n = len(selected)
+    log_info(f"Выбрано: {n} видео" + (f"  ({_fmt_indices(indices)})" if n < info.count else " (все)"))
+    return url, info, selected
+
 # ══════════════════════════════════════════════════════════════════════════════
-#  РЕЖИМЫ СКАЧИВАНИЯ
+#  ДВИЖОК ЗАГРУЗКИ
 # ══════════════════════════════════════════════════════════════════════════════
 
-def download_best(
-    url: str,
-    playlist_items: list[int] | None = None,
-    force_single: bool = False,
+@dataclass
+class QualityConfig:
+    label:     str
+    fmt_chain: list[str]
+    is_audio:  bool = False
+
+
+QUALITIES: dict[str, QualityConfig] = {
+    "1": QualityConfig("Лучшее качество", [
+             "bestvideo+bestaudio/best",
+             "bestvideo+bestaudio",
+             "best",
+         ]),
+    "2": QualityConfig("360p", [
+             "bestvideo[height<=360]+bestaudio/best[height<=360]",
+             "best[height<=360]",
+             "worst",
+         ]),
+    "3": QualityConfig("MP3", [], is_audio=True),
+}
+
+
+def _ffmpeg_args() -> list[str]:
+    return ["--ffmpeg-location", FFMPEG_RESOLVED] if FFMPEG_RESOLVED else []
+
+
+def _run_ytdlp(*args: str, silent: bool = False) -> bool:
+    kw: dict = {"capture_output": True} if silent else {}
+    return subprocess.run([str(YTDLP_BIN), *args], **kw).returncode == 0
+
+
+def _build_args(
+    cfg:    QualityConfig,
+    url:    str,
+    tmpl:   str,
+    extra:  list[str],
+    fmt:    str | None = None,
+) -> list[str]:
+    cmd = [*_ffmpeg_args()]
+    if cfg.is_audio:
+        cmd += ["--extract-audio", "--audio-format", "mp3", "--audio-quality", "0"]
+    else:
+        cmd += ["-f", fmt or cfg.fmt_chain[0], "--merge-output-format", "mp4"]
+    return [*cmd, "-o", tmpl, *extra, url]
+
+
+def _run_with_fallback(
+    cfg:    QualityConfig,
+    url:    str,
+    tmpl:   str,
+    extra:  list[str],
+    silent: bool = False,
 ) -> bool:
-    log_info("Скачиваю в лучшем качестве…")
-    extra = _playlist_args(url, playlist_items, force_single)
-    ok = _try_formats(url, [
-        "bestvideo+bestaudio/best",
-        "bestvideo+bestaudio",
-        "best",
-    ], extra_args=extra, force_single=force_single)
+    if cfg.is_audio:
+        return _run_ytdlp(*_build_args(cfg, url, tmpl, extra), silent=silent)
+    for i, fmt in enumerate(cfg.fmt_chain):
+        if i > 0: log_warn(f"Запасной формат {i}: {fmt}")
+        if _run_ytdlp(*_build_args(cfg, url, tmpl, extra, fmt=fmt), silent=silent):
+            return True
+    return False
+
+
+def _download_entry(
+    entry:  PlaylistEntry,
+    cfg:    QualityConfig,
+    pl_dir: Path,
+) -> tuple[PlaylistEntry, bool]:
+    tmpl  = str(pl_dir / f"{entry.index:03d} - %(title)s.%(ext)s")
+    ok    = _run_with_fallback(cfg, entry.url, tmpl, ["--no-playlist"], silent=True)
+    return entry, ok
+
+
+def download(
+    cfg:          QualityConfig,
+    url:          str,
+    force_single: bool = False,
+    pl_info:      PlaylistInfo | None = None,
+    pl_selected:  list[PlaylistEntry] | None = None,
+    workers:      int = 1,
+) -> bool:
+    """
+    - Обычное видео / последовательный плейлист → один процесс yt-dlp.
+    - workers > 1 с pl_selected → параллельные потоки, по видео на поток.
+    """
+    is_pl = bool(pl_info) and not force_single
+
+    # ── Параллельный режим ──────────────────────────────────────────────────
+    if is_pl and pl_selected and workers > 1:
+        pl_dir = DL_DIR / (pl_info.title if pl_info else "playlist")
+        pl_dir.mkdir(parents=True, exist_ok=True)
+        total, done, failed = len(pl_selected), 0, 0
+        log_info(f"Параллельная загрузка: {workers} потока(ов), {total} видео…")
+        log_sep()
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_download_entry, e, cfg, pl_dir): e
+                       for e in pl_selected}
+            for future in as_completed(futures):
+                entry, ok = future.result()
+                done += 1
+                if ok:
+                    log_ok(f"[{done:>3}/{total}]  {entry.title[:55]}")
+                else:
+                    failed += 1
+                    log_err(f"[{done:>3}/{total}]  FAIL: {entry.title[:50]}")
+
+        log_sep()
+        log_ok(f"Плейлист завершён — успешно: {total - failed}/{total}")
+        return failed == 0
+
+    # ── Обычный / последовательный режим ───────────────────────────────────
+    if is_pl:
+        tmpl  = str(DL_DIR / "%(playlist_title)s" / "%(playlist_index)s - %(title)s.%(ext)s")
+        extra = ["--ignore-errors"]
+        if pl_selected and pl_info and len(pl_selected) < pl_info.count:
+            indices = [e.index for e in pl_selected]
+            extra  += ["--playlist-items", _fmt_indices(indices)]
+    else:
+        tmpl  = str(DL_DIR / "%(title)s.%(ext)s")
+        extra = ["--no-playlist"]
+
+    ok = _run_with_fallback(cfg, url, tmpl, extra)
     if ok:
         log_ok(f"Готово! → {DL_DIR}")
     else:
-        log_err("Не удалось скачать. Попробуй обновить: python VolRenDownloader.py --update")
+        log_err("Не удалось скачать. Попробуй: python VolRenDownloader.py --update")
     return ok
-
-
-def download_360p(
-    url: str,
-    playlist_items: list[int] | None = None,
-    force_single: bool = False,
-) -> bool:
-    log_info("Скачиваю в экономичном качестве (360p)…")
-    extra = _playlist_args(url, playlist_items, force_single)
-    ok = _try_formats(url, [
-        "bestvideo[height<=360]+bestaudio/best[height<=360]",
-        "best[height<=360]",
-        "worst",
-    ], extra_args=extra, force_single=force_single)
-    if ok:
-        log_ok(f"Готово! → {DL_DIR}")
-    else:
-        log_err("Не удалось скачать. Попробуй обновить: python VolRenDownloader.py --update")
-    return ok
-
-
-def download_mp3(
-    url: str,
-    playlist_items: list[int] | None = None,
-    force_single: bool = False,
-) -> bool:
-    log_info("Извлекаю аудио в MP3 (лучшее качество VBR)…")
-    extra = _playlist_args(url, playlist_items, force_single)
-    tmpl  = OUTPUT_TMPL_PLAYLIST if (is_playlist_url(url) and not force_single) else OUTPUT_TMPL
-    ok = _run(
-        *_ffmpeg_args(),
-        "--extract-audio",
-        "--audio-format", "mp3",
-        "--audio-quality", "0",
-        "-o", tmpl,
-        *extra,
-        url,
-    )
-    if ok:
-        log_ok(f"MP3 готов! → {DL_DIR}")
-    else:
-        log_err("Не удалось. Убедись что ffmpeg установлен (_deps/).")
-    return ok
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ОБНОВЛЕНИЕ ЗАВИСИМОСТЕЙ
 # ══════════════════════════════════════════════════════════════════════════════
 
 def update_deps() -> None:
-    """Перекачивает бинарники yt-dlp и ffmpeg на последние версии."""
     print(BANNER)
     log_info("Обновляю зависимости…")
     log_sep()
-
-    # Обновить yt-dlp — просто скачать бинарник заново
     log_info("Обновляю yt-dlp…")
-    if YTDLP_BIN.exists():
-        YTDLP_BIN.unlink()
+    if YTDLP_BIN.exists(): YTDLP_BIN.unlink()
     install_yt_dlp()
-
-    # Переустановить ffmpeg
     log_info("Переустанавливаю ffmpeg…")
     for f in (DEPS_DIR / "ffmpeg.exe", DEPS_DIR / "ffmpeg",
               DEPS_DIR / "ffprobe.exe", DEPS_DIR / "ffprobe"):
-        if f.exists():
-            f.unlink()
+        if f.exists(): f.unlink()
     install_ffmpeg()
-
     log_sep()
     log_ok("Обновление завершено.")
     input(f"\n{C.GRAY}  Нажми Enter для выхода…{C.RESET}")
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  СЕССИЯ
@@ -777,75 +622,65 @@ class Session:
     items:   list[str] = field(default_factory=list)
 
     @property
-    def total(self) -> int:
-        return self.success + self.failed
+    def total(self) -> int: return self.success + self.failed
 
     def record(self, label: str, url: str, ok: bool) -> None:
-        if ok:
-            self.success += 1
-        else:
-            self.failed += 1
+        if ok: self.success += 1
+        else:  self.failed  += 1
         badge = f"{C.GREEN}OK  {C.RESET}" if ok else f"{C.RED}FAIL{C.RESET}"
-        short_url = url if len(url) <= 48 else url[:45] + "…"
-        self.items.append(f"  [{badge}]  {label:<16}  {short_url}")
+        short = url if len(url) <= 48 else url[:45] + "…"
+        self.items.append(f"  [{badge}]  {label:<24}  {short}")
 
     def print_summary(self) -> None:
-        if self.total == 0:
-            return
+        if not self.total: return
         print(f"\n{C.BOLD}{C.WHITE}  Итоги сессии:{C.RESET}")
         log_sep()
-        for item in self.items:
-            print(item)
+        for item in self.items: print(item)
         log_sep()
-        print(
-            f"  Всего: {C.BOLD}{self.total}{C.RESET}  "
-            f"·  {C.GREEN}Успешно: {self.success}{C.RESET}  "
-            f"·  {C.RED}Ошибок: {self.failed}{C.RESET}\n"
-        )
-
+        print(f"  Всего: {C.BOLD}{self.total}{C.RESET}  ·  "
+              f"{C.GREEN}Успешно: {self.success}{C.RESET}  ·  "
+              f"{C.RED}Ошибок: {self.failed}{C.RESET}\n")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ГЛАВНЫЙ ЦИКЛ
 # ══════════════════════════════════════════════════════════════════════════════
 
-_LABELS   = {"1": "Лучшее качество", "2": "360p", "3": "MP3"}
-_HANDLERS = {"1": download_best,    "2": download_360p, "3": download_mp3}
-
-
 def download_loop(session: Session) -> None:
     while True:
-        url = ask_url()
+        url          = ask_url()
+        force_single = False
+        pl_info:     PlaylistInfo | None = None
+        pl_selected: list[PlaylistEntry] | None = None
+        workers      = 1
 
-        # ── Определяем: плейлист или одиночное видео ──────────────────────
-        playlist_items: list[int] | None = None
-        force_single: bool = False
         playlist_result = ask_playlist_mode(url)
 
         if playlist_result is not None:
-            # playlist_result = (url, indices | None)
-            url, playlist_items = playlist_result
-            count_str = (
-                f"{len(playlist_items)} видео"
-                if playlist_items else "весь плейлист"
-            )
-            log_info(f"Режим плейлиста — {count_str}")
+            url, pl_info, pl_selected = playlist_result
+            n = len(pl_selected)
+            log_info(f"Режим плейлиста — {n} видео")
+            if n >= 2:
+                workers = ask_workers(n)
         elif is_playlist_url(url):
-            # Принудительно запрещаем скачивание плейлиста
             force_single = True
             log_info("Режим: одиночное видео (плейлист проигнорирован)")
 
-        quality = ask_quality()
-        label   = _LABELS[quality]
-
+        cfg = QUALITIES[ask_quality()]
         log_sep()
-        ok = _HANDLERS[quality](url, playlist_items, force_single)
 
-        # В сессию записываем с пометкой о плейлисте
-        rec_label = label
-        if playlist_result is not None:
-            n = len(playlist_items) if playlist_items else "all"
-            rec_label = f"{label} [плейлист/{n}]"
-        session.record(rec_label, url, ok)
+        ok = download(
+            cfg          = cfg,
+            url          = url,
+            force_single = force_single,
+            pl_info      = pl_info,
+            pl_selected  = pl_selected,
+            workers      = workers,
+        )
+
+        label = cfg.label
+        if pl_selected:
+            label += f" [плейлист/{len(pl_selected)}]"
+        session.record(label, url, ok)
         log_sep()
 
         if not ask_continue():
@@ -853,7 +688,6 @@ def download_loop(session: Session) -> None:
 
 
 def main() -> None:
-    # Флаг --update — обновить зависимости и выйти
     if "--update" in sys.argv:
         update_deps()
         return
