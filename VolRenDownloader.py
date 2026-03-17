@@ -1,22 +1,18 @@
 """
-VolRen Video/Audio Downloader  —  версия 2.0.0
+VolRen Video/Audio Downloader  —  версия 2.1.0
 Автор : VolRen
 Инфо  : Все зависимости (ffmpeg, yt-dlp) скачиваются автоматически
         в папку _deps/ рядом со скриптом. Ничего не устанавливается
         в систему. Работает на Windows и Linux (x64 / arm64).
-Нужно : Python 3.10+
+Нужно : Python 3.13+
 """
-
-from __future__ import annotations
 
 import json
 import os
 import platform
 import re
-import stat
 import subprocess
 import sys
-import tarfile
 import tempfile
 import threading
 import urllib.request
@@ -29,30 +25,37 @@ from pathlib import Path
 #  КОНФИГ
 # ══════════════════════════════════════════════════════════════════════════════
 
-VERSION    = "2.0.0"
-SCRIPT_DIR = Path(sys.executable).resolve().parent \
-             if getattr(sys, 'frozen', False) \
-             else Path(__file__).resolve().parent
-DEPS_DIR   = SCRIPT_DIR / "_deps"
-DL_DIR     = SCRIPT_DIR / "downloads"
+VERSION    = "2.1.0"
+SCRIPT_DIR = (
+    Path(sys.executable).resolve().parent
+    if getattr(sys, "frozen", False)
+    else Path(__file__).resolve().parent
+)
+DEPS_DIR = SCRIPT_DIR / "_deps"
+DL_DIR   = SCRIPT_DIR / "downloads"
 
 IS_WINDOWS = sys.platform == "win32"
 ARCH       = platform.machine().lower()
 
-FFMPEG_BIN = DEPS_DIR / ("ffmpeg.exe"  if IS_WINDOWS else "ffmpeg")
-YTDLP_BIN  = DEPS_DIR / ("yt-dlp.exe" if IS_WINDOWS else "yt-dlp")
+# Windows: ffmpeg качается в _deps/. Linux: берётся из /usr/bin/
+_FFMPEG_WIN_BIN = DEPS_DIR / "ffmpeg.exe"
+YTDLP_BIN       = DEPS_DIR / ("yt-dlp.exe" if IS_WINDOWS else "yt-dlp")
 
-_BTBN = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
+_FFMPEG_WIN_URL = (
+    "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
+    "ffmpeg-master-latest-win64-gpl.zip"
+)
+_YTDLP_BASE = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
 
-def _ffmpeg_url() -> str:
-    if IS_WINDOWS:                   return _BTBN + "ffmpeg-master-latest-win64-gpl.zip"
-    if ARCH in ("aarch64", "arm64"): return _BTBN + "ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
-    return                                  _BTBN + "ffmpeg-master-latest-linux64-gpl.tar.xz"
 
 def _ytdlp_url() -> str:
-    if IS_WINDOWS:                   return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-    if ARCH in ("aarch64", "arm64"): return "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64"
-    return                                  "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
+    match (IS_WINDOWS, ARCH):
+        case (True, _):
+            return _YTDLP_BASE + "yt-dlp.exe"
+        case (False, a) if a in ("aarch64", "arm64"):
+            return _YTDLP_BASE + "yt-dlp_linux_aarch64"
+        case _:
+            return _YTDLP_BASE + "yt-dlp_linux"
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ЦВЕТА И ВЫВОД
@@ -61,22 +64,28 @@ def _ytdlp_url() -> str:
 if IS_WINDOWS:
     os.system("")  # включает VT-режим в cmd/powershell
 
+
 class C:
     RESET  = "\033[0m";  BOLD   = "\033[1m"
     RED    = "\033[91m"; GREEN  = "\033[92m"
     YELLOW = "\033[93m"; CYAN   = "\033[96m"
     GRAY   = "\033[90m"; WHITE  = "\033[97m"
 
+
 _print_lock = threading.Lock()
 
-def _print(*a, **kw)   -> None:
-    with _print_lock: print(*a, **kw)
+
+def _print(*a, **kw) -> None:
+    with _print_lock:
+        print(*a, **kw)
+
 
 def log_ok(m: str)   -> None: _print(f"{C.GREEN}  ✔  {m}{C.RESET}")
 def log_err(m: str)  -> None: _print(f"{C.RED}  ✘  {m}{C.RESET}")
 def log_info(m: str) -> None: _print(f"{C.CYAN}  →  {m}{C.RESET}")
 def log_warn(m: str) -> None: _print(f"{C.YELLOW}  !  {m}{C.RESET}")
 def log_sep()        -> None: _print(f"{C.GRAY}{'─' * 56}{C.RESET}")
+
 
 BANNER = f"""{C.CYAN}
  ╔══════════════════════════════════════════════════════╗
@@ -94,8 +103,11 @@ def _progress_hook(n: int, bs: int, total: int) -> None:
     if total > 0:
         pct = done / total
         bar = "█" * int(30 * pct) + "░" * (30 - int(30 * pct))
-        print(f"\r  {C.CYAN}↓{C.RESET}  [{bar}] {pct*100:5.1f}%  {done/1e6:.1f}/{total/1e6:.1f} МБ",
-              end="", flush=True)
+        print(
+            f"\r  {C.CYAN}↓{C.RESET}  [{bar}] {pct*100:5.1f}%"
+            f"  {done/1e6:.1f}/{total/1e6:.1f} МБ",
+            end="", flush=True,
+        )
     else:
         print(f"\r  {C.CYAN}↓{C.RESET}  {done/1e6:.1f} МБ…", end="", flush=True)
 
@@ -107,36 +119,29 @@ def _download_file(url: str, dest: Path) -> None:
 
 
 def _extract_ffmpeg(archive: Path) -> None:
-    """Извлекает ffmpeg/ffprobe из zip (Windows) или tar.xz (Linux) в DEPS_DIR."""
-    if archive.suffix == ".zip":
-        targets = {"ffmpeg.exe", "ffprobe.exe"}
-        with zipfile.ZipFile(archive) as zf:
-            for member in zf.namelist():
-                name = Path(member).name
-                if name in targets:
-                    (DEPS_DIR / name).write_bytes(zf.read(member))
-                    log_ok(f"Извлечён: {name}")
-    else:
-        targets = {"ffmpeg", "ffprobe"}
-        with tarfile.open(archive, "r:xz") as tf:
-            for m in tf.getmembers():
-                name = Path(m.name).name
-                if name in targets and m.isfile():
-                    m.name = name
-                    tf.extract(m, path=DEPS_DIR)
-                    p = DEPS_DIR / name
-                    p.chmod(p.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-                    log_ok(f"Извлечён: {name}")
+    """Извлекает ffmpeg.exe / ffprobe.exe из zip-архива."""
+    targets = {"ffmpeg.exe", "ffprobe.exe"}
+    found: set[str] = set()
+    with zipfile.ZipFile(archive) as zf:
+        for member in zf.namelist():
+            name = Path(member).name
+            if name in targets:
+                (DEPS_DIR / name).write_bytes(zf.read(member))
+                log_ok(f"Извлечён: {name}")
+                found.add(name)
+    if not found:
+        log_err("ffmpeg.exe не найден в архиве — архив повреждён?")
+        sys.exit(1)
 
 
 def install_ffmpeg() -> None:
+    """Скачивает ffmpeg в _deps/"""
     DEPS_DIR.mkdir(parents=True, exist_ok=True)
-    ext = ".zip" if IS_WINDOWS else ".tar.xz"
-    log_info(f"Скачиваю ffmpeg ({ARCH}, {'Windows' if IS_WINDOWS else 'Linux'})…")
+    log_info("Скачиваю ffmpeg (Windows)…")
     with tempfile.TemporaryDirectory() as tmp:
-        archive = Path(tmp) / f"ffmpeg{ext}"
+        archive = Path(tmp) / "ffmpeg.zip"
         try:
-            _download_file(_ffmpeg_url(), archive)
+            _download_file(_FFMPEG_WIN_URL, archive)
         except Exception as e:
             log_err(f"Ошибка скачивания ffmpeg: {e}")
             sys.exit(1)
@@ -145,13 +150,18 @@ def install_ffmpeg() -> None:
     log_ok(f"ffmpeg установлен в: {DEPS_DIR}")
 
 
-def _ytdlp_ready() -> bool:
-    if not YTDLP_BIN.exists(): return False
+def _ytdlp_version() -> str | None:
+    """Возвращает строку версии yt-dlp или None если бинарник не готов."""
+    if not YTDLP_BIN.exists():
+        return None
     try:
-        return subprocess.run([str(YTDLP_BIN), "--version"],
-                              capture_output=True, timeout=10).returncode == 0
+        r = subprocess.run(
+            [str(YTDLP_BIN), "--version"],
+            capture_output=True, text=True, timeout=10,
+        )
+        return r.stdout.strip() if r.returncode == 0 else None
     except Exception:
-        return False
+        return None
 
 
 def install_yt_dlp() -> None:
@@ -165,8 +175,8 @@ def install_yt_dlp() -> None:
         log_err(f"Ошибка скачивания yt-dlp: {e}")
         sys.exit(1)
     if not IS_WINDOWS:
-        YTDLP_BIN.chmod(YTDLP_BIN.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    if _ytdlp_ready():
+        YTDLP_BIN.chmod(YTDLP_BIN.stat().st_mode | 0o111)
+    if _ytdlp_version():
         log_ok(f"yt-dlp готов: {YTDLP_BIN.name}")
     else:
         log_err("Бинарник скачан, но не запускается.")
@@ -181,35 +191,54 @@ FFMPEG_RESOLVED: str | None = None
 
 def check_python() -> None:
     major, minor = sys.version_info[:2]
-    if (major, minor) < (3, 10):
-        log_err(f"Python {major}.{minor} не поддерживается. Нужен 3.10+.")
+    if (major, minor) < (3, 13):
+        log_err(f"Python {major}.{minor} не поддерживается. Нужен 3.13+.")
         sys.exit(1)
     log_ok(f"Python {major}.{minor}  ({sys.platform} / {ARCH})")
 
 
+def _system_ffmpeg() -> str | None:
+    """Путь к /usr/bin/ffmpeg если существует, иначе None."""
+    p = Path("/usr/bin/ffmpeg")
+    return str(p) if p.exists() else None
+
+
 def check_ffmpeg() -> None:
     global FFMPEG_RESOLVED
-    if FFMPEG_BIN.exists():
-        FFMPEG_RESOLVED = str(FFMPEG_BIN)
-        log_ok("ffmpeg найден в _deps/")
-        return
-    log_warn("ffmpeg не найден в _deps/.")
-    if _ask(f"  {C.BOLD}Скачать ffmpeg?{C.RESET} {C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "
-            ).lower() in ("д", "да", "y", "yes", ""):
-        install_ffmpeg()
-        if FFMPEG_BIN.exists():
-            FFMPEG_RESOLVED = str(FFMPEG_BIN)
-            log_ok("ffmpeg готов.")
+
+    if IS_WINDOWS:
+        if _FFMPEG_WIN_BIN.exists():
+            FFMPEG_RESOLVED = str(_FFMPEG_WIN_BIN)
+            log_ok("ffmpeg найден в _deps/")
+            return
+        log_warn("ffmpeg не найден в _deps/.")
+        if _ask_yes(
+            f"  {C.BOLD}Скачать ffmpeg?{C.RESET} {C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "
+        ):
+            install_ffmpeg()
+            if _FFMPEG_WIN_BIN.exists():
+                FFMPEG_RESOLVED = str(_FFMPEG_WIN_BIN)
+                log_ok("ffmpeg готов.")
+            else:
+                log_err("ffmpeg не найден после установки. Режимы 1 и 3 недоступны.")
         else:
-            log_err("ffmpeg не найден после установки. Режимы 1 и 3 недоступны.")
+            log_warn("ffmpeg пропущен. Режимы «Лучшее качество» и «MP3» недоступны.")
+        return
+
+    if path := _system_ffmpeg():
+        FFMPEG_RESOLVED = path
+        log_ok(f"ffmpeg найден в системе: {path}")
     else:
-        log_warn("ffmpeg пропущен. Режимы «Лучшее качество» и «MP3» недоступны.")
+        log_warn("ffmpeg не найден в системе.")
+        log_warn("Установи через пакетный менеджер:")
+        log_warn("  sudo apt install ffmpeg   (Debian / Ubuntu)")
+        log_warn("  sudo dnf install ffmpeg   (Fedora / RHEL)")
+        log_warn("  sudo pacman -S ffmpeg     (Arch)")
+        log_warn("Режимы «Лучшее качество» и «MP3» недоступны.")
 
 
 def check_yt_dlp() -> None:
-    if _ytdlp_ready():
-        ver = subprocess.run([str(YTDLP_BIN), "--version"],
-                             capture_output=True, text=True, timeout=10).stdout.strip()
+    if ver := _ytdlp_version():
         log_ok(f"yt-dlp {ver}  (_deps/{YTDLP_BIN.name})")
         return
     log_warn("yt-dlp не найден в _deps/.")
@@ -234,6 +263,14 @@ _YT_RE = re.compile(
     r"(youtube\.com/(watch\?.*v=|shorts/|live/|playlist\?list=)|youtu\.be/)[\w\-]{1,}",
     re.IGNORECASE,
 )
+_PLAYLIST_RE = re.compile(
+    r"youtube\.com/playlist\?|[?&]list=[\w\-]{10,}",
+    re.IGNORECASE,
+)
+
+_YES = frozenset(("д", "да", "y", "yes", ""))
+_NO  = frozenset(("н", "нет", "n", "no"))
+
 
 def _ask(prompt: str) -> str:
     try:
@@ -241,6 +278,15 @@ def _ask(prompt: str) -> str:
     except (KeyboardInterrupt, EOFError):
         print()
         raise KeyboardInterrupt
+
+
+def _ask_yes(prompt: str) -> bool:
+    """Задаёт вопрос да/нет, принимает русские и английские варианты."""
+    while True:
+        ans = _ask(prompt).lower()
+        if ans in _YES: return True
+        if ans in _NO:  return False
+        log_err("Введи 'д' или 'н'.")
 
 
 def ask_url() -> str:
@@ -267,32 +313,30 @@ def ask_quality() -> str:
 
 
 def ask_continue() -> bool:
-    while True:
-        ans = _ask(f"\n{C.BOLD}  Скачать ещё?  {C.RESET}"
-                   f"{C.CYAN}[д]{C.RESET} / {C.RED}[н]{C.RESET}  ").lower()
-        if ans in ("д","да","y","yes",""): return True
-        if ans in ("н","нет","n","no"):    return False
-        log_err("Введи 'д' или 'н'.")
+    return _ask_yes(
+        f"\n{C.BOLD}  Скачать ещё?  {C.RESET}"
+        f"{C.CYAN}[д]{C.RESET} / {C.RED}[н]{C.RESET}  "
+    )
 
 
 def ask_workers(total_videos: int) -> int:
-    """Спрашивает количество параллельных потоков для плейлиста."""
     max_w = min(5, total_videos)
     print(f"\n{C.BOLD}  Параллельная загрузка:{C.RESET}  {C.GRAY}(видео: {total_videos}){C.RESET}")
     for i in range(1, max_w + 1):
+        desc = "Последовательно" if i == 1 else f"{i} потока(ов)"
         note = f"  {C.GRAY}(рекомендуется){C.RESET}" if i == 3 else ""
-        seq  = "  — Последовательно" if i == 1 else f"  — {i} потока(ов)"
-        print(f"  {C.CYAN}{i}{C.RESET}{seq}{note}")
+        print(f"  {C.CYAN}{i}{C.RESET}  — {desc}{note}")
     while True:
         ch = _ask(f"\n{C.BOLD}  Потоков [1-{max_w}]:{C.RESET} ")
-        if ch.isdigit() and 1 <= int(ch) <= max_w: return int(ch)
+        if ch.isdigit() and 1 <= int(ch) <= max_w:
+            return int(ch)
         log_err(f"Введи число от 1 до {max_w}.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ПЛЕЙЛИСТ
 # ══════════════════════════════════════════════════════════════════════════════
 
-@dataclass
+@dataclass(slots=True)
 class PlaylistEntry:
     index:    int
     title:    str
@@ -300,34 +344,36 @@ class PlaylistEntry:
     duration: int = 0
 
 
-@dataclass
+@dataclass(slots=True)
 class PlaylistInfo:
     title:   str
     entries: list[PlaylistEntry]
 
-    @property
-    def count(self) -> int: return len(self.entries)
+    def __len__(self) -> int:
+        return len(self.entries)
 
 
 def is_playlist_url(url: str) -> bool:
-    return bool(
-        re.search(r"youtube\.com/playlist\?", url, re.I) or
-        re.search(r"[?&]list=[\w\-]{10,}", url, re.I)
-    )
+    return bool(_PLAYLIST_RE.search(url))
 
 
-def _fmt_duration(s: int) -> str:
-    if s <= 0: return "  ??:??"
-    m, s = divmod(s, 60); h, m = divmod(m, 60)
+def _fmt_duration(secs: int) -> str:
+    if secs <= 0:
+        return "  ??:??"
+    m, s = divmod(secs, 60)
+    h, m = divmod(m, 60)
     return f"{h:2d}:{m:02d}:{s:02d}" if h else f"   {m:2d}:{s:02d}"
 
 
 def _fmt_indices(idx: list[int]) -> str:
     """[1,2,3,5,6] → '1-3,5-6'"""
-    if not idx: return ""
-    parts, start, end = [], idx[0], idx[0]
+    if not idx:
+        return ""
+    parts: list[str] = []
+    start = end = idx[0]
     for n in idx[1:]:
-        if n == end + 1: end = n
+        if n == end + 1:
+            end = n
         else:
             parts.append(f"{start}-{end}" if start != end else str(start))
             start = end = n
@@ -350,7 +396,7 @@ def fetch_playlist_info(url: str) -> PlaylistInfo | None:
         log_err(f"Ошибка yt-dlp: {e}")
         return None
 
-    lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
+    lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
     if not lines:
         log_warn("Плейлист пуст или недоступен.")
         return None
@@ -375,7 +421,7 @@ def fetch_playlist_info(url: str) -> PlaylistInfo | None:
 
 
 def _print_playlist_page(info: PlaylistInfo, start: int = 0, page: int = 25) -> int:
-    end = min(start + page, info.count)
+    end = min(start + page, len(info))
     for e in info.entries[start:end]:
         title = e.title if len(e.title) <= 55 else e.title[:52] + "…"
         print(f"  {C.CYAN}{e.index:>4}{C.RESET}.  {title:<55}  {C.GRAY}{_fmt_duration(e.duration)}{C.RESET}")
@@ -388,7 +434,8 @@ def _parse_selection(raw: str, max_idx: int) -> list[int] | None:
         return list(range(1, max_idx + 1))
     result: set[int] = set()
     for part in re.split(r"[,;\s]+", raw):
-        if not part: continue
+        if not part:
+            continue
         if m := re.fullmatch(r"(\d+)\s*[-–]\s*(\d+)", part):
             a, b = sorted((int(m.group(1)), int(m.group(2))))
             if a < 1 or b > max_idx:
@@ -408,12 +455,9 @@ def _parse_selection(raw: str, max_idx: int) -> list[int] | None:
 
 
 def ask_playlist_mode(url: str) -> tuple[str, PlaylistInfo, list[PlaylistEntry]] | None:
-    """
-    Возвращает (url, info, выбранные_entries) или None для одиночного видео.
-    """
+    """Возвращает (url, info, выбранные_entries) или None для одиночного видео."""
     if not is_playlist_url(url):
         return None
-
 
     if re.search(r"youtube\.com/watch\?.*v=[\w\-]{11}.*[?&]list=", url, re.I):
         print(f"\n{C.YELLOW}  !  Ссылка содержит и видео, и плейлист.{C.RESET}")
@@ -431,45 +475,45 @@ def ask_playlist_mode(url: str) -> tuple[str, PlaylistInfo, list[PlaylistEntry]]
         return None
 
     print(f"\n{C.BOLD}{C.WHITE}  Плейлист: «{info.title}»{C.RESET}  "
-          f"{C.GRAY}({info.count} видео){C.RESET}")
+          f"{C.GRAY}({len(info)} видео){C.RESET}")
     log_sep()
 
     shown = _print_playlist_page(info)
-    while shown < info.count:
-        if _ask(f"\n{C.GRAY}  … ещё {info.count - shown}. Показать? {C.RESET}"
-                f"{C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "
-                ).lower() in ("д","да","y","yes",""):
+    while shown < len(info):
+        if _ask_yes(
+            f"\n{C.GRAY}  … ещё {len(info) - shown}. Показать? {C.RESET}"
+            f"{C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "
+        ):
             shown = _print_playlist_page(info, start=shown)
         else:
             break
     log_sep()
 
     print(f"\n{C.BOLD}  Что скачать?{C.RESET}")
-    print(f"  {C.CYAN}а{C.RESET}      — Все {info.count} видео")
+    print(f"  {C.CYAN}а{C.RESET}      — Все {len(info)} видео")
     print(f"  {C.CYAN}1-5{C.RESET}    — Диапазон  (например: 1-10)")
     print(f"  {C.CYAN}1,3,7{C.RESET}  — Конкретные номера")
     print(f"  {C.CYAN}Смесь{C.RESET}: 1-3,7,10-12")
 
     while True:
-        indices = _parse_selection(_ask(f"\n{C.BOLD}  Выбор:{C.RESET} "), info.count)
-        if indices is not None: break
+        indices = _parse_selection(_ask(f"\n{C.BOLD}  Выбор:{C.RESET} "), len(info))
+        if indices is not None:
+            break
 
     idx_set  = set(indices)
     selected = [e for e in info.entries if e.index in idx_set]
-
-    n = len(selected)
-    log_info(f"Выбрано: {n} видео" + (f"  ({_fmt_indices(indices)})" if n < info.count else " (все)"))
+    n        = len(selected)
+    log_info(f"Выбрано: {n} видео" + (f"  ({_fmt_indices(indices)})" if n < len(info) else " (все)"))
     return url, info, selected
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ДВИЖОК ЗАГРУЗКИ
 # ══════════════════════════════════════════════════════════════════════════════
 
-@dataclass
+@dataclass(slots=True)
 class QualityConfig:
     label:     str
-    fmt_chain: list[str]
-    is_audio:  bool = False
+    fmt_chain: list[str]   # пустой список → аудио-режим (MP3)
 
 
 QUALITIES: dict[str, QualityConfig] = {
@@ -483,7 +527,7 @@ QUALITIES: dict[str, QualityConfig] = {
              "best[height<=360]",
              "worst",
          ]),
-    "3": QualityConfig("MP3", [], is_audio=True),
+    "3": QualityConfig("MP3", []),
 }
 
 
@@ -492,19 +536,22 @@ def _ffmpeg_args() -> list[str]:
 
 
 def _run_ytdlp(*args: str, silent: bool = False) -> bool:
-    kw: dict = {"capture_output": True} if silent else {}
-    return subprocess.run([str(YTDLP_BIN), *args], **kw).returncode == 0
+    return subprocess.run(
+        [str(YTDLP_BIN), *args],
+        capture_output=silent,
+    ).returncode == 0
 
 
 def _build_args(
-    cfg:    QualityConfig,
-    url:    str,
-    tmpl:   str,
-    extra:  list[str],
-    fmt:    str | None = None,
+    cfg:   QualityConfig,
+    url:   str,
+    tmpl:  str,
+    extra: list[str],
+    fmt:   str | None = None,
 ) -> list[str]:
     cmd = [*_ffmpeg_args()]
-    if cfg.is_audio:
+    if not cfg.fmt_chain:
+        # Аудио-режим: fmt_chain пустой — извлекаем MP3
         cmd += ["--extract-audio", "--audio-format", "mp3", "--audio-quality", "0"]
     else:
         cmd += ["-f", fmt or cfg.fmt_chain[0], "--merge-output-format", "mp4"]
@@ -518,10 +565,11 @@ def _run_with_fallback(
     extra:  list[str],
     silent: bool = False,
 ) -> bool:
-    if cfg.is_audio:
+    if not cfg.fmt_chain:
         return _run_ytdlp(*_build_args(cfg, url, tmpl, extra), silent=silent)
     for i, fmt in enumerate(cfg.fmt_chain):
-        if i > 0: log_warn(f"Запасной формат {i}: {fmt}")
+        if i > 0:
+            log_warn(f"Запасной формат {i}: {fmt}")
         if _run_ytdlp(*_build_args(cfg, url, tmpl, extra, fmt=fmt), silent=silent):
             return True
     return False
@@ -532,8 +580,8 @@ def _download_entry(
     cfg:    QualityConfig,
     pl_dir: Path,
 ) -> tuple[PlaylistEntry, bool]:
-    tmpl  = str(pl_dir / f"{entry.index:03d} - %(title)s.%(ext)s")
-    ok    = _run_with_fallback(cfg, entry.url, tmpl, ["--no-playlist"], silent=True)
+    tmpl = str(pl_dir / f"{entry.index:03d} - %(title)s.%(ext)s")
+    ok   = _run_with_fallback(cfg, entry.url, tmpl, ["--no-playlist"], silent=True)
     return entry, ok
 
 
@@ -546,8 +594,8 @@ def download(
     workers:      int = 1,
 ) -> bool:
     """
-    - Обычное видео / последовательный плейлист → один процесс yt-dlp.
-    - workers > 1 с pl_selected → параллельные потоки, по видео на поток.
+    Одиночное видео / последовательный плейлист → один процесс yt-dlp.
+    workers > 1 с pl_selected → параллельные потоки, по видео на поток.
     """
     is_pl = bool(pl_info) and not force_single
 
@@ -555,16 +603,15 @@ def download(
     if is_pl and pl_selected and workers > 1:
         pl_dir = DL_DIR / (pl_info.title if pl_info else "playlist")
         pl_dir.mkdir(parents=True, exist_ok=True)
-        total, done, failed = len(pl_selected), 0, 0
+        total  = len(pl_selected)
+        failed = 0
         log_info(f"Параллельная загрузка: {workers} потока(ов), {total} видео…")
         log_sep()
 
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_download_entry, e, cfg, pl_dir): e
-                       for e in pl_selected}
-            for future in as_completed(futures):
+            futures = [pool.submit(_download_entry, e, cfg, pl_dir) for e in pl_selected]
+            for done, future in enumerate(as_completed(futures), 1):
                 entry, ok = future.result()
-                done += 1
                 if ok:
                     log_ok(f"[{done:>3}/{total}]  {entry.title[:55]}")
                 else:
@@ -579,9 +626,8 @@ def download(
     if is_pl:
         tmpl  = str(DL_DIR / "%(playlist_title)s" / "%(playlist_index)s - %(title)s.%(ext)s")
         extra = ["--ignore-errors"]
-        if pl_selected and pl_info and len(pl_selected) < pl_info.count:
-            indices = [e.index for e in pl_selected]
-            extra  += ["--playlist-items", _fmt_indices(indices)]
+        if pl_selected and pl_info and len(pl_selected) < len(pl_info):
+            extra += ["--playlist-items", _fmt_indices([e.index for e in pl_selected])]
     else:
         tmpl  = str(DL_DIR / "%(title)s.%(ext)s")
         extra = ["--no-playlist"]
@@ -601,14 +647,25 @@ def update_deps() -> None:
     print(BANNER)
     log_info("Обновляю зависимости…")
     log_sep()
+
     log_info("Обновляю yt-dlp…")
-    if YTDLP_BIN.exists(): YTDLP_BIN.unlink()
+    if YTDLP_BIN.exists():
+        YTDLP_BIN.unlink()
     install_yt_dlp()
-    log_info("Переустанавливаю ffmpeg…")
-    for f in (DEPS_DIR / "ffmpeg.exe", DEPS_DIR / "ffmpeg",
-              DEPS_DIR / "ffprobe.exe", DEPS_DIR / "ffprobe"):
-        if f.exists(): f.unlink()
-    install_ffmpeg()
+
+    if IS_WINDOWS:
+        log_info("Переустанавливаю ffmpeg…")
+        for f in (DEPS_DIR / "ffmpeg.exe", DEPS_DIR / "ffprobe.exe"):
+            if f.exists():
+                f.unlink()
+        install_ffmpeg()
+    else:
+        prefix = f"ffmpeg системный ({_system_ffmpeg()}) —" if _system_ffmpeg() else "ffmpeg не найден —"
+        log_warn(f"{prefix} обновляй через пакетный менеджер:")
+        log_warn("  sudo apt install ffmpeg   (Debian / Ubuntu)")
+        log_warn("  sudo dnf install ffmpeg   (Fedora / RHEL)")
+        log_warn("  sudo pacman -S ffmpeg     (Arch)")
+
     log_sep()
     log_ok("Обновление завершено.")
     input(f"\n{C.GRAY}  Нажми Enter для выхода…{C.RESET}")
@@ -617,31 +674,38 @@ def update_deps() -> None:
 #  СЕССИЯ
 # ══════════════════════════════════════════════════════════════════════════════
 
-@dataclass
+@dataclass(slots=True)
 class Session:
     success: int = 0
     failed:  int = 0
     items:   list[str] = field(default_factory=list)
 
     @property
-    def total(self) -> int: return self.success + self.failed
+    def total(self) -> int:
+        return self.success + self.failed
 
     def record(self, label: str, url: str, ok: bool) -> None:
-        if ok: self.success += 1
-        else:  self.failed  += 1
+        if ok:
+            self.success += 1
+        else:
+            self.failed += 1
         badge = f"{C.GREEN}OK  {C.RESET}" if ok else f"{C.RED}FAIL{C.RESET}"
         short = url if len(url) <= 48 else url[:45] + "…"
         self.items.append(f"  [{badge}]  {label:<24}  {short}")
 
     def print_summary(self) -> None:
-        if not self.total: return
+        if not self.total:
+            return
         print(f"\n{C.BOLD}{C.WHITE}  Итоги сессии:{C.RESET}")
         log_sep()
-        for item in self.items: print(item)
+        for item in self.items:
+            print(item)
         log_sep()
-        print(f"  Всего: {C.BOLD}{self.total}{C.RESET}  ·  "
-              f"{C.GREEN}Успешно: {self.success}{C.RESET}  ·  "
-              f"{C.RED}Ошибок: {self.failed}{C.RESET}\n")
+        print(
+            f"  Всего: {C.BOLD}{self.total}{C.RESET}  ·  "
+            f"{C.GREEN}Успешно: {self.success}{C.RESET}  ·  "
+            f"{C.RED}Ошибок: {self.failed}{C.RESET}\n"
+        )
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ГЛАВНЫЙ ЦИКЛ
@@ -651,7 +715,7 @@ def download_loop(session: Session) -> None:
     while True:
         url          = ask_url()
         force_single = False
-        pl_info:     PlaylistInfo | None = None
+        pl_info:     PlaylistInfo | None        = None
         pl_selected: list[PlaylistEntry] | None = None
         workers      = 1
 
@@ -679,9 +743,7 @@ def download_loop(session: Session) -> None:
             workers      = workers,
         )
 
-        label = cfg.label
-        if pl_selected:
-            label += f" [плейлист/{len(pl_selected)}]"
+        label = cfg.label + (f" [плейлист/{len(pl_selected)}]" if pl_selected else "")
         session.record(label, url, ok)
         log_sep()
 

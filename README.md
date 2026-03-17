@@ -6,17 +6,17 @@
 <pre>
 ╔══════════════════════════════════════════════════════╗
 ║         VolRen  Video / Audio  Downloader            ║
-║         версия 2.0.0  •  powered by yt-dlp           ║
+║         версия 2.1.0  •  powered by yt-dlp           ║
 ╚══════════════════════════════════════════════════════╝
 </pre>
 </p>
 
 **Скачивает видео и аудио с YouTube — без pip, без root, без лишних движений.**
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=flat-square&logo=python)
+![Python](https://img.shields.io/badge/Python-3.13%2B-blue?style=flat-square&logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-2.0.0-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-2.1.0-orange?style=flat-square)
 
 </div>
 
@@ -46,7 +46,7 @@
 
 | Что | Версия |
 |---|---|
-| Python | 3.10 или новее |
+| Python | 3.13 или новее |
 | yt-dlp | скачивается автоматически |
 | ffmpeg | скачивается автоматически |
 | pip | **не нужен** |
