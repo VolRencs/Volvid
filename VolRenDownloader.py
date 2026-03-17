@@ -1,5 +1,5 @@
 """
-VolRen Video/Audio Downloader  —  версия 2.3.1
+VolRen Video/Audio Downloader  —  версия 2.3.2
 Автор : VolRen
 Инфо  : Все зависимости (ffmpeg, yt-dlp) скачиваются автоматически
         в папку _deps/. Работает на Windows и Linux (x64 / arm64).
@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION      = "2.3.1"
+VERSION      = "2.3.2"
 GITHUB_REPO  = "VolRencs/YouTubeDownloader"
 SCRIPT_DIR = (
     Path(sys.executable).resolve().parent
