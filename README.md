@@ -79,7 +79,6 @@ python VolRenDownloader.py
 ├── _deps/                   ← зависимости (создаётся автоматически)
 │   ├── yt-dlp               ← бинарник yt-dlp (Linux)
 │   ├── yt-dlp.exe           ← бинарник yt-dlp (Windows)
-│   ├── ffmpeg               ← бинарник ffmpeg (Linux)
 │   └── ffmpeg.exe           ← бинарник ffmpeg (Windows)
 └── downloads/               ← все скачанные файлы
     ├── Название видео.mp4
@@ -190,8 +189,8 @@ python VolRenDownloader.py --update
 | ОС | Архитектура | yt-dlp | ffmpeg |
 |---|---|---|---|
 | Windows | x64 | `yt-dlp.exe` (GitHub) | BtbN build (GitHub) |
-| Linux | x86_64 | `yt-dlp_linux` (GitHub) | BtbN build (GitHub) |
-| Linux | arm64 / aarch64 | `yt-dlp_linux_aarch64` (GitHub) | BtbN build (GitHub)|
+| Linux | x86_64 | `yt-dlp_linux` (GitHub) | System |
+| Linux | arm64 / aarch64 | `yt-dlp_linux_aarch64` (GitHub) | System |
 
 ---
 
