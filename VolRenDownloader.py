@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION      = "2.3.0"
+VERSION      = "2.3.1"
 GITHUB_REPO  = "VolRencs/YouTubeDownloader"
 SCRIPT_DIR = (
     Path(sys.executable).resolve().parent
