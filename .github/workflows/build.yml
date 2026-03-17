@@ -1,0 +1,36 @@
+name: Build Executables
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - run: go build -ldflags="-s -w" -o VolRenDownloader.exe .
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: VolRenDownloader.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - run: GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o VolRenDownloader_linux_amd64 .
+      - run: GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o VolRenDownloader_linux_arm64 .
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            VolRenDownloader_linux_amd64
+            VolRenDownloader_linux_arm64

@@ -1,0 +1,780 @@
+package main
+
+import (
+	"archive/zip"
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+// ─────────────────────────────────────────────
+//  Константы
+// ─────────────────────────────────────────────
+
+const (
+	Version    = "3.0.0"
+	GithubRepo = "VolRencs/YouTubeDownloader"
+
+	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/" +
+		"ffmpeg-master-latest-win64-gpl.zip"
+	ytdlpBase = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
+)
+
+// ─────────────────────────────────────────────
+//  Пути и окружение
+// ─────────────────────────────────────────────
+
+var (
+	IsWindows = runtime.GOOS == "windows"
+	Arch      = strings.ToLower(runtime.GOARCH)
+
+	ScriptDir      string
+	DepsDir        string
+	DlDir          string
+	YtdlpBin       string
+	FFmpegResolved string
+)
+
+func init() {
+	exe, err := os.Executable()
+	if err != nil {
+		exe, _ = filepath.Abs(os.Args[0])
+	}
+	ScriptDir = filepath.Dir(exe)
+	DepsDir = filepath.Join(ScriptDir, "_deps")
+	DlDir = filepath.Join(ScriptDir, "downloads")
+	if IsWindows {
+		YtdlpBin = filepath.Join(DepsDir, "yt-dlp.exe")
+	} else {
+		YtdlpBin = filepath.Join(DepsDir, "yt-dlp")
+	}
+}
+
+// ─────────────────────────────────────────────
+//  Форматирование
+// ─────────────────────────────────────────────
+
+func FmtBytes(n int64) string {
+	switch {
+	case n >= 1_073_741_824:
+		return fmt.Sprintf("%.2f ГБ", float64(n)/1_073_741_824)
+	case n >= 1_048_576:
+		return fmt.Sprintf("%.1f МБ", float64(n)/1_048_576)
+	case n >= 1_024:
+		return fmt.Sprintf("%d КБ", n/1_024)
+	default:
+		return fmt.Sprintf("%d Б", n)
+	}
+}
+
+func FmtDuration(secs int) string {
+	if secs <= 0 {
+		return "??:??"
+	}
+	h, m, s := secs/3600, (secs%3600)/60, secs%60
+	if h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
+	}
+	return fmt.Sprintf("%d:%02d", m, s)
+}
+
+func FmtIndices(idx []int) string {
+	if len(idx) == 0 {
+		return ""
+	}
+	var parts []string
+	start, end := idx[0], idx[0]
+	for _, n := range idx[1:] {
+		if n == end+1 {
+			end = n
+		} else {
+			parts = append(parts, rangeStr(start, end))
+			start, end = n, n
+		}
+	}
+	return strings.Join(append(parts, rangeStr(start, end)), ",")
+}
+
+func rangeStr(a, b int) string {
+	if a == b {
+		return strconv.Itoa(a)
+	}
+	return fmt.Sprintf("%d-%d", a, b)
+}
+
+var invalidFilenameRE = regexp.MustCompile(`[<>:"/\\|?*]`)
+
+func SanitizeDirname(name string) string {
+	name = strings.TrimRight(
+		invalidFilenameRE.ReplaceAllString(strings.TrimSpace(name), "_"), " .")
+	if r := []rune(name); len(r) > 180 {
+		name = string(r[:180])
+	}
+	if name == "" {
+		return "playlist"
+	}
+	return name
+}
+
+func unitToMult(unit string) int64 {
+	k := strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(unit, "IB", ""), "B", ""))
+	switch k {
+	case "K":
+		return 1_024
+	case "M":
+		return 1_048_576
+	case "G":
+		return 1_073_741_824
+	case "T":
+		return 1_099_511_627_776
+	default:
+		return 1
+	}
+}
+
+// ─────────────────────────────────────────────
+//  Скачивание файлов
+// ─────────────────────────────────────────────
+
+// FileProgress — прогресс скачивания.
+type FileProgress struct {
+	Pct    float64
+	DoneB  int64
+	TotalB int64
+	Done   bool
+	Err    error
+}
+
+// DownloadFile скачивает url в dest.
+// Если ch != nil — отправляет прогресс (неблокирующий select).
+func DownloadFile(url, dest string, ch chan<- FileProgress) error {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	total := resp.ContentLength
+	if total < 0 {
+		total = 0
+	}
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	emit := func(done int64, fin bool, e error) {
+		if ch == nil {
+			return
+		}
+		pct := 0.0
+		if total > 0 {
+			pct = float64(done) / float64(total) * 100
+		}
+		select {
+		case ch <- FileProgress{Pct: pct, DoneB: done, TotalB: total, Done: fin, Err: e}:
+		default:
+		}
+	}
+
+	buf := make([]byte, 32_768)
+	var done int64
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := f.Write(buf[:n]); werr != nil {
+				emit(done, true, werr)
+				return werr
+			}
+			done += int64(n)
+			emit(done, false, nil)
+		}
+		if err == io.EOF {
+			emit(done, true, nil)
+			return nil
+		}
+		if err != nil {
+			emit(done, true, err)
+			return err
+		}
+	}
+}
+
+// ─────────────────────────────────────────────
+//  Зависимости
+// ─────────────────────────────────────────────
+
+// CheckDepsResult — состояние зависимостей.
+type CheckDepsResult struct {
+	YtdlpVer      string
+	FFmpegPath    string
+	FFmpegMissing bool
+	FFmpegNoPath  bool
+}
+
+func DetectDeps() CheckDepsResult {
+	r := CheckDepsResult{YtdlpVer: YtdlpVersion()}
+	if IsWindows {
+		bin := filepath.Join(DepsDir, "ffmpeg.exe")
+		if _, err := os.Stat(bin); err == nil {
+			r.FFmpegPath = bin
+			FFmpegResolved = bin
+		} else {
+			r.FFmpegMissing = true
+		}
+	} else {
+		if path, err := exec.LookPath("ffmpeg"); err == nil {
+			r.FFmpegPath = path
+			FFmpegResolved = path
+		} else {
+			r.FFmpegNoPath = true
+		}
+	}
+	return r
+}
+
+func YtdlpVersion() string {
+	if _, err := os.Stat(YtdlpBin); err != nil {
+		return ""
+	}
+	out, err := exec.Command(YtdlpBin, "--version").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func YtdlpURL() string {
+	if IsWindows {
+		return ytdlpBase + "yt-dlp.exe"
+	}
+	if Arch == "aarch64" || Arch == "arm64" {
+		return ytdlpBase + "yt-dlp_linux_aarch64"
+	}
+	return ytdlpBase + "yt-dlp_linux"
+}
+
+func InstallYtDlp(ch chan<- FileProgress) error {
+	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
+		return err
+	}
+	if err := DownloadFile(YtdlpURL(), YtdlpBin, ch); err != nil {
+		return err
+	}
+	if !IsWindows {
+		os.Chmod(YtdlpBin, 0o755)
+	}
+	if YtdlpVersion() == "" {
+		return fmt.Errorf("бинарник скачан, но не запускается")
+	}
+	return nil
+}
+
+func InstallFFmpeg(ch chan<- FileProgress) error {
+	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.MkdirTemp("", "ffmpeg-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+
+	archive := filepath.Join(tmp, "ffmpeg.zip")
+	if err := DownloadFile(ffmpegWinURL, archive, ch); err != nil {
+		return err
+	}
+	zr, err := zip.OpenReader(archive)
+	if err != nil {
+		return err
+	}
+	defer zr.Close()
+
+	targets := map[string]bool{"ffmpeg.exe": true, "ffprobe.exe": true}
+	found := false
+	for _, zf := range zr.File {
+		name := filepath.Base(zf.Name)
+		if !targets[name] {
+			continue
+		}
+		rc, _ := zf.Open()
+		data, _ := io.ReadAll(rc)
+		rc.Close()
+		if os.WriteFile(filepath.Join(DepsDir, name), data, 0o755) == nil && name == "ffmpeg.exe" {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("ffmpeg.exe не найден в архиве")
+	}
+	FFmpegResolved = filepath.Join(DepsDir, "ffmpeg.exe")
+	return nil
+}
+
+// ─────────────────────────────────────────────
+//  Плейлист
+// ─────────────────────────────────────────────
+
+type PlaylistEntry struct {
+	Index    int
+	Title    string
+	URL      string
+	Duration int
+}
+
+type PlaylistInfo struct {
+	Title   string
+	Entries []PlaylistEntry
+}
+
+func FetchPlaylistInfo(url string) (*PlaylistInfo, error) {
+	out, err := exec.Command(YtdlpBin,
+		"--flat-playlist", "--dump-json",
+		"--quiet", "--ignore-errors", "--no-warnings", url,
+	).Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []PlaylistEntry
+	var first map[string]any
+	idx := 0
+
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var e map[string]any
+		if json.Unmarshal([]byte(line), &e) != nil {
+			continue
+		}
+		idx++
+		if first == nil {
+			first = e
+		}
+		videoURL := strVal(e, "url", strVal(e, "webpage_url", ""))
+		if videoURL == "" {
+			if id := strVal(e, "id", ""); id != "" {
+				videoURL = "https://youtu.be/" + id
+			} else {
+				continue
+			}
+		}
+		dur := 0
+		if d, ok := e["duration"].(float64); ok {
+			dur = int(d)
+		}
+		entries = append(entries, PlaylistEntry{
+			Index:    idx,
+			Title:    strVal(e, "title", strVal(e, "id", fmt.Sprintf("Видео %d", idx))),
+			URL:      videoURL,
+			Duration: dur,
+		})
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("плейлист пуст или недоступен")
+	}
+	title := "playlist"
+	if first != nil {
+		title = strVal(first, "playlist_title", strVal(first, "playlist", "playlist"))
+	}
+	return &PlaylistInfo{Title: title, Entries: entries}, nil
+}
+
+func strVal(m map[string]any, key, def string) string {
+	if v, ok := m[key]; ok {
+		if s, ok := v.(string); ok && s != "" {
+			return s
+		}
+	}
+	return def
+}
+
+var (
+	sepRE    = regexp.MustCompile(`[,;\s]+`)
+	rangeRE2 = regexp.MustCompile(`^(\d+)\s*[-–]\s*(\d+)$`)
+	singleRE = regexp.MustCompile(`^\d+$`)
+)
+
+var allKeywords = map[string]bool{
+	"а": true, "a": true, "all": true, "все": true, "всё": true, "*": true,
+}
+
+func ParseSelection(raw string, maxIdx int) ([]int, error) {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	if raw == "" {
+		return nil, fmt.Errorf("выбор не может быть пустым")
+	}
+	if allKeywords[raw] {
+		r := make([]int, maxIdx)
+		for i := range r {
+			r[i] = i + 1
+		}
+		return r, nil
+	}
+	seen := map[int]bool{}
+	for _, part := range sepRE.Split(raw, -1) {
+		if part == "" {
+			continue
+		}
+		if m := rangeRE2.FindStringSubmatch(part); m != nil {
+			a, _ := strconv.Atoi(m[1])
+			b, _ := strconv.Atoi(m[2])
+			if a > b {
+				a, b = b, a
+			}
+			if a < 1 || b > maxIdx {
+				return nil, fmt.Errorf("диапазон %d-%d вне 1–%d", a, b, maxIdx)
+			}
+			for n := a; n <= b; n++ {
+				seen[n] = true
+			}
+		} else if singleRE.MatchString(part) {
+			n, _ := strconv.Atoi(part)
+			if n < 1 || n > maxIdx {
+				return nil, fmt.Errorf("номер %d вне 1–%d", n, maxIdx)
+			}
+			seen[n] = true
+		} else {
+			return nil, fmt.Errorf("непонятный ввод: «%s»", part)
+		}
+	}
+	if len(seen) == 0 {
+		return nil, fmt.Errorf("ничего не выбрано")
+	}
+	result := make([]int, 0, len(seen))
+	for n := range seen {
+		result = append(result, n)
+	}
+	sort.Ints(result)
+	return result, nil
+}
+
+// ─────────────────────────────────────────────
+//  Качество
+// ─────────────────────────────────────────────
+
+type QualityConfig struct {
+	Label    string
+	FmtChain []string // nil = MP3
+}
+
+var Qualities = [3]QualityConfig{
+	{"Лучшее качество", []string{"bestvideo+bestaudio/best", "bestvideo+bestaudio", "best"}},
+	{"360p", []string{"bestvideo[height<=360]+bestaudio/best[height<=360]", "best[height<=360]", "worst"}},
+	{"MP3", nil},
+}
+
+// ─────────────────────────────────────────────
+//  Парсинг вывода yt-dlp
+// ─────────────────────────────────────────────
+
+var (
+	dlRE    = regexp.MustCompile(`(?i)\[download\]\s+(?P<pct>[\d.]+)%\s+of\s+~?\s*(?P<size>[\d.]+)\s*(?P<unit>[KMGTkmgt]i?[Bb])`)
+	speedRE = regexp.MustCompile(`(?i)at\s+(?P<speed>[\d.]+\s*[KMGTkmgt]i?[Bb]/s)`)
+	destRE  = regexp.MustCompile(`\[download\]\s+Destination:\s+(.+)`)
+	procRE  = regexp.MustCompile(`(?i)^\s*\[(Merger|ExtractAudio)\]`)
+	numRE   = regexp.MustCompile(`^\d+\s*[-–]\s*`)
+)
+
+// DlUpdate — одно событие прогресса.
+type DlUpdate struct {
+	Slot   int
+	Type   string // start | dest | dl | proc | done | reset | fallback
+	Stem   string
+	Label  string
+	Pct    float64
+	DoneB  int64
+	TotalB int64
+	Speed  string
+	OK     bool
+	Entry  PlaylistEntry
+}
+
+func namedGroup(re *regexp.Regexp, m []string, name string) string {
+	for i, g := range re.SubexpNames() {
+		if g == name && i < len(m) {
+			return m[i]
+		}
+	}
+	return ""
+}
+
+func ffmpegLabel(tag string) string {
+	if strings.Contains(strings.ToLower(tag), "audio") {
+		return "конвертация в MP3 (ffmpeg)…"
+	}
+	return "слияние видео+аудио (ffmpeg)…"
+}
+
+func ffmpegArgs() []string {
+	if FFmpegResolved != "" {
+		return []string{"--ffmpeg-location", FFmpegResolved}
+	}
+	return nil
+}
+
+func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
+	cmd := exec.Command(YtdlpBin, append([]string{"--newline", "--no-warnings"}, args...)...)
+	pipe, err := cmd.StdoutPipe()
+	cmd.Stderr = cmd.Stdout
+	if err != nil || cmd.Start() != nil {
+		return false
+	}
+	sc := bufio.NewScanner(pipe)
+	for sc.Scan() {
+		line := sc.Text()
+		if m := destRE.FindStringSubmatch(line); m != nil {
+			stem := numRE.ReplaceAllString(filepath.Base(
+				strings.TrimSuffix(strings.TrimSpace(m[1]),
+					filepath.Ext(strings.TrimSpace(m[1])))), "")
+			if r := []rune(stem); len(r) > 58 {
+				stem = string(r[:58])
+			}
+			ch <- DlUpdate{Slot: slot, Type: "dest", Stem: stem}
+		} else if m := dlRE.FindStringSubmatch(line); m != nil {
+			pct, _ := strconv.ParseFloat(namedGroup(dlRE, m, "pct"), 64)
+			size, _ := strconv.ParseFloat(namedGroup(dlRE, m, "size"), 64)
+			totalB := int64(size * float64(unitToMult(namedGroup(dlRE, m, "unit"))))
+			speed := ""
+			if sm := speedRE.FindStringSubmatch(line); sm != nil {
+				speed = namedGroup(speedRE, sm, "speed")
+			}
+			ch <- DlUpdate{Slot: slot, Type: "dl",
+				Pct: pct, DoneB: int64(float64(totalB) * pct / 100), TotalB: totalB, Speed: speed}
+		} else if m := procRE.FindStringSubmatch(line); m != nil {
+			ch <- DlUpdate{Slot: slot, Type: "proc", Label: ffmpegLabel(m[1])}
+		}
+	}
+	cmd.Wait()
+	return cmd.ProcessState.ExitCode() == 0
+}
+
+func buildArgs(cfg QualityConfig, url, tmpl, fmt_ string, extra []string) []string {
+	args := append(ffmpegArgs(), func() []string {
+		if len(cfg.FmtChain) == 0 {
+			return []string{"--extract-audio", "--audio-format", "mp3", "--audio-quality", "0"}
+		}
+		f := fmt_
+		if f == "" {
+			f = cfg.FmtChain[0]
+		}
+		return []string{"-f", f, "--merge-output-format", "mp4"}
+	}()...)
+	return append(append(args, "-o", tmpl, "--windows-filenames"), append(extra, url)...)
+}
+
+func runWithFallback(slot int, cfg QualityConfig, url, tmpl string, extra []string, ch chan<- DlUpdate) bool {
+	if len(cfg.FmtChain) == 0 {
+		return streamYtdlp(slot, buildArgs(cfg, url, tmpl, "", extra), ch)
+	}
+	for i, fmt_ := range cfg.FmtChain {
+		if i > 0 {
+			ch <- DlUpdate{Slot: slot, Type: "fallback",
+				Label: fmt.Sprintf("Запасной формат #%d: %s", i, fmt_)}
+		}
+		if streamYtdlp(slot, buildArgs(cfg, url, tmpl, fmt_, extra), ch) {
+			return true
+		}
+	}
+	return false
+}
+
+// ─────────────────────────────────────────────
+//  Загрузка
+// ─────────────────────────────────────────────
+
+func StartDownload(cfg QualityConfig, url string, forceSingle bool,
+	plInfo *PlaylistInfo, plSelected []PlaylistEntry, workers int,
+	ch chan<- DlUpdate) {
+
+	go func() {
+		var wg sync.WaitGroup
+		defer func() {
+			wg.Wait()
+			close(ch)
+		}()
+
+		if plInfo == nil || forceSingle || len(plSelected) == 0 {
+			tmpl := filepath.Join(DlDir, "%(title)s.%(ext)s")
+			ok := runWithFallback(0, cfg, url, tmpl, []string{"--no-playlist"}, ch)
+			ch <- DlUpdate{Type: "done", OK: ok}
+			return
+		}
+
+		plDir := filepath.Join(DlDir, SanitizeDirname(plInfo.Title))
+		if err := os.MkdirAll(plDir, 0o755); err != nil {
+			plDir = filepath.Join(DlDir, "playlist")
+			os.MkdirAll(plDir, 0o755)
+		}
+
+		slotCh := make(chan int, workers)
+		for i := 0; i < workers; i++ {
+			slotCh <- i
+		}
+
+		for _, entry := range plSelected {
+			e := entry
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				slot := <-slotCh
+				defer func() {
+					time.Sleep(300 * time.Millisecond)
+					ch <- DlUpdate{Slot: slot, Type: "reset"}
+					slotCh <- slot
+				}()
+
+				ch <- DlUpdate{Slot: slot, Type: "start", Stem: e.Title}
+				tmpl := filepath.Join(plDir, fmt.Sprintf("%03d - %%(title)s.%%(ext)s", e.Index))
+				ok := runWithFallback(slot, cfg, e.URL, tmpl, []string{"--no-playlist"}, ch)
+				ch <- DlUpdate{Slot: slot, Type: "done", OK: ok, Entry: e}
+			}()
+		}
+	}()
+}
+
+// ─────────────────────────────────────────────
+//  Автообновление
+// ─────────────────────────────────────────────
+
+type UpdateInfo struct {
+	Latest string
+	DlURL  string
+}
+
+func CheckUpdate() *UpdateInfo {
+	client := &http.Client{Timeout: 8 * time.Second}
+	req, _ := http.NewRequest("GET",
+		"https://api.github.com/repos/"+GithubRepo+"/releases/latest", nil)
+	req.Header.Set("User-Agent", "VolRenDownloader")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	var data map[string]any
+	if json.NewDecoder(resp.Body).Decode(&data) != nil {
+		return nil
+	}
+	latest := strings.TrimPrefix(strVal(data, "tag_name", ""), "v")
+	if latest == "" || !versionGT(latest, Version) {
+		return nil
+	}
+	assets, _ := data["assets"].([]any)
+	for _, a := range assets {
+		if asset, ok := a.(map[string]any); ok {
+			if strings.HasSuffix(strVal(asset, "name", ""), ".exe") {
+				return &UpdateInfo{Latest: latest,
+					DlURL: strVal(asset, "browser_download_url", "")}
+			}
+		}
+	}
+	return nil
+}
+
+func ApplyUpdate(info *UpdateInfo, ch chan<- FileProgress) error {
+	exe, _ := os.Executable()
+	dest, _ := filepath.Abs(exe)
+	tmp := strings.TrimSuffix(dest, ".exe") + ".new.exe"
+	if err := DownloadFile(info.DlURL, tmp, ch); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	bat := strings.TrimSuffix(dest, ".exe") + ".update.bat"
+	content := fmt.Sprintf(
+		"@echo off\r\ntimeout /t 2 /nobreak >nul\r\n:retry\r\n"+
+			"move /y \"%s\" \"%s\" >nul 2>&1\r\n"+
+			"if errorlevel 1 ( timeout /t 2 /nobreak >nul & goto retry )\r\n"+
+			"del \"%%~f0\"\r\n", tmp, dest)
+	if err := os.WriteFile(bat, []byte(content), 0o644); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	cmd := exec.Command("cmd", "/c", bat)
+	cmd.SysProcAttr = detachedProcess()
+	return cmd.Start()
+}
+
+func versionGT(a, b string) bool {
+	av, bv := splitVer(a), splitVer(b)
+	for i := 0; i < 3; i++ {
+		ai, bi := getIdx(av, i), getIdx(bv, i)
+		if ai != bi {
+			return ai > bi
+		}
+	}
+	return false
+}
+
+func splitVer(s string) []int {
+	parts := strings.Split(s, ".")
+	r := make([]int, len(parts))
+	for i, p := range parts {
+		r[i], _ = strconv.Atoi(p)
+	}
+	return r
+}
+
+func getIdx(s []int, i int) int {
+	if i < len(s) {
+		return s[i]
+	}
+	return 0
+}
+
+// ─────────────────────────────────────────────
+//  Сессия
+// ─────────────────────────────────────────────
+
+type SessionItem struct {
+	Label string
+	URL   string
+	OK    bool
+}
+
+type Session struct {
+	Success int
+	Failed  int
+	Items   []SessionItem
+}
+
+func (s *Session) Record(label, url string, ok bool) {
+	if ok {
+		s.Success++
+	} else {
+		s.Failed++
+	}
+	s.Items = append(s.Items, SessionItem{label, url, ok})
+}
+
+// ─────────────────────────────────────────────
+//  Регулярки URL
+// ─────────────────────────────────────────────
+
+var (
+	YtRE              = regexp.MustCompile(`(?i)(youtube\.com/(watch\?.*v=|shorts/|live/|playlist\?list=)|youtu\.be/)[\w\-]+`)
+	PlaylistRE        = regexp.MustCompile(`(?i)(youtube\.com/playlist\?|[?&]list=[\w\-]{10,})`)
+	VideoInPlaylistRE = regexp.MustCompile(`(?i)youtube\.com/watch\?.*v=[\w\-]{11}.*[?&]list=`)
+)
+
+func IsPlaylistURL(url string) bool { return PlaylistRE.MatchString(url) }
