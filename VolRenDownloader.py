@@ -846,53 +846,48 @@ def _check_update() -> None:
             data = json.loads(r.read())
     except Exception:
         return
- 
+
     latest = data.get("tag_name", "").lstrip("v")
     if not latest or latest <= VERSION:
         return
     if not getattr(sys, "frozen", False):
         return
- 
+
     log_info(f"Доступна новая версия: {C.BOLD}{latest}{C.RESET}{C.CYAN}  (текущая: {VERSION})")
     if not _ask_yes(f"  {C.BOLD}Обновить сейчас?{C.RESET} {C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "):
         return
- 
+
     dl_url = next((a["browser_download_url"] for a in data.get("assets", [])
                    if a["name"].endswith(".exe")), None)
     if not dl_url:
         log_warn("Файл .exe не найден в релизе."); return
- 
+
     dest = Path(sys.executable).resolve()
     tmp  = dest.with_suffix(".new.exe")
+    old  = dest.with_suffix(".old.exe")
     try:
         _download_file(dl_url, tmp, f"VolRenDownloader {latest}")
     except Exception as e:
         log_err(f"Ошибка загрузки: {e}"); tmp.unlink(missing_ok=True); return
- 
-    ps1 = dest.with_suffix(".update.ps1")
-    ps1.write_text(
-        f"$self = $MyInvocation.MyCommand.Path\n"
-        f"Start-Sleep -Seconds 2\n"
-        f"$retries = 10\n"
-        f"while ($retries -gt 0) {{\n"
-        f"    try {{ Move-Item -Force '{tmp}' '{dest}'; break }}\n"
-        f"    catch {{ $retries--; Start-Sleep -Seconds 1 }}\n"
-        f"}}\n"
-        f"Start-Process 'cmd' -ArgumentList '/c start \"\" \"{dest}\"'\n"
-        f"Remove-Item $self -Force\n",
-        encoding="utf-8",
-    )
-    import ctypes
-    ctypes.windll.shell32.ShellExecuteW(
-        None, "open", "powershell.exe",
-        f"-NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{ps1}\"",
-        None, 0,
-    )
-    log_ok(f"Обновление до {latest} — программа перезапустится автоматически…")
+
+    try:
+        if old.exists(): old.unlink()
+        dest.rename(old)
+        tmp.rename(dest)
+    except Exception as e:
+        log_err(f"Ошибка замены файла: {e}")
+        dest.rename(dest) if not dest.exists() else None  # откат если нужно
+        return
+
+    os.startfile(dest)
+    log_ok(f"Обновление до {latest} — запускаем новую версию…")
     sys.exit(0)
+
 
 def main() -> None:
     if "--update" in sys.argv: update_deps(); return
+    if getattr(sys, "frozen", False):
+        Path(sys.executable).with_suffix(".old.exe").unlink(missing_ok=True)
     if "--no-autoupdate" not in sys.argv: _check_update()
     print(BANNER); run_checks()
     session = Session()
