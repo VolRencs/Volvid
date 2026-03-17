@@ -878,7 +878,7 @@ def _check_update() -> None:
         f"    try {{ Move-Item -Force '{tmp}' '{dest}'; break }}\n"
         f"    catch {{ $retries--; Start-Sleep -Seconds 1 }}\n"
         f"}}\n"
-        f"Start-Process '{dest}' -Wait:$false -WindowStyle Normal\n"
+        f"Start-Process 'cmd' -ArgumentList '/c start \"\" \"{dest}\"'\n"
         f"Remove-Item $self -Force\n",
         encoding="utf-8",
     )
