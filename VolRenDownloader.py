@@ -1,5 +1,5 @@
 """
-VolRen Video/Audio Downloader  —  версия 2.3.1
+VolRen Video/Audio Downloader  —  версия 2.4.0
 Автор : VolRen
 Инфо  : Все зависимости (ffmpeg, yt-dlp) скачиваются автоматически
         в папку _deps/. Работает на Windows и Linux (x64 / arm64).
@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION      = "2.3.1"
+VERSION      = "2.4.0"
 GITHUB_REPO  = "VolRencs/YouTubeDownloader"
 SCRIPT_DIR = (
     Path(sys.executable).resolve().parent
@@ -114,7 +114,7 @@ def _fmt_bytes(n: int) -> str:
 
 
 def _unit_to_mult(unit: str) -> int:
-    key = unit.upper().replace("IB", "").replace("B", "") or ""
+    key = unit.upper().replace("IB", "").replace("B", "")
     return {
         "":  1, "K": 1_024, "M": 1_048_576,
         "G": 1_073_741_824, "T": 1_099_511_627_776,
@@ -139,10 +139,6 @@ class ProgressBar:
             line = f"\r  {C.CYAN}↓{C.RESET}  [{bar_str}]  {C.BOLD}{pct:5.1f}%{C.RESET}  {C.WHITE}{size_str}{C.RESET}"
             if speed: line += f"  {C.GRAY}{speed}{C.RESET}"
             print(line, end="", flush=True)
-
-    def urllib_hook(self, n: int, bs: int, total: int) -> None:
-        done = min(n * bs, total) if total > 0 else n * bs
-        self.update((done / total * 100) if total > 0 else 0.0, done, max(total, 0))
 
     def finish(self) -> None:
         with _print_lock:
@@ -246,7 +242,14 @@ class MultiProgressBoard:
 def _download_file(url: str, dest: Path, title: str = "") -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     bar = ProgressBar(title or dest.name)
-    urllib.request.urlretrieve(url, dest, reporthook=bar.urllib_hook)
+    with urllib.request.urlopen(url) as r:
+        total = int(r.headers.get("Content-Length", 0))
+        done  = 0
+        with dest.open("wb") as f:
+            while chunk := r.read(65536):
+                f.write(chunk)
+                done += len(chunk)
+                bar.update((done / total * 100) if total else 0.0, done, total)
     bar.finish()
 
 
@@ -835,6 +838,7 @@ def download_loop(session: Session) -> None:
         log_sep()
         if not ask_continue(): break
 
+
 def _check_update() -> None:
     try:
         with urllib.request.urlopen(urllib.request.Request(
@@ -844,24 +848,28 @@ def _check_update() -> None:
             data = json.loads(r.read())
     except Exception:
         return
- 
+
     latest = data.get("tag_name", "").lstrip("v")
-    if not latest or latest <= VERSION or not getattr(sys, "frozen", False): return
- 
+    if not latest or not getattr(sys, "frozen", False): return
+    try:
+        if tuple(map(int, latest.split("."))) <= tuple(map(int, VERSION.split("."))): return
+    except ValueError:
+        return
+
     log_info(f"Доступна новая версия: {C.BOLD}{latest}{C.RESET}{C.CYAN}  (текущая: {VERSION})")
     if not _ask_yes(f"  {C.BOLD}Обновить сейчас?{C.RESET} {C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "): return
- 
+
     dl_url = next((a["browser_download_url"] for a in data.get("assets", [])
                    if a["name"].endswith(".exe")), None)
     if not dl_url: log_warn("Файл .exe не найден в релизе."); return
- 
+
     dest = Path(sys.executable).resolve()
     tmp  = dest.with_suffix(".new.exe")
     try:
         _download_file(dl_url, tmp, f"VolRenDownloader {latest}")
     except Exception as e:
         log_err(f"Ошибка загрузки: {e}"); tmp.unlink(missing_ok=True); return
- 
+
     bat = dest.with_suffix(".update.bat")
     bat.write_text(
         f"@echo off\ntimeout /t 2 /nobreak >nul\n:retry\n"
@@ -876,8 +884,6 @@ def _check_update() -> None:
 
 def main() -> None:
     if "--update" in sys.argv: update_deps(); return
-    if getattr(sys, "frozen", False):
-        Path(sys.executable).with_suffix(".old.exe").unlink(missing_ok=True)
     if "--no-autoupdate" not in sys.argv: _check_update()
     print(BANNER); run_checks()
     session = Session()
