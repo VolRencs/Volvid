@@ -30,7 +30,9 @@ from pathlib import Path
 # ══════════════════════════════════════════════════════════════════════════════
 
 VERSION    = "2.0.0"
-SCRIPT_DIR = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(sys.executable).resolve().parent \
+             if getattr(sys, 'frozen', False) \
+             else Path(__file__).resolve().parent
 DEPS_DIR   = SCRIPT_DIR / "_deps"
 DL_DIR     = SCRIPT_DIR / "downloads"
 
