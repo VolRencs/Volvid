@@ -1,5 +1,5 @@
 """
-VolRen Video/Audio Downloader  —  версия 2.3.0
+VolRen Video/Audio Downloader  —  версия 2.3.1
 Автор : VolRen
 Инфо  : Все зависимости (ffmpeg, yt-dlp) скачиваются автоматически
         в папку _deps/. Работает на Windows и Linux (x64 / arm64).
