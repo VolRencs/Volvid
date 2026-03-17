@@ -1,5 +1,5 @@
 """
-VolRen Video/Audio Downloader  —  версия 2.3.2
+VolRen Video/Audio Downloader  —  версия 2.3.1
 Автор : VolRen
 Инфо  : Все зависимости (ffmpeg, yt-dlp) скачиваются автоматически
         в папку _deps/. Работает на Windows и Linux (x64 / arm64).
@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION      = "2.3.2"
+VERSION      = "2.3.1"
 GITHUB_REPO  = "VolRencs/YouTubeDownloader"
 SCRIPT_DIR = (
     Path(sys.executable).resolve().parent
@@ -846,29 +846,29 @@ def _check_update() -> None:
             data = json.loads(r.read())
     except Exception:
         return
-
+ 
     latest = data.get("tag_name", "").lstrip("v")
     if not latest or latest <= VERSION:
         return
     if not getattr(sys, "frozen", False):
         return
-
+ 
     log_info(f"Доступна новая версия: {C.BOLD}{latest}{C.RESET}{C.CYAN}  (текущая: {VERSION})")
     if not _ask_yes(f"  {C.BOLD}Обновить сейчас?{C.RESET} {C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "):
         return
-
+ 
     dl_url = next((a["browser_download_url"] for a in data.get("assets", [])
                    if a["name"].endswith(".exe")), None)
     if not dl_url:
         log_warn("Файл .exe не найден в релизе."); return
-
+ 
     dest = Path(sys.executable).resolve()
     tmp  = dest.with_suffix(".new.exe")
     try:
         _download_file(dl_url, tmp, f"VolRenDownloader {latest}")
     except Exception as e:
         log_err(f"Ошибка загрузки: {e}"); tmp.unlink(missing_ok=True); return
-
+ 
     ps1 = dest.with_suffix(".update.ps1")
     ps1.write_text(
         f"$self = $MyInvocation.MyCommand.Path\n"
@@ -882,10 +882,11 @@ def _check_update() -> None:
         f"Remove-Item $self -Force\n",
         encoding="utf-8",
     )
-    subprocess.Popen(
-        ["powershell", "-NonInteractive", "-WindowStyle", "Hidden",
-         "-ExecutionPolicy", "Bypass", "-File", str(ps1)],
-        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+    import ctypes
+    ctypes.windll.shell32.ShellExecuteW(
+        None, "open", "powershell.exe",
+        f"-NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{ps1}\"",
+        None, 0,
     )
     log_ok(f"Обновление до {latest} — программа перезапустится автоматически…")
     sys.exit(0)
