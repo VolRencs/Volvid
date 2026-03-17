@@ -850,12 +850,11 @@ def _check_update() -> None:
     latest = data.get("tag_name", "").lstrip("v")
     if not latest or latest <= VERSION:
         return
+    if not getattr(sys, "frozen", False):
+        return
 
     log_info(f"Доступна новая версия: {C.BOLD}{latest}{C.RESET}{C.CYAN}  (текущая: {VERSION})")
     if not _ask_yes(f"  {C.BOLD}Обновить сейчас?{C.RESET} {C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "):
-        return
-
-    if not getattr(sys, "frozen", False):
         return
 
     dl_url = next((a["browser_download_url"] for a in data.get("assets", [])
@@ -870,15 +869,23 @@ def _check_update() -> None:
     except Exception as e:
         log_err(f"Ошибка загрузки: {e}"); tmp.unlink(missing_ok=True); return
 
-    bat = dest.with_suffix(".update.bat")
-    bat.write_text(
-        f"@echo off\ntimeout /t 2 /nobreak >nul\n"
-        f"move /y \"{tmp}\" \"{dest}\"\nstart \"\" \"{dest}\"\ndel \"%~f0\"\n",
-        encoding="ascii",
+    ps1 = dest.with_suffix(".update.ps1")
+    ps1.write_text(
+        f"Start-Sleep -Seconds 2\n"
+        f"$retries = 10\n"
+        f"while ($retries -gt 0) {{\n"
+        f"    try {{ Move-Item -Force '{tmp}' '{dest}'; break }}\n"
+        f"    catch {{ $retries--; Start-Sleep -Seconds 1 }}\n"
+        f"}}\n"
+        f"Start-Process '{dest}'\n"
+        f"Remove-Item $MyInvocation.MyCommand.Path\n",
+        encoding="utf-8",
     )
-    subprocess.Popen(["cmd", "/c", str(bat)],
-                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
-    log_ok(f"Обновление до {latest} применится при перезапуске…")
+    subprocess.Popen(
+        ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(ps1)],
+        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+    )
+    log_ok(f"Обновление до {latest} — программа перезапустится автоматически…")
     sys.exit(0)
 
 
