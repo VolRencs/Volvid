@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -16,14 +17,13 @@ import (
 // ─────────────────────────────────────────────
 
 var (
-	sTitle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	sOk     = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	sErr    = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	sWarn   = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	sGray   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	sWhite  = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	sBold   = lipgloss.NewStyle().Bold(true)
-	sCursor = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	sTitle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+	sOk    = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	sErr   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	sWarn  = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	sGray  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	sBold  = lipgloss.NewStyle().Bold(true)
+	sCur   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 
 	sBox = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -44,39 +44,34 @@ const (
 	boardBarW = 20
 )
 
-func bar(pct float64, w int, color string) string {
-	filled := int(float64(w) * pct / 100)
-	if filled > w {
-		filled = w
-	}
-	c := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
-	g := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	return c.Render(strings.Repeat("█", filled)) + g.Render(strings.Repeat("░", w-filled))
+func renderBar(pct float64, w int, color string) string {
+	filled := min(int(float64(w)*pct/100), w)
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(strings.Repeat("█", filled)) +
+		sGray.Render(strings.Repeat("░", w-filled))
 }
 
-func cursor(active bool) string {
+func cur(active bool) string {
 	if active {
-		return sCursor.Render("▶ ")
+		return sCur.Render("▶ ")
 	}
 	return "  "
 }
 
 func trunc(s string, n int) string {
-	r := []rune(s)
 	if utf8.RuneCountInString(s) <= n {
 		return s
 	}
-	return string(r[:n-1]) + "…"
+	return string([]rune(s)[:n-1]) + "…"
 }
 
 // ─────────────────────────────────────────────
-//  Типы сообщений
+//  Сообщения
 // ─────────────────────────────────────────────
 
 type (
-	msgUpdateChecked  struct{ info *UpdateInfo }
-	msgDepProgress    struct{ p FileProgress }
-	msgDepDone        struct{ err error }
+	msgUpdateChecked   struct{ info *UpdateInfo }
+	msgDepProgress     struct{ p FileProgress }
+	msgDepDone         struct{ err error; isUpdate bool }
 	msgPlaylistFetched struct {
 		info *PlaylistInfo
 		err  error
@@ -91,24 +86,24 @@ type (
 type screen int
 
 const (
-	scrUpdateCheck  screen = iota // проверка обновлений
-	scrUpdateReady               // есть обновление
-	scrUpdateDl                  // скачивание обновления
-	scrChecks                    // проверка зависимостей
-	scrFFmpegAsk                 // спросить про ffmpeg
-	scrDepDl                     // скачивание зависимости
-	scrURL                       // ввод ссылки
-	scrPlaylistAsk               // видео или плейлист?
-	scrPlaylistFetch             // загрузка плейлиста
-	scrPlaylist                  // выбор видео
-	scrWorkers                   // количество потоков
-	scrQuality                   // выбор качества
-	scrDownload                  // процесс загрузки
-	scrSummary                   // итоги
+	scrUpdateCheck  screen = iota
+	scrUpdateReady
+	scrUpdateDl
+	scrChecks
+	scrFFmpegAsk
+	scrDepDl
+	scrURL
+	scrPlaylistAsk
+	scrPlaylistFetch
+	scrPlaylist
+	scrWorkers
+	scrQuality
+	scrDownload
+	scrSummary
 )
 
 // ─────────────────────────────────────────────
-//  Состояние слота
+//  Состояние слота загрузки
 // ─────────────────────────────────────────────
 
 type slotState struct {
@@ -128,18 +123,21 @@ type slotState struct {
 // ─────────────────────────────────────────────
 
 type model struct {
-	scr    screen
-	width  int
+	scr   screen
+	width int
 
+	// Зависимости / обновление
 	updateInfo  *UpdateInfo
 	depProgress FileProgress
 	depLabel    string
 	depErr      string
-	checkResult CheckDepsResult
+	depCh       <-chan FileProgress
 
+	// URL
 	urlInput textinput.Model
 	urlErr   string
 
+	// Плейлист
 	plInfo      *PlaylistInfo
 	plPage      int
 	plCursor    int
@@ -149,20 +147,21 @@ type model struct {
 	plInput     textinput.Model
 	plInputErr  string
 
+	// Загрузка
 	cfg         QualityConfig
 	url         string
 	plSelected2 []PlaylistEntry
 	forceSingle bool
 	workers     int
+	dlCh        <-chan DlUpdate
+	slots       []slotState
+	dlDone      int
+	dlFailed    int
+	dlTotal     int
+	singleOK    bool
 
+	// Единый курсор меню
 	menuCursor int
-
-	dlCh      <-chan DlUpdate
-	slots     []slotState
-	dlDone    int
-	dlFailed  int
-	dlTotal   int
-	singleOK  bool
 
 	session Session
 }
@@ -190,81 +189,47 @@ func newModel() model {
 }
 
 // ─────────────────────────────────────────────
-//  Команды Bubble Tea
+//  Команды
 // ─────────────────────────────────────────────
 
 func cmdCheckUpdate() tea.Cmd {
 	return func() tea.Msg { return msgUpdateChecked{CheckUpdate()} }
 }
 
-func cmdCheckDeps() tea.Cmd {
-	return func() tea.Msg {
-		r := DetectDeps()
-		return msgDepDone{func() error {
-			if r.YtdlpVer == "" || (IsWindows && r.FFmpegMissing) {
-				return nil
-			}
-			return nil
-		}()}
-	}
-}
-
-func cmdStreamDep(ch <-chan FileProgress) tea.Cmd {
+// cmdStream читает один элемент из канала FileProgress.
+func cmdStream(ch <-chan FileProgress, isUpdate bool) tea.Cmd {
 	return func() tea.Msg {
 		p, ok := <-ch
 		if !ok {
-			return msgDepDone{nil}
+			return msgDepDone{nil, isUpdate}
 		}
 		if p.Done {
-			return msgDepDone{p.Err}
+			return msgDepDone{p.Err, isUpdate}
 		}
 		return msgDepProgress{p}
 	}
 }
 
-func cmdInstallYtdlp() tea.Cmd {
-	ch := make(chan FileProgress, 8)
+func startDep(install func(chan<- FileProgress) error) (<-chan FileProgress, tea.Cmd) {
+	ch := make(chan FileProgress, 16)
 	go func() {
-		err := InstallYtDlp(ch)
-		if err != nil {
+		if err := install(ch); err != nil {
 			ch <- FileProgress{Done: true, Err: err}
 		}
 		close(ch)
 	}()
-	return cmdStreamDep(ch)
+	return ch, cmdStream(ch, false)
 }
 
-func cmdInstallFFmpeg() tea.Cmd {
-	ch := make(chan FileProgress, 8)
+func startUpdate(info *UpdateInfo) (<-chan FileProgress, tea.Cmd) {
+	ch := make(chan FileProgress, 16)
 	go func() {
-		err := InstallFFmpeg(ch)
-		if err != nil {
+		if err := ApplyUpdate(info, ch); err != nil {
 			ch <- FileProgress{Done: true, Err: err}
 		}
 		close(ch)
 	}()
-	return cmdStreamDep(ch)
-}
-
-func cmdStreamUpdate(info *UpdateInfo) tea.Cmd {
-	ch := make(chan FileProgress, 8)
-	go func() {
-		err := ApplyUpdate(info, ch)
-		if err != nil {
-			ch <- FileProgress{Done: true, Err: err}
-		}
-		close(ch)
-	}()
-	return func() tea.Msg {
-		p, ok := <-ch
-		if !ok {
-			return msgDepDone{nil}
-		}
-		if p.Done {
-			return msgDepDone{p.Err}
-		}
-		return msgDepProgress{p}
-	}
+	return ch, cmdStream(ch, true)
 }
 
 func cmdFetchPlaylist(url string) tea.Cmd {
@@ -312,17 +277,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.updateInfo = msg.info
 		m.scr = scrUpdateReady
+		m.menuCursor = 1 // по умолчанию «Нет» — безопаснее
 		return m, nil
 
 	case msgDepProgress:
 		m.depProgress = msg.p
-		return m, cmdStreamDep(nil)
+		return m, cmdStream(m.depCh, m.scr == scrUpdateDl)
 
 	case msgDepDone:
-		m.depErr = ""
 		if msg.err != nil {
 			m.depErr = msg.err.Error()
 			return m, nil
+		}
+		// FIX: если это было обновление — выходим, bat уже запущен
+		if msg.isUpdate {
+			return m, tea.Quit
 		}
 		return m.afterDepInstall()
 
@@ -346,17 +315,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) gotoChecks() (tea.Model, tea.Cmd) {
-	m.scr = scrChecks
 	r := DetectDeps()
-	m.checkResult = r
 	if r.YtdlpVer == "" {
 		m.depLabel = "yt-dlp"
 		m.depProgress = FileProgress{}
 		m.scr = scrDepDl
-		return m, cmdInstallYtdlp()
+		ch, cmd := startDep(InstallYtDlp)
+		m.depCh = ch
+		return m, cmd
 	}
 	if IsWindows && r.FFmpegMissing {
 		m.scr = scrFFmpegAsk
+		m.menuCursor = 0
 		return m, nil
 	}
 	m.scr = scrURL
@@ -364,9 +334,10 @@ func (m model) gotoChecks() (tea.Model, tea.Cmd) {
 }
 
 func (m model) afterDepInstall() (tea.Model, tea.Cmd) {
-	m.checkResult = DetectDeps()
-	if m.depLabel == "yt-dlp" && IsWindows && m.checkResult.FFmpegMissing {
+	r := DetectDeps()
+	if m.depLabel == "yt-dlp" && IsWindows && r.FFmpegMissing {
 		m.scr = scrFFmpegAsk
+		m.menuCursor = 0
 		return m, nil
 	}
 	m.scr = scrURL
@@ -406,16 +377,16 @@ func (m model) handleDlUpdate(u DlUpdate) (tea.Model, tea.Cmd) {
 		} else {
 			m.dlFailed++
 		}
+		if u.Slot < len(m.slots) {
+			s := &m.slots[u.Slot]
+			s.done, s.failed, s.pct = u.OK, !u.OK, 100
+		}
 		if m.dlTotal == 0 {
 			m.singleOK = u.OK
 			m.recordSession(u.OK)
 			m.scr = scrSummary
 			m.menuCursor = 0
 			return m, nil
-		}
-		if u.Slot < len(m.slots) {
-			s := &m.slots[u.Slot]
-			s.done, s.failed, s.pct = u.OK, !u.OK, 100
 		}
 		if m.dlDone+m.dlFailed >= m.dlTotal {
 			m.recordSession(m.dlFailed == 0)
@@ -441,37 +412,64 @@ func (m *model) recordSession(ok bool) {
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
-
 	if k == "ctrl+c" {
 		return m, tea.Quit
 	}
 
 	switch m.scr {
 
+	// FIX: добавлена навигация стрелками + корректный отказ от обновления
 	case scrUpdateReady:
 		switch k {
-		case "y", "д", "enter":
+		case "up", "k":
+			m.menuCursor = 0
+		case "down", "j":
+			m.menuCursor = 1
+		case "enter":
+			if m.menuCursor == 0 {
+				m.scr = scrUpdateDl
+				m.depProgress = FileProgress{}
+				ch, cmd := startUpdate(m.updateInfo)
+				m.depCh = ch
+				return m, cmd
+			}
+			return m.gotoChecks()
+		case "y", "д":
 			m.scr = scrUpdateDl
 			m.depProgress = FileProgress{}
-			return m, cmdStreamUpdate(m.updateInfo)
+			ch, cmd := startUpdate(m.updateInfo)
+			m.depCh = ch
+			return m, cmd
 		case "n", "н", "esc", "q":
 			return m.gotoChecks()
 		}
 
-	case scrUpdateDl:
-
 	case scrFFmpegAsk:
 		switch k {
-		case "y", "д", "enter":
+		case "up", "k":
+			m.menuCursor = 0
+		case "down", "j":
+			m.menuCursor = 1
+		case "enter":
+			if m.menuCursor == 0 {
+				m.depLabel = "ffmpeg"
+				m.depProgress = FileProgress{}
+				m.scr = scrDepDl
+				ch, cmd := startDep(InstallFFmpeg)
+				m.depCh = ch
+				return m, cmd
+			}
+			m.scr = scrURL
+		case "y", "д":
 			m.depLabel = "ffmpeg"
 			m.depProgress = FileProgress{}
 			m.scr = scrDepDl
-			return m, cmdInstallFFmpeg()
+			ch, cmd := startDep(InstallFFmpeg)
+			m.depCh = ch
+			return m, cmd
 		case "n", "н", "q":
 			m.scr = scrURL
 		}
-
-	case scrDepDl:
 
 	case scrURL:
 		switch k {
@@ -487,10 +485,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.urlErr = ""
 			m.url = url
-			m.plInfo = nil
-			m.plSelected2 = nil
-			m.forceSingle = false
-			m.workers = 1
+			m.plInfo, m.plSelected2 = nil, nil
+			m.forceSingle, m.workers = false, 1
 			if IsPlaylistURL(url) {
 				if VideoInPlaylistRE.MatchString(url) {
 					m.scr = scrPlaylistAsk
@@ -505,15 +501,20 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		default:
 			var cmd tea.Cmd
+			// FIX: передаём оригинальный msg, не пересобираем KeyMsg
 			m.urlInput, cmd = m.urlInput.Update(msg)
 			return m, cmd
 		}
 
 	case scrPlaylistAsk:
 		switch k {
-		case "1", "up", "k":
+		case "up", "k":
 			m.menuCursor = 0
-		case "2", "down", "j":
+		case "down", "j":
+			m.menuCursor = 1
+		case "1":
+			m.menuCursor = 0
+		case "2":
 			m.menuCursor = 1
 		case "enter":
 			if m.menuCursor == 0 {
@@ -527,10 +528,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case scrPlaylist:
-		return m.handlePlaylistKey(k)
+		return m.handlePlaylistKey(msg)
 
 	case scrWorkers:
-		maxW := min5(len(m.plSelected2))
+		maxW := min(len(m.plSelected2), 5)
 		switch k {
 		case "up", "k":
 			if m.menuCursor > 0 {
@@ -571,16 +572,18 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case scrSummary:
 		switch k {
-		case "up", "k", "y", "д":
+		case "up", "k":
 			m.menuCursor = 0
-		case "down", "j", "n", "н":
+		case "down", "j":
 			m.menuCursor = 1
+		case "y", "д":
+			return m.resetForNext()
+		case "n", "н", "q":
+			return m, tea.Quit
 		case "enter":
 			if m.menuCursor == 0 {
 				return m.resetForNext()
 			}
-			return m, tea.Quit
-		case "q":
 			return m, tea.Quit
 		}
 	}
@@ -588,12 +591,14 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) handlePlaylistKey(k string) (tea.Model, tea.Cmd) {
+// FIX: передаём оригинальный tea.KeyMsg в textinput.Update
+func (m model) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	k := msg.String()
+
 	if m.plInputMode {
 		switch k {
 		case "enter":
-			raw := m.plInput.Value()
-			indices, err := ParseSelection(raw, len(m.plInfo.Entries))
+			indices, err := ParseSelection(m.plInput.Value(), len(m.plInfo.Entries))
 			if err != nil {
 				m.plInputErr = err.Error()
 				return m, nil
@@ -611,7 +616,7 @@ func (m model) handlePlaylistKey(k string) (tea.Model, tea.Cmd) {
 			return m, nil
 		default:
 			var cmd tea.Cmd
-			m.plInput, cmd = m.plInput.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)})
+			m.plInput, cmd = m.plInput.Update(msg)
 			return m, cmd
 		}
 	}
@@ -677,10 +682,7 @@ func (m model) handlePlaylistKey(k string) (tea.Model, tea.Cmd) {
 
 func (m model) startDownload() (tea.Model, tea.Cmd) {
 	m.cfg = Qualities[m.menuCursor]
-	workers := m.workers
-	if workers < 1 {
-		workers = 1
-	}
+	workers := max(m.workers, 1)
 	numSlots := 1
 	if len(m.plSelected2) > 0 {
 		numSlots = workers
@@ -702,22 +704,13 @@ func (m model) resetForNext() (tea.Model, tea.Cmd) {
 	m.url = ""
 	m.urlInput.SetValue("")
 	m.urlInput.Focus()
-	m.plInfo = nil
+	m.plInfo, m.plSelected2 = nil, nil
 	m.plSelected = map[int]bool{}
-	m.plSelected2 = nil
-	m.forceSingle = false
-	m.workers = 1
+	m.forceSingle, m.workers = false, 1
 	m.slots = nil
 	m.dlDone, m.dlFailed, m.dlTotal = 0, 0, 0
 	m.menuCursor = 0
 	return m, textinput.Blink
-}
-
-func min5(n int) int {
-	if n > 5 {
-		return 5
-	}
-	return n
 }
 
 // ─────────────────────────────────────────────
@@ -737,14 +730,18 @@ func (m model) View() string {
 		b.WriteString(sGray.Render("  Проверяю обновления…") + "\n")
 
 	case scrUpdateReady:
-		b.WriteString(sOk.Render("  ✔  Доступна новая версия: ") +
-			sBold.Render(m.updateInfo.Latest) +
-			sGray.Render("  (текущая: "+Version+")") + "\n\n")
+		b.WriteString(
+			sOk.Render("  ✔  Доступна новая версия: ") +
+				sBold.Render(m.updateInfo.Latest) +
+				sGray.Render("  (текущая: "+Version+")") + "\n\n")
 		b.WriteString(viewYesNo("Обновить сейчас?", m.menuCursor))
 
 	case scrUpdateDl:
 		b.WriteString(sTitle.Render("  Скачиваю обновление…") + "\n\n")
-		b.WriteString(viewFileProgress(m.depProgress))
+		b.WriteString(viewProgress(m.depProgress))
+		if m.depErr != "" {
+			b.WriteString(sErr.Render("  ✘  "+m.depErr) + "\n")
+		}
 
 	case scrChecks:
 		b.WriteString(sGray.Render("  Проверяю зависимости…") + "\n")
@@ -756,7 +753,7 @@ func (m model) View() string {
 
 	case scrDepDl:
 		b.WriteString(sTitle.Render("  Скачиваю "+m.depLabel+"…") + "\n\n")
-		b.WriteString(viewFileProgress(m.depProgress))
+		b.WriteString(viewProgress(m.depProgress))
 		if m.depErr != "" {
 			b.WriteString(sErr.Render("  ✘  "+m.depErr) + "\n")
 		}
@@ -776,8 +773,10 @@ func (m model) View() string {
 	case scrPlaylistAsk:
 		b.WriteString(sWarn.Render("  !  Ссылка содержит и видео, и плейлист.") + "\n\n")
 		for i, opt := range []string{"Только это видео", "Открыть плейлист"} {
-			b.WriteString(cursor(i == m.menuCursor) + sTitle.Render(fmt.Sprintf("[%d]", i+1)) + "  " + opt + "\n")
+			b.WriteString(cur(i == m.menuCursor) +
+				sTitle.Render(fmt.Sprintf("[%d]", i+1)) + "  " + opt + "\n")
 		}
+		b.WriteString("\n" + sGray.Render("  [↑↓] / [1/2]  [Enter] выбрать") + "\n")
 
 	case scrPlaylistFetch:
 		b.WriteString(sGray.Render("  Загружаю плейлист…") + "\n")
@@ -805,22 +804,30 @@ func (m model) View() string {
 //  Вспомогательные View
 // ─────────────────────────────────────────────
 
-func viewYesNo(question string, sel int) string {
+func viewYesNo(q string, sel int) string {
 	var b strings.Builder
-	b.WriteString("  " + sBold.Render(question) + "\n\n")
+	b.WriteString("  " + sBold.Render(q) + "\n\n")
 	for i, opt := range []string{"Да", "Нет"} {
-		b.WriteString(cursor(i == sel) + opt + "\n")
+		b.WriteString(cur(i == sel) + opt + "\n")
 	}
-	b.WriteString("\n" + sGray.Render("  [↑↓] выбрать  [Enter] подтвердить  [y/n]") + "\n")
+	b.WriteString("\n" + sGray.Render("  [↑↓] выбрать  [Enter] / [y/n]") + "\n")
 	return b.String()
 }
 
-func viewFileProgress(p FileProgress) string {
+func viewProgress(p FileProgress) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("  [%s]  %s%.1f%%%s\n",
-		bar(p.Pct, barW, "10"), sBold.Render(""), p.Pct, ""))
-	if p.TotalB > 0 {
-		b.WriteString(fmt.Sprintf("  %s / %s\n", FmtBytes(p.DoneB), FmtBytes(p.TotalB)))
+		renderBar(p.Pct, barW, "10"), sBold.Render(""), p.Pct, ""))
+	if p.DoneB > 0 {
+		size := FmtBytes(p.DoneB)
+		if p.TotalB > 0 {
+			size += " / " + FmtBytes(p.TotalB)
+		}
+		b.WriteString("  " + size)
+		if p.Speed != "" {
+			b.WriteString("  " + sGray.Render(p.Speed))
+		}
+		b.WriteString("\n")
 	}
 	return b.String()
 }
@@ -835,19 +842,14 @@ func viewPlaylist(m model) string {
 	b.WriteString(sGray.Render("  "+strings.Repeat("─", 54)) + "\n\n")
 
 	start := m.plPage * m.plPageSize
-	end := start + m.plPageSize
-	if end > total {
-		end = total
-	}
+	end := min(start+m.plPageSize, total)
 	for i, e := range info.Entries[start:end] {
-		absIdx := start + i
-		cur := cursor(absIdx == m.plCursor)
 		chk := sGray.Render("[ ] ")
 		if m.plSelected[e.Index] {
 			chk = sOk.Render("[✔] ")
 		}
 		b.WriteString(fmt.Sprintf("%s%s%s  %s  %s\n",
-			cur, chk,
+			cur(start+i == m.plCursor), chk,
 			sTitle.Render(fmt.Sprintf("%4d.", e.Index)),
 			trunc(e.Title, 48),
 			sGray.Render(FmtDuration(e.Duration))))
@@ -857,8 +859,8 @@ func viewPlaylist(m model) string {
 	if pages > 1 {
 		b.WriteString("\n" + sGray.Render(fmt.Sprintf("  стр. %d/%d", m.plPage+1, pages)) + "\n")
 	}
-
 	b.WriteString("\n")
+
 	if m.plInputMode {
 		b.WriteString("  " + sTitle.Render("Выбор:") + "\n")
 		b.WriteString(sInputFocus.Render(m.plInput.View()) + "\n")
@@ -877,21 +879,21 @@ func viewPlaylist(m model) string {
 
 func viewWorkers(m model) string {
 	var b strings.Builder
-	maxW := min5(len(m.plSelected2))
+	maxW := min(len(m.plSelected2), 5)
 	b.WriteString(sBold.Render("  Параллельная загрузка:") +
 		sGray.Render(fmt.Sprintf("  (%d видео)", len(m.plSelected2))) + "\n\n")
-	for i := 1; i <= maxW; i++ {
-		desc := fmt.Sprintf("%d потока(ов)", i)
-		if i == 1 {
+	for i := range maxW {
+		desc := fmt.Sprintf("%d потока(ов)", i+1)
+		if i == 0 {
 			desc = "Последовательно"
 		}
 		note := ""
-		if i == 3 {
+		if i == 2 {
 			note = sGray.Render("  (рекомендуется)")
 		}
 		b.WriteString(fmt.Sprintf("%s%s  %s%s\n",
-			cursor(i-1 == m.menuCursor),
-			sTitle.Render(fmt.Sprintf("[%d]", i)),
+			cur(i == m.menuCursor),
+			sTitle.Render(fmt.Sprintf("[%d]", i+1)),
 			desc, note))
 	}
 	b.WriteString("\n" + sGray.Render("  [↑↓] навигация  [Enter] выбрать") + "\n")
@@ -912,11 +914,11 @@ func viewQuality(m model) string {
 	b.WriteString(sBold.Render("  Выбери качество:") + "\n\n")
 	for i, item := range items {
 		b.WriteString(fmt.Sprintf("%s%s  %s%s\n",
-			cursor(i == m.menuCursor),
+			cur(i == m.menuCursor),
 			sTitle.Render(fmt.Sprintf("[%d]", i+1)),
 			item.label, item.note))
 	}
-	b.WriteString("\n" + sGray.Render("  [↑↓] или [1/2/3] выбрать  [Enter] далее") + "\n")
+	b.WriteString("\n" + sGray.Render("  [↑↓] / [1/2/3]  [Enter] начать") + "\n")
 	return b.String()
 }
 
@@ -926,39 +928,40 @@ func viewDownload(m model) string {
 	if m.dlTotal > 0 {
 		b.WriteString(sBold.Render(fmt.Sprintf("  Плейлист  ·  %d видео", m.dlTotal)) + "\n")
 		b.WriteString(sGray.Render("  "+strings.Repeat("─", 54)) + "\n\n")
-
 		for i, s := range m.slots {
 			badge := sTitle.Render(fmt.Sprintf("[%d]", i+1))
 			switch {
 			case s.done:
-				b.WriteString(fmt.Sprintf("  %s  %s  %s\n", badge, sOk.Render("✔"), s.title))
-				b.WriteString(fmt.Sprintf("       [%s]  %s\n",
+				b.WriteString(fmt.Sprintf("  %s  %s  %s\n       [%s]  %s\n",
+					badge, sOk.Render("✔"), s.title,
 					sOk.Render(strings.Repeat("█", boardBarW)),
 					sGray.Render("готово")))
 			case s.failed:
-				b.WriteString(fmt.Sprintf("  %s  %s  %s\n", badge, sErr.Render("✘"), s.title))
-				b.WriteString(sErr.Render("       ошибка загрузки") + "\n")
+				b.WriteString(fmt.Sprintf("  %s  %s  %s\n%s\n",
+					badge, sErr.Render("✘"), s.title,
+					sErr.Render("       ошибка загрузки")))
 			case s.proc:
-				b.WriteString(fmt.Sprintf("  %s  %s\n", badge, sBold.Render(s.title)))
-				b.WriteString(fmt.Sprintf("       %s  %s\n", sWarn.Render("⚙"), sGray.Render(s.label)))
+				b.WriteString(fmt.Sprintf("  %s  %s\n       %s  %s\n",
+					badge, sBold.Render(s.title),
+					sWarn.Render("⚙"), sGray.Render(s.label)))
 			case s.title != "":
-				b.WriteString(fmt.Sprintf("  %s  %s\n", badge, sBold.Render(s.title)))
-				b.WriteString(fmt.Sprintf("       %s  [%s]  %s  %s\n",
+				b.WriteString(fmt.Sprintf("  %s  %s\n       %s  [%s]  %s  %s\n",
+					badge, sBold.Render(s.title),
 					sTitle.Render("↓"),
-					bar(s.pct, boardBarW, "10"),
+					renderBar(s.pct, boardBarW, "10"),
 					sBold.Render(fmt.Sprintf("%5.1f%%", s.pct)),
-					viewSize(s.doneB, s.totalB)+viewSpeed(s.speed)))
+					fmtSize(s.doneB, s.totalB)+fmtSpeed(s.speed)))
 			default:
 				b.WriteString(fmt.Sprintf("  %s  %s\n\n", badge, sGray.Render("── ожидание ──")))
 			}
 		}
-
 		pending := m.dlTotal - m.dlDone - m.dlFailed
 		b.WriteString(sGray.Render("  "+strings.Repeat("─", 54)) + "\n")
 		b.WriteString(fmt.Sprintf("  %s  %s  %s\n",
 			sOk.Render(fmt.Sprintf("✔ %d", m.dlDone)),
 			sErr.Render(fmt.Sprintf("✘ %d", m.dlFailed)),
-			sGray.Render(fmt.Sprintf("◷ %d в очереди  │  %d/%d", pending, m.dlDone+m.dlFailed, m.dlTotal))))
+			sGray.Render(fmt.Sprintf("◷ %d в очереди  │  %d/%d",
+				pending, m.dlDone+m.dlFailed, m.dlTotal))))
 	} else if len(m.slots) > 0 {
 		s := m.slots[0]
 		b.WriteString(sTitle.Render("  Загружаю…") + "\n\n")
@@ -970,15 +973,15 @@ func viewDownload(m model) string {
 		} else {
 			b.WriteString(fmt.Sprintf("  %s  [%s]  %s  %s\n",
 				sTitle.Render("↓"),
-				bar(s.pct, barW, "10"),
+				renderBar(s.pct, barW, "10"),
 				sBold.Render(fmt.Sprintf("%5.1f%%", s.pct)),
-				viewSize(s.doneB, s.totalB)+viewSpeed(s.speed)))
+				fmtSize(s.doneB, s.totalB)+fmtSpeed(s.speed)))
 		}
 	}
 	return b.String()
 }
 
-func viewSize(done, total int64) string {
+func fmtSize(done, total int64) string {
 	if total > 0 {
 		return FmtBytes(done) + sGray.Render("/") + FmtBytes(total)
 	}
@@ -988,7 +991,7 @@ func viewSize(done, total int64) string {
 	return "…"
 }
 
-func viewSpeed(speed string) string {
+func fmtSpeed(speed string) string {
 	if speed == "" {
 		return ""
 	}
@@ -997,7 +1000,6 @@ func viewSpeed(speed string) string {
 
 func viewSummary(m model) string {
 	var b strings.Builder
-
 	if m.dlTotal == 0 {
 		if m.singleOK {
 			b.WriteString(sOk.Render("  ✔  Готово! → "+DlDir) + "\n\n")
@@ -1006,11 +1008,10 @@ func viewSummary(m model) string {
 			b.WriteString(sGray.Render("     Попробуй: VolRenDownloader --update") + "\n\n")
 		}
 	} else {
-		ok := m.dlTotal - m.dlFailed
 		b.WriteString(sOk.Render("  ✔  ") +
-			sBold.Render(fmt.Sprintf("Плейлист завершён · успешно: %d/%d", ok, m.dlTotal)) + "\n\n")
+			sBold.Render(fmt.Sprintf("Плейлист завершён · успешно: %d/%d",
+				m.dlTotal-m.dlFailed, m.dlTotal)) + "\n\n")
 	}
-
 	if len(m.session.Items) > 0 {
 		b.WriteString(sBold.Render("  Итоги сессии:") + "\n")
 		b.WriteString(sGray.Render("  "+strings.Repeat("─", 54)) + "\n")
@@ -1019,10 +1020,7 @@ func viewSummary(m model) string {
 			if !item.OK {
 				badge = sErr.Render("FAIL")
 			}
-			url := item.URL
-			if len(url) > 45 {
-				url = url[:45] + "…"
-			}
+			url := trunc(item.URL, 45)
 			b.WriteString(fmt.Sprintf("  [%s]  %-22s  %s\n",
 				badge, trunc(item.Label, 22), sGray.Render(url)))
 		}
@@ -1032,12 +1030,11 @@ func viewSummary(m model) string {
 			sOk.Render(fmt.Sprintf("Успешно: %d", m.session.Success)),
 			sErr.Render(fmt.Sprintf("Ошибок: %d", m.session.Failed))))
 	}
-
 	b.WriteString(sBold.Render("  Скачать ещё?") + "\n\n")
 	for i, opt := range []string{"Да", "Нет, выйти"} {
-		b.WriteString(cursor(i == m.menuCursor) + opt + "\n")
+		b.WriteString(cur(i == m.menuCursor) + opt + "\n")
 	}
-	b.WriteString("\n" + sGray.Render("  [↑↓] выбрать  [Enter] / [y/n] подтвердить") + "\n")
+	b.WriteString("\n" + sGray.Render("  [↑↓] выбрать  [Enter] / [y/n]") + "\n")
 	return b.String()
 }
 
@@ -1048,17 +1045,15 @@ func viewSummary(m model) string {
 func main() {
 	args := os.Args[1:]
 
-	if contains(args, "--update") {
+	if slices.Contains(args, "--update") {
 		fmt.Println("Обновляю зависимости…")
-		ch := make(chan FileProgress, 8)
+		ch := make(chan FileProgress, 16)
 		go func() { InstallYtDlp(ch); close(ch) }()
-		for range ch {
-		}
+		for range ch {}
 		if IsWindows {
-			ch2 := make(chan FileProgress, 8)
+			ch2 := make(chan FileProgress, 16)
 			go func() { InstallFFmpeg(ch2); close(ch2) }()
-			for range ch2 {
-			}
+			for range ch2 {}
 		}
 		fmt.Println("Готово.")
 		return
@@ -1069,13 +1064,4 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
-
-func contains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }
