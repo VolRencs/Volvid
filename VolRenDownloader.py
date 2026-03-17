@@ -1,5 +1,5 @@
 """
-VolRen Video/Audio Downloader  —  версия 2.2.0
+VolRen Video/Audio Downloader  —  версия 2.2.1
 Автор : VolRen
 Инфо  : Все зависимости (ffmpeg, yt-dlp) скачиваются автоматически
         в папку _deps/ рядом со скриптом. Ничего не устанавливается
@@ -28,7 +28,7 @@ from pathlib import Path
 #  КОНФИГ
 # ══════════════════════════════════════════════════════════════════════════════
 
-VERSION    = "2.2.0"
+VERSION    = "2.2.1"
 SCRIPT_DIR = (
     Path(sys.executable).resolve().parent
     if getattr(sys, "frozen", False)
@@ -639,7 +639,7 @@ def _print_playlist_page(info: PlaylistInfo, start: int = 0, page: int = 25) -> 
 
 def _parse_selection(raw: str, max_idx: int) -> list[int] | None:
     raw = raw.strip().lower()
-    if raw in ("а", "all", "все", "всё", "*"):
+    if raw in ("a", "all", "а", "все", "всё", "*"):
         return list(range(1, max_idx + 1))
     result: set[int] = set()
     for part in re.split(r"[,;\s]+", raw):
