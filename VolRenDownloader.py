@@ -846,43 +846,46 @@ def _check_update() -> None:
             data = json.loads(r.read())
     except Exception:
         return
-
+ 
     latest = data.get("tag_name", "").lstrip("v")
     if not latest or latest <= VERSION:
         return
     if not getattr(sys, "frozen", False):
         return
-
+ 
     log_info(f"Доступна новая версия: {C.BOLD}{latest}{C.RESET}{C.CYAN}  (текущая: {VERSION})")
     if not _ask_yes(f"  {C.BOLD}Обновить сейчас?{C.RESET} {C.CYAN}[д]{C.RESET}/{C.RED}[н]{C.RESET}  "):
         return
-
+ 
     dl_url = next((a["browser_download_url"] for a in data.get("assets", [])
                    if a["name"].endswith(".exe")), None)
     if not dl_url:
         log_warn("Файл .exe не найден в релизе."); return
-
+ 
     dest = Path(sys.executable).resolve()
     tmp  = dest.with_suffix(".new.exe")
-    old  = dest.with_suffix(".old.exe")
     try:
         _download_file(dl_url, tmp, f"VolRenDownloader {latest}")
     except Exception as e:
         log_err(f"Ошибка загрузки: {e}"); tmp.unlink(missing_ok=True); return
-
-    try:
-        if old.exists(): old.unlink()
-        dest.rename(old)
-        tmp.rename(dest)
-    except Exception as e:
-        log_err(f"Ошибка замены файла: {e}")
-        dest.rename(dest) if not dest.exists() else None  # откат если нужно
-        return
-
-    os.startfile(dest)
-    log_ok(f"Обновление до {latest} — запускаем новую версию…")
+ 
+    bat = dest.with_suffix(".update.bat")
+    bat.write_text(
+        f"@echo off\n"
+        f"timeout /t 2 /nobreak >nul\n"
+        f":retry\n"
+        f"move /y \"{tmp}\" \"{dest}\" >nul 2>&1\n"
+        f"if errorlevel 1 ( timeout /t 2 /nobreak >nul & goto retry )\n"
+        f"start \"\" \"{dest}\"\n"
+        f"del \"%~f0\"\n",
+        encoding="cp866",
+    )
+    subprocess.Popen(
+        ["cmd", "/c", str(bat)],
+        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+    )
+    log_ok(f"Обновление до {latest} — программа перезапустится автоматически…")
     sys.exit(0)
-
 
 def main() -> None:
     if "--update" in sys.argv: update_deps(); return
