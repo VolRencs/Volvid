@@ -1,5 +1,5 @@
 """
-VolRen Video/Audio Downloader  —  версия 2.3.2
+VolRen Video/Audio Downloader  —  версия 2.3.1
 Автор : VolRen
 Инфо  : Все зависимости (ffmpeg, yt-dlp) скачиваются автоматически
         в папку _deps/. Работает на Windows и Linux (x64 / arm64).
@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION      = "2.3.2"
+VERSION      = "2.3.1"
 GITHUB_REPO  = "VolRencs/YouTubeDownloader"
 SCRIPT_DIR = (
     Path(sys.executable).resolve().parent
@@ -871,6 +871,7 @@ def _check_update() -> None:
 
     ps1 = dest.with_suffix(".update.ps1")
     ps1.write_text(
+        f"$self = $MyInvocation.MyCommand.Path\n"
         f"Start-Sleep -Seconds 2\n"
         f"$retries = 10\n"
         f"while ($retries -gt 0) {{\n"
@@ -878,16 +879,16 @@ def _check_update() -> None:
         f"    catch {{ $retries--; Start-Sleep -Seconds 1 }}\n"
         f"}}\n"
         f"Start-Process '{dest}'\n"
-        f"Remove-Item $MyInvocation.MyCommand.Path\n",
+        f"Remove-Item $self -Force\n",
         encoding="utf-8",
     )
     subprocess.Popen(
-        ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(ps1)],
+        ["powershell", "-NonInteractive", "-WindowStyle", "Hidden",
+         "-ExecutionPolicy", "Bypass", "-File", str(ps1)],
         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
     )
     log_ok(f"Обновление до {latest} — программа перезапустится автоматически…")
     sys.exit(0)
-
 
 def main() -> None:
     if "--update" in sys.argv: update_deps(); return
