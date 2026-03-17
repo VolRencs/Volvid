@@ -6,7 +6,7 @@
 <pre>
 ╔══════════════════════════════════════════════════════╗
 ║         VolRen  Video / Audio  Downloader            ║
-║         версия 2.1.0  •  powered by yt-dlp           ║
+║         версия 2.2.0  •  powered by yt-dlp           ║
 ╚══════════════════════════════════════════════════════╝
 </pre>
 </p>
@@ -16,7 +16,7 @@
 ![Python](https://img.shields.io/badge/Python-3.13%2B-blue?style=flat-square&logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-2.1.0-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-2.2.0-orange?style=flat-square)
 
 </div>
 

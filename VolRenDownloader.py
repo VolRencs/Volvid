@@ -1,5 +1,5 @@
 """
-VolRen Video/Audio Downloader  —  версия 2.1.0
+VolRen Video/Audio Downloader  —  версия 2.2.0
 Автор : VolRen
 Инфо  : Все зависимости (ffmpeg, yt-dlp) скачиваются автоматически
         в папку _deps/ рядом со скриптом. Ничего не устанавливается
@@ -10,13 +10,16 @@ VolRen Video/Audio Downloader  —  версия 2.1.0
 import json
 import os
 import platform
+import queue
 import re
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,7 +28,7 @@ from pathlib import Path
 #  КОНФИГ
 # ══════════════════════════════════════════════════════════════════════════════
 
-VERSION    = "2.1.0"
+VERSION    = "2.2.0"
 SCRIPT_DIR = (
     Path(sys.executable).resolve().parent
     if getattr(sys, "frozen", False)
@@ -37,7 +40,6 @@ DL_DIR   = SCRIPT_DIR / "downloads"
 IS_WINDOWS = sys.platform == "win32"
 ARCH       = platform.machine().lower()
 
-# Windows: ffmpeg качается в _deps/. Linux: берётся из /usr/bin/
 _FFMPEG_WIN_BIN = DEPS_DIR / "ffmpeg.exe"
 YTDLP_BIN       = DEPS_DIR / ("yt-dlp.exe" if IS_WINDOWS else "yt-dlp")
 
@@ -57,12 +59,13 @@ def _ytdlp_url() -> str:
         case _:
             return _YTDLP_BASE + "yt-dlp_linux"
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  ЦВЕТА И ВЫВОД
 # ══════════════════════════════════════════════════════════════════════════════
 
 if IS_WINDOWS:
-    os.system("")  # включает VT-режим в cmd/powershell
+    os.system("")   # включает VT-режим в cmd / powershell
 
 
 class C:
@@ -94,64 +97,269 @@ BANNER = f"""{C.CYAN}
  ╚══════════════════════════════════════════════════════╝
 {C.RESET}"""
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ПРОГРЕСС-БАР  (единый — для зависимостей, видео и аудио)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_BAR_WIDTH       = 32     # ширина символьного бара (одиночное видео)
+_BOARD_BAR_WIDTH = 22     # ширина бара в параллельном дашборде
+
+
+def _fmt_bytes(n: int) -> str:
+    for threshold, label, decimals in (
+        (1_073_741_824, "ГБ", 2),
+        (1_048_576,     "МБ", 1),
+        (1_024,         "КБ", 0),
+    ):
+        if n >= threshold:
+            return f"{n / threshold:.{decimals}f} {label}"
+    return f"{n} Б"
+
+
+def _unit_to_mult(unit: str) -> int:
+    key = unit.upper().replace("IB", "").replace("B", "") or ""
+    return {
+        "":  1,
+        "K": 1_024,
+        "M": 1_048_576,
+        "G": 1_073_741_824,
+        "T": 1_099_511_627_776,
+    }.get(key, 1)
+
+
+class ProgressBar:
+
+    def __init__(self, title: str = "") -> None:
+        self.title     = title[:60] if title else ""
+        self._shown    = False   # заголовок (title) уже напечатан
+        self._finished = False   # finish() уже был вызван
+
+    def update(
+        self,
+        pct:     float,
+        done_b:  int,
+        total_b: int,
+        speed:   str = "",
+        eta:     str = "",
+    ) -> None:
+        """Перерисовывает строку прогресса (\\r, без перевода строки)."""
+        with _print_lock:
+            # Заголовок — выводится один раз, на отдельной строке
+            if not self._shown:
+                if self.title:
+                    print(f"  {C.WHITE}{C.BOLD}{self.title}{C.RESET}")
+                self._shown = True
+
+            filled  = min(int(_BAR_WIDTH * pct / 100), _BAR_WIDTH)
+            empty   = _BAR_WIDTH - filled
+            bar_str = f"{C.GREEN}{'█' * filled}{C.GRAY}{'░' * empty}{C.RESET}"
+
+            size_str = (
+                f"{_fmt_bytes(done_b)}{C.GRAY}/{C.RESET}{_fmt_bytes(total_b)}"
+                if total_b > 0
+                else (_fmt_bytes(done_b) if done_b > 0 else "…")
+            )
+
+            line = (
+                f"\r  {C.CYAN}↓{C.RESET}  [{bar_str}]"
+                f"  {C.BOLD}{pct:5.1f}%{C.RESET}"
+                f"  {C.WHITE}{size_str}{C.RESET}"
+            )
+            if speed:
+                line += f"  {C.GRAY}{speed}{C.RESET}"
+            if eta:
+                line += f"  {C.GRAY}ETA {eta}{C.RESET}"
+
+            print(line, end="", flush=True)
+
+    def urllib_hook(self, n: int, bs: int, total: int) -> None:
+        """Хук для urllib.request.urlretrieve (reporthook=...)."""
+        done = min(n * bs, total) if total > 0 else n * bs
+        pct  = (done / total * 100) if total > 0 else 0.0
+        self.update(pct, done, max(total, 0))
+
+    def finish(self) -> None:
+        """Переводит строку после завершения прогресса. Идемпотентен."""
+        with _print_lock:
+            if self._shown and not self._finished:
+                print()
+                self._finished = True
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ПАРАЛЛЕЛЬНЫЙ ДАШБОРД  (N строк, cursor-up перерисовка, ~10 fps)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class _Slot:
+    status:  str   = "idle"
+    title:   str   = ""
+    pct:     float = 0.0
+    done_b:  int   = 0
+    total_b: int   = 0
+    speed:   str   = ""
+    eta:     str   = ""
+    label:   str   = ""
+
+
+class MultiProgressBoard:
+
+    def __init__(self, workers: int, total: int) -> None:
+        self._slots       = [_Slot() for _ in range(workers)]
+        self._total       = total
+        self._done        = 0
+        self._failed      = 0
+        self._lock        = threading.Lock()
+        self._started     = False
+        self._last_render = 0.0
+        self._lines       = workers * 2 + 2   # 2 строки/слот + разделитель + статус
+
+    def _render_locked(self, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and self._started and now - self._last_render < 0.10:
+            return
+        self._last_render = now
+        out: list[str] = []
+
+        for i, s in enumerate(self._slots):
+            badge = f"{C.CYAN}[{i + 1}]{C.RESET}"
+            match s.status:
+                case "idle":
+                    out += [f"  {badge}  {C.GRAY}── ожидание ──{C.RESET}", ""]
+
+                case "dl":
+                    filled   = min(int(_BOARD_BAR_WIDTH * s.pct / 100), _BOARD_BAR_WIDTH)
+                    bar      = f"{C.GREEN}{'█' * filled}{C.GRAY}{'░' * (_BOARD_BAR_WIDTH - filled)}{C.RESET}"
+                    size     = (f"{_fmt_bytes(s.done_b)}{C.GRAY}/{C.RESET}{_fmt_bytes(s.total_b)}"
+                                if s.total_b else _fmt_bytes(s.done_b) or "…")
+                    extra    = (f"  {C.GRAY}{s.speed}{C.RESET}" if s.speed else "")
+                    extra   += (f"  {C.GRAY}ETA {s.eta}{C.RESET}" if s.eta else "")
+                    out += [
+                        f"  {badge}  {C.BOLD}{s.title}{C.RESET}",
+                        f"       {C.CYAN}↓{C.RESET}  [{bar}]  {C.BOLD}{s.pct:5.1f}%{C.RESET}"
+                        f"  {C.WHITE}{size}{C.RESET}{extra}",
+                    ]
+
+                case "merge":
+                    out += [
+                        f"  {badge}  {C.BOLD}{s.title}{C.RESET}",
+                        f"       {C.YELLOW}⚙{C.RESET}  {C.GRAY}{s.label}{C.RESET}",
+                    ]
+
+                case "done":
+                    full = f"{C.GREEN}{'█' * _BOARD_BAR_WIDTH}{C.RESET}"
+                    out += [
+                        f"  {badge}  {C.GREEN}✔{C.RESET}  {s.title}",
+                        f"       [{full}]  {C.BOLD}100.0%{C.RESET}  {C.GRAY}готово{C.RESET}",
+                    ]
+
+                case _:  # fail
+                    out += [
+                        f"  {badge}  {C.RED}✘{C.RESET}  {s.title}",
+                        f"       {C.RED}ошибка загрузки{C.RESET}",
+                    ]
+
+        pending = self._total - self._done - self._failed
+        out.append(f"  {C.GRAY}{'─' * 54}{C.RESET}")
+        out.append(
+            f"  {C.GREEN}✔ {self._done}{C.RESET}  {C.RED}✘ {self._failed}{C.RESET}"
+            f"  {C.GRAY}◷ {pending} в очереди  │  "
+            f"{self._done + self._failed}/{self._total}{C.RESET}"
+        )
+
+        if self._started:
+            sys.stdout.write(f"\033[{self._lines}A")
+        for line in out:
+            sys.stdout.write(f"\033[2K\r{line}\n")
+        sys.stdout.flush()
+        self._started = True
+
+    # ── публичный API ────────────────────────────────────────────────────────
+
+    def start(self, slot: int, title: str) -> None:
+        with self._lock:
+            self._slots[slot] = _Slot("dl", title[:54])
+            self._render_locked(force=True)
+
+    def update(self, slot: int, pct: float, done_b: int, total_b: int,
+               speed: str = "", eta: str = "") -> None:
+        with self._lock:
+            s = self._slots[slot]
+            s.pct, s.done_b, s.total_b, s.speed, s.eta = pct, done_b, total_b, speed, eta
+            self._render_locked()
+
+    def processing(self, slot: int, label: str) -> None:
+        """Переключает слот в режим ffmpeg-обработки с поясняющим лейблом."""
+        with self._lock:
+            s = self._slots[slot]
+            s.status, s.label = "merge", label
+            self._render_locked(force=True)
+
+    def finish(self, slot: int, ok: bool) -> None:
+        with self._lock:
+            s = self._slots[slot]
+            s.status = "done" if ok else "fail"
+            if ok:
+                s.pct = 100.0
+                self._done += 1
+            else:
+                self._failed += 1
+            self._render_locked(force=True)
+
+    def reset(self, slot: int) -> None:
+        """Сбрасывает слот в ожидание (слот освободился, ждёт следующего видео)."""
+        with self._lock:
+            self._slots[slot] = _Slot()
+            self._render_locked(force=True)
+
+    def finalize(self) -> None:
+        with self._lock:
+            self._render_locked(force=True)
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  УСТАНОВКА ЗАВИСИМОСТЕЙ
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _progress_hook(n: int, bs: int, total: int) -> None:
-    done = min(n * bs, total) if total > 0 else n * bs
-    if total > 0:
-        pct = done / total
-        bar = "█" * int(30 * pct) + "░" * (30 - int(30 * pct))
-        print(
-            f"\r  {C.CYAN}↓{C.RESET}  [{bar}] {pct*100:5.1f}%"
-            f"  {done/1e6:.1f}/{total/1e6:.1f} МБ",
-            end="", flush=True,
-        )
-    else:
-        print(f"\r  {C.CYAN}↓{C.RESET}  {done/1e6:.1f} МБ…", end="", flush=True)
-
-
-def _download_file(url: str, dest: Path) -> None:
+def _download_file(url: str, dest: Path, title: str = "") -> None:
+    """Скачивает файл по URL с прогресс-баром."""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    urllib.request.urlretrieve(url, dest, reporthook=_progress_hook)
-    print()
-
-
-def _extract_ffmpeg(archive: Path) -> None:
-    """Извлекает ffmpeg.exe / ffprobe.exe из zip-архива."""
-    targets = {"ffmpeg.exe", "ffprobe.exe"}
-    found: set[str] = set()
-    with zipfile.ZipFile(archive) as zf:
-        for member in zf.namelist():
-            name = Path(member).name
-            if name in targets:
-                (DEPS_DIR / name).write_bytes(zf.read(member))
-                log_ok(f"Извлечён: {name}")
-                found.add(name)
-    if not found:
-        log_err("ffmpeg.exe не найден в архиве — архив повреждён?")
-        sys.exit(1)
+    bar = ProgressBar(title or dest.name)
+    urllib.request.urlretrieve(url, dest, reporthook=bar.urllib_hook)
+    bar.finish()
 
 
 def install_ffmpeg() -> None:
-    """Скачивает ffmpeg в _deps/"""
+    """Скачивает и распаковывает ffmpeg в _deps/"""
     DEPS_DIR.mkdir(parents=True, exist_ok=True)
     log_info("Скачиваю ffmpeg (Windows)…")
     with tempfile.TemporaryDirectory() as tmp:
         archive = Path(tmp) / "ffmpeg.zip"
         try:
-            _download_file(_FFMPEG_WIN_URL, archive)
+            _download_file(_FFMPEG_WIN_URL, archive, "ffmpeg.zip")
         except Exception as e:
             log_err(f"Ошибка скачивания ffmpeg: {e}")
             sys.exit(1)
         log_info("Распаковываю…")
-        _extract_ffmpeg(archive)
+        targets, found = {"ffmpeg.exe", "ffprobe.exe"}, set()
+        with zipfile.ZipFile(archive) as zf:
+            for member in zf.namelist():
+                name = Path(member).name
+                if name in targets:
+                    (DEPS_DIR / name).write_bytes(zf.read(member))
+                    log_ok(f"Извлечён: {name}")
+                    found.add(name)
+        if not found:
+            log_err("ffmpeg.exe не найден в архиве — архив повреждён?")
+            sys.exit(1)
     log_ok(f"ffmpeg установлен в: {DEPS_DIR}")
 
 
 def _ytdlp_version() -> str | None:
-    """Возвращает строку версии yt-dlp или None если бинарник не готов."""
+    """Возвращает строку версии yt-dlp или None, если бинарник не готов."""
     if not YTDLP_BIN.exists():
         return None
     try:
@@ -168,9 +376,8 @@ def install_yt_dlp() -> None:
     DEPS_DIR.mkdir(parents=True, exist_ok=True)
     url = _ytdlp_url()
     log_info(f"Скачиваю yt-dlp ({ARCH}, {'Windows' if IS_WINDOWS else 'Linux'})…")
-    log_info(f"Источник: {url}")
     try:
-        _download_file(url, YTDLP_BIN)
+        _download_file(url, YTDLP_BIN, "yt-dlp")
     except Exception as e:
         log_err(f"Ошибка скачивания yt-dlp: {e}")
         sys.exit(1)
@@ -181,6 +388,7 @@ def install_yt_dlp() -> None:
     else:
         log_err("Бинарник скачан, но не запускается.")
         sys.exit(1)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ПРОВЕРКИ ОКРУЖЕНИЯ
@@ -198,7 +406,6 @@ def check_python() -> None:
 
 
 def _system_ffmpeg() -> str | None:
-    """Путь к /usr/bin/ffmpeg если существует, иначе None."""
     p = Path("/usr/bin/ffmpeg")
     return str(p) if p.exists() else None
 
@@ -255,6 +462,7 @@ def run_checks() -> None:
     DL_DIR.mkdir(parents=True, exist_ok=True)
     log_sep()
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  ВВОД ПОЛЬЗОВАТЕЛЯ
 # ══════════════════════════════════════════════════════════════════════════════
@@ -281,7 +489,7 @@ def _ask(prompt: str) -> str:
 
 
 def _ask_yes(prompt: str) -> bool:
-    """Задаёт вопрос да/нет, принимает русские и английские варианты."""
+    """Вопрос да/нет: принимает рус. и англ. варианты."""
     while True:
         ans = _ask(prompt).lower()
         if ans in _YES: return True
@@ -331,6 +539,7 @@ def ask_workers(total_videos: int) -> int:
         if ch.isdigit() and 1 <= int(ch) <= max_w:
             return int(ch)
         log_err(f"Введи число от 1 до {max_w}.")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ПЛЕЙЛИСТ
@@ -506,6 +715,7 @@ def ask_playlist_mode(url: str) -> tuple[str, PlaylistInfo, list[PlaylistEntry]]
     log_info(f"Выбрано: {n} видео" + (f"  ({_fmt_indices(indices)})" if n < len(info) else " (все)"))
     return url, info, selected
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  ДВИЖОК ЗАГРУЗКИ
 # ══════════════════════════════════════════════════════════════════════════════
@@ -513,7 +723,7 @@ def ask_playlist_mode(url: str) -> tuple[str, PlaylistInfo, list[PlaylistEntry]]
 @dataclass(slots=True)
 class QualityConfig:
     label:     str
-    fmt_chain: list[str]   # пустой список → аудио-режим (MP3)
+    fmt_chain: list[str]
 
 
 QUALITIES: dict[str, QualityConfig] = {
@@ -535,11 +745,113 @@ def _ffmpeg_args() -> list[str]:
     return ["--ffmpeg-location", FFMPEG_RESOLVED] if FFMPEG_RESOLVED else []
 
 
-def _run_ytdlp(*args: str, silent: bool = False) -> bool:
+def _run_ytdlp(*args: str) -> bool:
+    """Запускает yt-dlp бесшумно."""
     return subprocess.run(
         [str(YTDLP_BIN), *args],
-        capture_output=silent,
+        capture_output=True,
     ).returncode == 0
+
+_YTDLP_DL_RE = re.compile(
+    r"\[download\]\s+"
+    r"(?P<pct>[\d.]+)%\s+of\s+~?\s*"
+    r"(?P<size>[\d.]+)\s*(?P<unit>[KMGTkmgt]i?[Bb])",
+    re.IGNORECASE,
+)
+# Скорость и ETA — парсим отдельно, т.к. могут быть "Unknown"
+_YTDLP_SPEED_RE = re.compile(
+    r"at\s+(?P<speed>[\d.]+\s*[KMGTkmgt]i?[Bb]/s)"
+    r"(?:\s+ETA\s+(?P<eta>[\d:]+))?",
+    re.IGNORECASE,
+)
+_YTDLP_DEST_RE = re.compile(r"\[download\]\s+Destination:\s+(.+)")
+_YTDLP_PROC_RE = re.compile(r"^\s*\[(Merger|ExtractAudio)\]", re.IGNORECASE)
+
+
+def _ffmpeg_label(tag: str) -> str:
+    """Человекочитаемый лейбл для ffmpeg-операции по тегу из вывода yt-dlp."""
+    return "конвертация в MP3 (ffmpeg)…" if "audio" in tag else "слияние видео+аудио (ffmpeg)…"
+
+
+def _stream_ytdlp(
+    args:     list[str],
+    on_dest:  "Callable[[str], None] | None" = None,
+    on_dl:    "Callable[[float, int, int, str, str], None] | None" = None,
+    on_proc:  "Callable[[str], None] | None" = None,
+) -> bool:
+    """
+    Единое ядро: запускает yt-dlp с --newline и читает stdout построчно.
+    Колбэки вызываются по типу строки; None-колбэки игнорируются.
+
+      on_dest(filename_stem)
+      on_dl(pct, done_b, total_b, speed, eta)
+      on_proc(tag)   — tag = 'merger' | 'extractaudio'
+    """
+    cmd = [str(YTDLP_BIN), "--newline", "--no-warnings", *args]
+    try:
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, encoding="utf-8", errors="replace",
+        )
+    except Exception as e:
+        log_err(f"Не удалось запустить yt-dlp: {e}")
+        return False
+
+    for raw in proc.stdout:
+        line = raw.rstrip()
+        if on_dest and (dm := _YTDLP_DEST_RE.search(line)):
+            stem = re.sub(r"^\d+\s*[-–]\s*", "", Path(dm.group(1).strip()).stem)[:58]
+            on_dest(stem)
+        elif on_dl and (m := _YTDLP_DL_RE.search(line)):
+            pct     = float(m.group("pct"))
+            total_b = int(float(m.group("size")) * _unit_to_mult(m.group("unit")))
+            done_b  = int(total_b * pct / 100)
+            speed = eta = ""
+            if sm := _YTDLP_SPEED_RE.search(line):
+                speed, eta = sm.group("speed") or "", sm.group("eta") or ""
+            on_dl(pct, done_b, total_b, speed, eta)
+        elif on_proc and (pm := _YTDLP_PROC_RE.search(line)):
+            on_proc(pm.group(1).lower())
+
+    proc.wait()
+    return proc.returncode == 0
+
+
+def _run_ytdlp_with_progress(args: list[str], title: str = "") -> bool:
+    """Последовательный режим: прогресс-бар + лог ffmpeg-шага."""
+    bar        = ProgressBar(title)
+    processing = False
+
+    def on_dest(stem: str) -> None:
+        nonlocal bar, processing
+        bar.finish()
+        bar, processing = ProgressBar(stem), False
+
+    def on_dl(pct: float, done_b: int, total_b: int, speed: str, eta: str) -> None:
+        nonlocal processing
+        processing = False
+        bar.update(pct, done_b, total_b, speed=speed, eta=eta)
+
+    def on_proc(tag: str) -> None:
+        nonlocal processing
+        if not processing:
+            bar.finish()
+            log_info(_ffmpeg_label(tag).capitalize())
+            processing = True
+
+    ok = _stream_ytdlp(args, on_dest=on_dest, on_dl=on_dl, on_proc=on_proc)
+    bar.finish()
+    return ok
+
+
+def _run_ytdlp_with_board(args: list[str], board: MultiProgressBoard, slot: int) -> bool:
+    """Параллельный режим: прогресс и ffmpeg-статус идут в слот дашборда."""
+    return _stream_ytdlp(
+        args,
+        on_dl   = lambda pct, done_b, total_b, speed, eta:
+                      board.update(slot, pct, done_b, total_b, speed=speed, eta=eta),
+        on_proc = lambda tag: board.processing(slot, _ffmpeg_label(tag)),
+    )
 
 
 def _build_args(
@@ -551,7 +863,6 @@ def _build_args(
 ) -> list[str]:
     cmd = [*_ffmpeg_args()]
     if not cfg.fmt_chain:
-        # Аудио-режим: fmt_chain пустой — извлекаем MP3
         cmd += ["--extract-audio", "--audio-format", "mp3", "--audio-quality", "0"]
     else:
         cmd += ["-f", fmt or cfg.fmt_chain[0], "--merge-output-format", "mp4"]
@@ -563,14 +874,15 @@ def _run_with_fallback(
     url:    str,
     tmpl:   str,
     extra:  list[str],
-    silent: bool = False,
+    runner: "Callable[[list[str]], bool]",
 ) -> bool:
+    """Перебирает fmt_chain; передаёт собранные args в runner-колбэк."""
     if not cfg.fmt_chain:
-        return _run_ytdlp(*_build_args(cfg, url, tmpl, extra), silent=silent)
+        return runner(_build_args(cfg, url, tmpl, extra))
     for i, fmt in enumerate(cfg.fmt_chain):
         if i > 0:
-            log_warn(f"Запасной формат {i}: {fmt}")
-        if _run_ytdlp(*_build_args(cfg, url, tmpl, extra, fmt=fmt), silent=silent):
+            log_warn(f"Запасной формат #{i}: {fmt}")
+        if runner(_build_args(cfg, url, tmpl, extra, fmt=fmt)):
             return True
     return False
 
@@ -579,10 +891,24 @@ def _download_entry(
     entry:  PlaylistEntry,
     cfg:    QualityConfig,
     pl_dir: Path,
+    board:  MultiProgressBoard,
+    slot_q: "queue.SimpleQueue[int]",
 ) -> tuple[PlaylistEntry, bool]:
-    tmpl = str(pl_dir / f"{entry.index:03d} - %(title)s.%(ext)s")
-    ok   = _run_with_fallback(cfg, entry.url, tmpl, ["--no-playlist"], silent=True)
-    return entry, ok
+    """Один видеофайл для параллельного режима — рисует прогресс в своём слоте."""
+    slot = slot_q.get()
+    try:
+        board.start(slot, entry.title)
+        tmpl = str(pl_dir / f"{entry.index:03d} - %(title)s.%(ext)s")
+        ok   = _run_with_fallback(
+            cfg, entry.url, tmpl, ["--no-playlist"],
+            runner=lambda args: _run_ytdlp_with_board(args, board, slot),
+        )
+        board.finish(slot, ok)
+        return entry, ok
+    finally:
+        time.sleep(0.4)
+        board.reset(slot)
+        slot_q.put(slot)
 
 
 def download(
@@ -593,51 +919,67 @@ def download(
     pl_selected:  list[PlaylistEntry] | None = None,
     workers:      int = 1,
 ) -> bool:
-    """
-    Одиночное видео / последовательный плейлист → один процесс yt-dlp.
-    workers > 1 с pl_selected → параллельные потоки, по видео на поток.
-    """
+    """Центральная функция загрузки: одиночное видео / плейлист (любой режим)."""
     is_pl = bool(pl_info) and not force_single
 
-    # ── Параллельный режим ──────────────────────────────────────────────────
-    if is_pl and pl_selected and workers > 1:
+    if is_pl and pl_selected:
         pl_dir = DL_DIR / (pl_info.title if pl_info else "playlist")
         pl_dir.mkdir(parents=True, exist_ok=True)
         total  = len(pl_selected)
         failed = 0
-        log_info(f"Параллельная загрузка: {workers} потока(ов), {total} видео…")
-        log_sep()
 
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(_download_entry, e, cfg, pl_dir) for e in pl_selected]
-            for done, future in enumerate(as_completed(futures), 1):
-                entry, ok = future.result()
-                if ok:
-                    log_ok(f"[{done:>3}/{total}]  {entry.title[:55]}")
-                else:
-                    failed += 1
-                    log_err(f"[{done:>3}/{total}]  FAIL: {entry.title[:50]}")
+        # ── Параллельный плейлист ─────────────────────────────────────────
+        if workers > 1:
+            log_info(f"Параллельная загрузка: {workers} потока(ов)  ·  {total} видео")
+            log_sep()
+
+            board  = MultiProgressBoard(workers, total)
+            slot_q: queue.SimpleQueue[int] = queue.SimpleQueue()
+            for i in range(workers):
+                slot_q.put(i)
+
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures  = [pool.submit(_download_entry, e, cfg, pl_dir, board, slot_q)
+                            for e in pl_selected]
+                results  = [f.result() for f in as_completed(futures)]
+
+            board.finalize()
+            log_sep()
+            for entry, ok in sorted(results, key=lambda r: r[0].index):
+                short = entry.title[:52]
+                if ok: log_ok(f"[{entry.index:>3}/{total}]  {short}")
+                else:  log_err(f"[{entry.index:>3}/{total}]  FAIL  {short[:47]}")
+            failed = sum(1 for _, ok in results if not ok)
+
+        # ── Последовательный плейлист ─────────────────────────────────────
+        else:
+            log_info(f"Последовательная загрузка: {total} видео")
+            log_sep()
+            for i, entry in enumerate(pl_selected, 1):
+                short = entry.title[:52]
+                log_info(f"[{i}/{total}]  {short}")
+                tmpl = str(pl_dir / f"{entry.index:03d} - %(title)s.%(ext)s")
+                ok   = _run_with_fallback(
+                    cfg, entry.url, tmpl, ["--no-playlist"],
+                    runner=lambda args, t=short: _run_ytdlp_with_progress(args, t),
+                )
+                if ok: log_ok(f"[{i}/{total}]  готово")
+                else:  failed += 1; log_err(f"[{i}/{total}]  FAIL")
 
         log_sep()
-        log_ok(f"Плейлист завершён — успешно: {total - failed}/{total}")
+        log_ok(f"Плейлист завершён  ·  успешно: {total - failed}/{total}")
         return failed == 0
 
-    # ── Обычный / последовательный режим ───────────────────────────────────
-    if is_pl:
-        tmpl  = str(DL_DIR / "%(playlist_title)s" / "%(playlist_index)s - %(title)s.%(ext)s")
-        extra = ["--ignore-errors"]
-        if pl_selected and pl_info and len(pl_selected) < len(pl_info):
-            extra += ["--playlist-items", _fmt_indices([e.index for e in pl_selected])]
-    else:
-        tmpl  = str(DL_DIR / "%(title)s.%(ext)s")
-        extra = ["--no-playlist"]
-
-    ok = _run_with_fallback(cfg, url, tmpl, extra)
-    if ok:
-        log_ok(f"Готово! → {DL_DIR}")
-    else:
-        log_err("Не удалось скачать. Попробуй: python VolRenDownloader.py --update")
+    # ── Одиночное видео ───────────────────────────────────────────────────
+    tmpl = str(DL_DIR / "%(title)s.%(ext)s")
+    ok   = _run_with_fallback(
+        cfg, url, tmpl, ["--no-playlist"],
+        runner=lambda args: _run_ytdlp_with_progress(args),
+    )
+    if ok: log_ok(f"Готово!  →  {DL_DIR}")
+    else:  log_err("Не удалось скачать.  Попробуй: python VolRenDownloader.py --update")
     return ok
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ОБНОВЛЕНИЕ ЗАВИСИМОСТЕЙ
@@ -669,6 +1011,7 @@ def update_deps() -> None:
     log_sep()
     log_ok("Обновление завершено.")
     input(f"\n{C.GRAY}  Нажми Enter для выхода…{C.RESET}")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  СЕССИЯ
@@ -706,6 +1049,7 @@ class Session:
             f"{C.GREEN}Успешно: {self.success}{C.RESET}  ·  "
             f"{C.RED}Ошибок: {self.failed}{C.RESET}\n"
         )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ГЛАВНЫЙ ЦИКЛ
