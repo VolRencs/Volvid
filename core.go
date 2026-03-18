@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Version    = "3.1.0"
+	Version    = "3.2.0"
 	GithubRepo = "VolRencs/YouTubeDownloader"
 
 	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
@@ -30,7 +30,6 @@ const (
 var (
 	IsWindows      = runtime.GOOS == "windows"
 	Arch           = strings.ToLower(runtime.GOARCH)
-	ScriptDir      string
 	DepsDir        string
 	DlDir          string
 	YtdlpBin       string
@@ -42,17 +41,15 @@ func init() {
 	if err != nil {
 		exe, _ = filepath.Abs(os.Args[0])
 	}
-	ScriptDir = filepath.Dir(exe)
-	DepsDir   = filepath.Join(ScriptDir, "_deps")
-	DlDir     = filepath.Join(ScriptDir, "downloads")
+	base := filepath.Dir(exe)
+	DepsDir = filepath.Join(base, "_deps")
+	DlDir   = filepath.Join(base, "downloads")
 	if IsWindows {
 		YtdlpBin = filepath.Join(DepsDir, "yt-dlp.exe")
 	} else {
 		YtdlpBin = filepath.Join(DepsDir, "yt-dlp")
 	}
 }
-
-// ── Форматирование ────────────────────────────
 
 func FmtBytes(n int64) string {
 	switch {
@@ -91,9 +88,7 @@ func SanitizeDirname(name string) string {
 	return name
 }
 
-// unitToMult преобразует суффикс размера в множитель (KB→1024 и т.д.)
 func unitToMult(unit string) int64 {
-	// Убираем суффиксы B/IB: "KiB"→"K", "MB"→"M", "G"→"G"
 	u := strings.ToUpper(unit)
 	u, _ = strings.CutSuffix(u, "IB")
 	u, _ = strings.CutSuffix(u, "B")
@@ -105,8 +100,6 @@ func unitToMult(unit string) int64 {
 	default:  return 1
 	}
 }
-
-// ── Скачивание файлов ─────────────────────────
 
 type FileProgress struct {
 	Pct    float64
@@ -140,7 +133,6 @@ func DownloadFile(url, dest string, ch chan<- FileProgress) error {
 		nextEmit       = time.Now()
 		speedStr       string
 	)
-
 	emit := func(fin bool, e error) {
 		if ch == nil {
 			return
@@ -185,8 +177,6 @@ func DownloadFile(url, dest string, ch chan<- FileProgress) error {
 	}
 }
 
-// ── Зависимости ───────────────────────────────
-
 type CheckDepsResult struct {
 	YtdlpVer      string
 	FFmpegMissing bool
@@ -222,7 +212,7 @@ func YtdlpURL() string {
 	switch {
 	case IsWindows:
 		return ytdlpBase + "yt-dlp.exe"
-	case Arch == "aarch64" || Arch == "arm64":
+	case Arch == "arm64" || Arch == "aarch64":
 		return ytdlpBase + "yt-dlp_linux_aarch64"
 	default:
 		return ytdlpBase + "yt-dlp_linux"
@@ -286,8 +276,6 @@ func InstallFFmpeg(ch chan<- FileProgress) error {
 	return nil
 }
 
-// ── Плейлист ──────────────────────────────────
-
 type PlaylistEntry struct {
 	Index    int
 	Title    string
@@ -312,7 +300,6 @@ func FetchPlaylistInfo(url string) (*PlaylistInfo, error) {
 	var entries []PlaylistEntry
 	var first map[string]any
 	idx := 0
-
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -420,8 +407,6 @@ func ParseSelection(raw string, maxIdx int) ([]int, error) {
 	return result, nil
 }
 
-// ── Качество ──────────────────────────────────
-
 type QualityConfig struct {
 	Label    string
 	FmtChain []string
@@ -432,8 +417,6 @@ var Qualities = [3]QualityConfig{
 	{"360p", []string{"bestvideo[height<=360]+bestaudio/best[height<=360]", "best[height<=360]", "worst"}},
 	{"MP3", nil},
 }
-
-// ── Парсинг вывода yt-dlp ─────────────────────
 
 var (
 	dlRE    = regexp.MustCompile(`(?i)\[download\]\s+(?P<pct>[\d.]+)%\s+of\s+~?\s*(?P<size>[\d.]+)\s*(?P<unit>[KMGTkmgt]i?[Bb])`)
@@ -455,19 +438,11 @@ type DlUpdate struct {
 	OK     bool
 }
 
-// group возвращает значение именованной группы в результате FindStringSubmatch.
 func group(re *regexp.Regexp, m []string, name string) string {
 	if i := re.SubexpIndex(name); i >= 0 && i < len(m) {
 		return m[i]
 	}
 	return ""
-}
-
-func ffmpegLabel(tag string) string {
-	if strings.Contains(strings.ToLower(tag), "audio") {
-		return "конвертация в MP3 (ffmpeg)…"
-	}
-	return "слияние видео+аудио (ffmpeg)…"
 }
 
 func ffmpegArgs() []string {
@@ -509,7 +484,11 @@ func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
 				Pct: pct, DoneB: int64(float64(totalB) * pct / 100), TotalB: totalB, Speed: speed}
 		case procRE.MatchString(line):
 			m := procRE.FindStringSubmatch(line)
-			ch <- DlUpdate{Slot: slot, Type: "proc", Label: ffmpegLabel(m[1])}
+			label := "слияние видео+аудио (ffmpeg)…"
+			if strings.Contains(strings.ToLower(m[1]), "audio") {
+				label = "конвертация в MP3 (ffmpeg)…"
+			}
+			ch <- DlUpdate{Slot: slot, Type: "proc", Label: label}
 		}
 	}
 	cmd.Wait()
@@ -545,8 +524,6 @@ func runWithFallback(slot int, cfg QualityConfig, url, tmpl string, extra []stri
 	return false
 }
 
-// ── Загрузка ──────────────────────────────────
-
 func StartDownload(cfg QualityConfig, url string, forceSingle bool,
 	plInfo *PlaylistInfo, plSelected []PlaylistEntry, workers int, ch chan<- DlUpdate) {
 
@@ -572,7 +549,6 @@ func StartDownload(cfg QualityConfig, url string, forceSingle bool,
 		for i := range workers {
 			slotCh <- i
 		}
-
 		for _, e := range plSelected {
 			wg.Add(1)
 			go func() {
@@ -592,17 +568,23 @@ func StartDownload(cfg QualityConfig, url string, forceSingle bool,
 	}()
 }
 
-// ── Автообновление (только Windows .exe) ──────
-
 type UpdateInfo struct {
 	Latest string
 	DlURL  string
 }
 
-func CheckUpdate() *UpdateInfo {
-	if !IsWindows {
-		return nil
+func assetName() string {
+	switch {
+	case IsWindows:
+		return "VolRenDownloader.exe"
+	case Arch == "arm64" || Arch == "aarch64":
+		return "VolRenDownloader_linux_arm64"
+	default:
+		return "VolRenDownloader_linux_amd64"
 	}
+}
+
+func CheckUpdate() *UpdateInfo {
 	client := &http.Client{Timeout: 8 * time.Second}
 	req, _ := http.NewRequest("GET",
 		"https://api.github.com/repos/"+GithubRepo+"/releases/latest", nil)
@@ -621,9 +603,11 @@ func CheckUpdate() *UpdateInfo {
 	if latest == "" || !versionGT(latest, Version) {
 		return nil
 	}
-	for _, a := range data["assets"].([]any) {
+	assets, _ := data["assets"].([]any)
+	want := assetName()
+	for _, a := range assets {
 		if asset, ok := a.(map[string]any); ok {
-			if strings.HasSuffix(strVal(asset, "name", ""), ".exe") {
+			if strVal(asset, "name", "") == want {
 				return &UpdateInfo{Latest: latest, DlURL: strVal(asset, "browser_download_url", "")}
 			}
 		}
@@ -634,24 +618,17 @@ func CheckUpdate() *UpdateInfo {
 func ApplyUpdate(info *UpdateInfo, ch chan<- FileProgress) error {
 	exe, _ := os.Executable()
 	dest, _ := filepath.Abs(exe)
-	tmp := strings.TrimSuffix(dest, ".exe") + ".new.exe"
+	var tmp string
+	if IsWindows {
+		tmp = strings.TrimSuffix(dest, ".exe") + ".new.exe"
+	} else {
+		tmp = dest + ".new"
+	}
 	if err := DownloadFile(info.DlURL, tmp, ch); err != nil {
 		os.Remove(tmp)
 		return err
 	}
-	bat := strings.TrimSuffix(dest, ".exe") + ".update.bat"
-	content := fmt.Sprintf(
-		"@echo off\r\ntimeout /t 2 /nobreak >nul\r\n:retry\r\n"+
-			"move /y \"%s\" \"%s\" >nul 2>&1\r\n"+
-			"if errorlevel 1 ( timeout /t 2 /nobreak >nul & goto retry )\r\n"+
-			"del \"%%~f0\"\r\n", tmp, dest)
-	if err := os.WriteFile(bat, []byte(content), 0o644); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	cmd := exec.Command("cmd", "/c", bat)
-	cmd.SysProcAttr = detachedProcess()
-	return cmd.Start()
+	return applyUpdatePlatform(tmp, dest)
 }
 
 func versionGT(a, b string) bool {
@@ -671,8 +648,6 @@ func versionGT(a, b string) bool {
 	return false
 }
 
-// ── Сессия ────────────────────────────────────
-
 type SessionItem struct{ Label, URL string; OK bool }
 
 type Session struct {
@@ -689,8 +664,6 @@ func (s *Session) Record(label, url string, ok bool) {
 	}
 	s.Items = append(s.Items, SessionItem{label, url, ok})
 }
-
-// ── Регулярки URL ─────────────────────────────
 
 var (
 	YtRE              = regexp.MustCompile(`(?i)(youtube\.com/(watch\?.*v=|shorts/|live/|playlist\?list=)|youtu\.be/)[\w\-]+`)
