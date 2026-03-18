@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Version    = "3.2.0"
+	Version    = "3.3.0"
 	GithubRepo = "VolRencs/YouTubeDownloader"
 
 	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
@@ -41,9 +41,9 @@ func init() {
 	if err != nil {
 		exe, _ = filepath.Abs(os.Args[0])
 	}
-	base := filepath.Dir(exe)
-	DepsDir = filepath.Join(base, "_deps")
-	DlDir   = filepath.Join(base, "downloads")
+	base    := filepath.Dir(exe)
+	DepsDir  = filepath.Join(base, "_deps")
+	DlDir    = filepath.Join(base, "downloads")
 	if IsWindows {
 		YtdlpBin = filepath.Join(DepsDir, "yt-dlp.exe")
 	} else {
@@ -426,9 +426,22 @@ var (
 	numRE   = regexp.MustCompile(`^\d+\s*[-–]\s*`)
 )
 
+type DlEventType uint8
+
+const (
+	EvStart    DlEventType = iota
+	EvDest
+	EvProgress
+	EvProc
+	EvDone
+	EvReset
+	EvFallback
+	EvClosed
+)
+
 type DlUpdate struct {
+	Type   DlEventType
 	Slot   int
-	Type   string
 	Stem   string
 	Label  string
 	Pct    float64
@@ -470,7 +483,7 @@ func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
 			if r := []rune(stem); len(r) > 58 {
 				stem = string(r[:58])
 			}
-			ch <- DlUpdate{Slot: slot, Type: "dest", Stem: stem}
+			ch <- DlUpdate{Type: EvDest, Slot: slot, Stem: stem}
 		case dlRE.MatchString(line):
 			m := dlRE.FindStringSubmatch(line)
 			pct, _ := strconv.ParseFloat(group(dlRE, m, "pct"), 64)
@@ -480,7 +493,7 @@ func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
 			if sm := speedRE.FindStringSubmatch(line); sm != nil {
 				speed = group(speedRE, sm, "speed")
 			}
-			ch <- DlUpdate{Slot: slot, Type: "dl",
+			ch <- DlUpdate{Type: EvProgress, Slot: slot,
 				Pct: pct, DoneB: int64(float64(totalB) * pct / 100), TotalB: totalB, Speed: speed}
 		case procRE.MatchString(line):
 			m := procRE.FindStringSubmatch(line)
@@ -488,7 +501,7 @@ func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
 			if strings.Contains(strings.ToLower(m[1]), "audio") {
 				label = "конвертация в MP3 (ffmpeg)…"
 			}
-			ch <- DlUpdate{Slot: slot, Type: "proc", Label: label}
+			ch <- DlUpdate{Type: EvProc, Slot: slot, Label: label}
 		}
 	}
 	cmd.Wait()
@@ -515,7 +528,8 @@ func runWithFallback(slot int, cfg QualityConfig, url, tmpl string, extra []stri
 	}
 	for i, fmt_ := range cfg.FmtChain {
 		if i > 0 {
-			ch <- DlUpdate{Slot: slot, Type: "fallback", Label: fmt.Sprintf("Запасной формат #%d: %s", i, fmt_)}
+			ch <- DlUpdate{Type: EvFallback, Slot: slot,
+				Label: fmt.Sprintf("Запасной формат #%d: %s", i, fmt_)}
 		}
 		if streamYtdlp(slot, buildArgs(cfg, url, tmpl, fmt_, extra), ch) {
 			return true
@@ -525,17 +539,17 @@ func runWithFallback(slot int, cfg QualityConfig, url, tmpl string, extra []stri
 }
 
 func StartDownload(cfg QualityConfig, url string, forceSingle bool,
-	plInfo *PlaylistInfo, plSelected []PlaylistEntry, workers int, ch chan<- DlUpdate) {
+	plInfo *PlaylistInfo, entries []PlaylistEntry, workers int, ch chan<- DlUpdate) {
 
 	go func() {
 		var wg sync.WaitGroup
 		defer func() { wg.Wait(); close(ch) }()
 
-		if plInfo == nil || forceSingle || len(plSelected) == 0 {
+		if plInfo == nil || forceSingle || len(entries) == 0 {
 			ok := runWithFallback(0, cfg, url,
 				filepath.Join(DlDir, "%(title)s.%(ext)s"),
 				[]string{"--no-playlist"}, ch)
-			ch <- DlUpdate{Type: "done", OK: ok}
+			ch <- DlUpdate{Type: EvDone, OK: ok}
 			return
 		}
 
@@ -549,20 +563,20 @@ func StartDownload(cfg QualityConfig, url string, forceSingle bool,
 		for i := range workers {
 			slotCh <- i
 		}
-		for _, e := range plSelected {
+		for _, e := range entries {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				slot := <-slotCh
 				defer func() {
 					time.Sleep(300 * time.Millisecond)
-					ch <- DlUpdate{Slot: slot, Type: "reset"}
+					ch <- DlUpdate{Type: EvReset, Slot: slot}
 					slotCh <- slot
 				}()
-				ch <- DlUpdate{Slot: slot, Type: "start", Stem: e.Title}
+				ch <- DlUpdate{Type: EvStart, Slot: slot, Stem: e.Title}
 				tmpl := filepath.Join(plDir, fmt.Sprintf("%03d - %%(title)s.%%(ext)s", e.Index))
 				ok := runWithFallback(slot, cfg, e.URL, tmpl, []string{"--no-playlist"}, ch)
-				ch <- DlUpdate{Slot: slot, Type: "done", OK: ok}
+				ch <- DlUpdate{Type: EvDone, Slot: slot, OK: ok}
 			}()
 		}
 	}()

@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -38,9 +40,9 @@ const (
 	boardBarW = 20
 )
 
-func renderBar(pct float64, w int, color string) string {
+func renderBar(pct float64, w int) string {
 	filled := min(int(float64(w)*pct/100), w)
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(strings.Repeat("█", filled)) +
+	return sOk.Render(strings.Repeat("█", filled)) +
 		sGray.Render(strings.Repeat("░", w-filled))
 }
 
@@ -121,7 +123,7 @@ type model struct {
 
 	cfg         QualityConfig
 	url         string
-	plSelected2 []PlaylistEntry
+	dlEntries   []PlaylistEntry
 	forceSingle bool
 	workers     int
 	dlCh        <-chan DlUpdate
@@ -174,26 +176,15 @@ func cmdStream(ch <-chan FileProgress, isUpdate bool) tea.Cmd {
 	}
 }
 
-func launchDep(install func(chan<- FileProgress) error) (<-chan FileProgress, tea.Cmd) {
+func launch(fn func(chan<- FileProgress) error, isUpdate bool) (<-chan FileProgress, tea.Cmd) {
 	ch := make(chan FileProgress, 16)
 	go func() {
-		if err := install(ch); err != nil {
+		if err := fn(ch); err != nil {
 			ch <- FileProgress{Done: true, Err: err}
 		}
 		close(ch)
 	}()
-	return ch, cmdStream(ch, false)
-}
-
-func launchUpdate(info *UpdateInfo) (<-chan FileProgress, tea.Cmd) {
-	ch := make(chan FileProgress, 16)
-	go func() {
-		if err := ApplyUpdate(info, ch); err != nil {
-			ch <- FileProgress{Done: true, Err: err}
-		}
-		close(ch)
-	}()
-	return ch, cmdStream(ch, true)
+	return ch, cmdStream(ch, isUpdate)
 }
 
 func cmdFetchPlaylist(url string) tea.Cmd {
@@ -207,7 +198,7 @@ func cmdListenDl(ch <-chan DlUpdate) tea.Cmd {
 	return func() tea.Msg {
 		u, ok := <-ch
 		if !ok {
-			return msgDlUpdate{DlUpdate{Type: "closed"}}
+			return msgDlUpdate{DlUpdate{Type: EvClosed}}
 		}
 		return msgDlUpdate{u}
 	}
@@ -219,8 +210,6 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		// reserved for future responsive layout
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	case msgUpdateChecked:
@@ -228,8 +217,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.gotoChecks()
 		}
 		m.updateInfo = msg.info
-		m.scr = scrUpdateReady
-		m.menuCursor = 1
+		m.scr, m.menuCursor = scrUpdateReady, 1
 	case msgDepProgress:
 		m.depProgress = msg.p
 		return m, cmdStream(m.depCh, m.scr == scrUpdateDl)
@@ -262,9 +250,8 @@ func (m model) gotoChecks() (tea.Model, tea.Cmd) {
 	r := DetectDeps()
 	if r.YtdlpVer == "" {
 		m.depLabel, m.depProgress, m.scr = "yt-dlp", FileProgress{}, scrDepDl
-		ch, cmd := launchDep(InstallYtDlp)
-		m.depCh = ch
-		return m, cmd
+		m.depCh, _ = launch(InstallYtDlp, false)
+		return m, cmdStream(m.depCh, false)
 	}
 	if IsWindows && r.FFmpegMissing {
 		m.scr, m.menuCursor = scrFFmpegAsk, 0
@@ -285,33 +272,33 @@ func (m model) afterDepInstall() (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleDlUpdate(u DlUpdate) (tea.Model, tea.Cmd) {
-	if u.Type == "closed" {
+	if u.Type == EvClosed {
 		return m, nil
 	}
 	switch u.Type {
-	case "start":
+	case EvStart:
 		if u.Slot < len(m.slots) {
 			m.slots[u.Slot] = slotState{title: trunc(u.Stem, 50)}
 		}
-	case "dest":
+	case EvDest:
 		if u.Slot < len(m.slots) {
 			m.slots[u.Slot].title = trunc(u.Stem, 50)
 		}
-	case "dl":
+	case EvProgress:
 		if u.Slot < len(m.slots) {
 			s := &m.slots[u.Slot]
 			s.pct, s.doneB, s.totalB, s.speed, s.proc = u.Pct, u.DoneB, u.TotalB, u.Speed, false
 		}
-	case "proc":
+	case EvProc:
 		if u.Slot < len(m.slots) {
 			s := &m.slots[u.Slot]
 			s.proc, s.label = true, u.Label
 		}
-	case "reset":
+	case EvReset:
 		if u.Slot < len(m.slots) {
 			m.slots[u.Slot] = slotState{}
 		}
-	case "done":
+	case EvDone:
 		if u.OK {
 			m.dlDone++
 		} else {
@@ -359,9 +346,11 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.menuCursor == 0 {
 				m.scr, m.depProgress = scrUpdateDl, FileProgress{}
-				ch, cmd := launchUpdate(m.updateInfo)
-				m.depCh = ch
-				return m, cmd
+				info := m.updateInfo
+				m.depCh, _ = launch(func(ch chan<- FileProgress) error {
+					return ApplyUpdate(info, ch)
+				}, true)
+				return m, cmdStream(m.depCh, true)
 			}
 			return m.gotoChecks()
 		case "n", "н", "esc", "q":
@@ -383,9 +372,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.menuCursor == 0 {
 				m.depLabel, m.depProgress, m.scr = "ffmpeg", FileProgress{}, scrDepDl
-				ch, cmd := launchDep(InstallFFmpeg)
-				m.depCh = ch
-				return m, cmd
+				m.depCh, _ = launch(InstallFFmpeg, false)
+				return m, cmdStream(m.depCh, false)
 			}
 			m.scr = scrURL
 		case "n", "н", "q":
@@ -406,7 +394,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.urlErr = ""
 			m.url = url
-			m.plInfo, m.plSelected2 = nil, nil
+			m.plInfo, m.dlEntries = nil, nil
 			m.forceSingle, m.workers = false, 1
 			if IsPlaylistURL(url) {
 				if VideoInPlaylistRE.MatchString(url) {
@@ -443,7 +431,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handlePlaylistKey(msg)
 
 	case scrWorkers:
-		maxW := min(len(m.plSelected2), 5)
+		maxW := min(len(m.dlEntries), 5)
 		switch k {
 		case "up", "k":
 			if m.menuCursor > 0 { m.menuCursor-- }
@@ -559,7 +547,7 @@ func (m model) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				sel = append(sel, e)
 			}
 		}
-		m.plSelected2 = sel
+		m.dlEntries = sel
 		m.menuCursor = 0
 		if len(sel) >= 2 {
 			m.scr = scrWorkers
@@ -574,16 +562,16 @@ func (m model) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) startDownload() (tea.Model, tea.Cmd) {
 	m.cfg = Qualities[m.menuCursor]
 	workers := max(m.workers, 1)
-	numSlots := 1
-	if len(m.plSelected2) > 0 {
-		numSlots = workers
+	numSlots := workers
+	if len(m.dlEntries) == 0 {
+		numSlots = 1
 	}
 	m.slots = make([]slotState, numSlots)
-	m.dlDone, m.dlFailed, m.dlTotal = 0, 0, len(m.plSelected2)
+	m.dlDone, m.dlFailed, m.dlTotal = 0, 0, len(m.dlEntries)
 	ch := make(chan DlUpdate, 256)
 	m.dlCh = ch
 	m.scr = scrDownload
-	StartDownload(m.cfg, m.url, m.forceSingle, m.plInfo, m.plSelected2, workers, ch)
+	StartDownload(m.cfg, m.url, m.forceSingle, m.plInfo, m.dlEntries, workers, ch)
 	return m, cmdListenDl(ch)
 }
 
@@ -592,7 +580,7 @@ func (m model) resetForNext() (tea.Model, tea.Cmd) {
 	m.url = ""
 	m.urlInput.SetValue("")
 	m.urlInput.Focus()
-	m.plInfo, m.plSelected2 = nil, nil
+	m.plInfo, m.dlEntries = nil, nil
 	m.plSelected = map[int]bool{}
 	m.forceSingle, m.workers = false, 1
 	m.slots = nil
@@ -701,7 +689,7 @@ func viewMenu(title string, opts []string, sel int) string {
 
 func viewProgress(p FileProgress) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("  [%s]  %.1f%%\n", renderBar(p.Pct, barW, "10"), p.Pct))
+	b.WriteString(fmt.Sprintf("  [%s]  %.1f%%\n", renderBar(p.Pct, barW), p.Pct))
 	if p.DoneB > 0 {
 		size := FmtBytes(p.DoneB)
 		if p.TotalB > 0 {
@@ -756,9 +744,9 @@ func viewPlaylist(m model) string {
 
 func viewWorkers(m model) string {
 	var b strings.Builder
-	maxW := min(len(m.plSelected2), 5)
+	maxW := min(len(m.dlEntries), 5)
 	b.WriteString(sBold.Render("  Параллельная загрузка:") +
-		sGray.Render(fmt.Sprintf("  (%d видео)", len(m.plSelected2))) + "\n\n")
+		sGray.Render(fmt.Sprintf("  (%d видео)", len(m.dlEntries))) + "\n\n")
 	for i := range maxW {
 		desc := fmt.Sprintf("%d потока(ов)", i+1)
 		if i == 0 {
@@ -820,7 +808,7 @@ func viewDownload(m model) string {
 			case s.title != "":
 				b.WriteString(fmt.Sprintf("  %s  %s\n       %s  [%s]  %s  %s\n",
 					badge, sBold.Render(s.title),
-					sTitle.Render("↓"), renderBar(s.pct, boardBarW, "10"),
+					sTitle.Render("↓"), renderBar(s.pct, boardBarW),
 					sBold.Render(fmt.Sprintf("%5.1f%%", s.pct)),
 					fmtSize(s.doneB, s.totalB)+fmtSpeed(s.speed)))
 			default:
@@ -843,7 +831,7 @@ func viewDownload(m model) string {
 			b.WriteString(sWarn.Render("  ⚙  ") + sGray.Render(s.label) + "\n")
 		} else {
 			b.WriteString(fmt.Sprintf("  %s  [%s]  %s  %s\n",
-				sTitle.Render("↓"), renderBar(s.pct, barW, "10"),
+				sTitle.Render("↓"), renderBar(s.pct, barW),
 				sBold.Render(fmt.Sprintf("%5.1f%%", s.pct)),
 				fmtSize(s.doneB, s.totalB)+fmtSpeed(s.speed)))
 		}
@@ -920,7 +908,16 @@ func main() {
 		fmt.Println("Готово.")
 		return
 	}
+
 	p := tea.NewProgram(newModel(), tea.WithAltScreen())
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		p.Quit()
+	}()
+
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
