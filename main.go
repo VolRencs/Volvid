@@ -30,9 +30,9 @@ var (
 		BorderForeground(lipgloss.Color("8")).
 		Padding(0, 1)
 	sInputFocus = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("14")).
-		Padding(0, 1)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("14")).
+			Padding(0, 1)
 )
 
 const (
@@ -65,8 +65,11 @@ type (
 	msgUpdateChecked   struct{ info *UpdateInfo }
 	msgDepProgress     struct{ p FileProgress }
 	msgDepDone         struct{ err error; isUpdate bool }
-	msgPlaylistFetched struct{ info *PlaylistInfo; err error }
-	msgDlUpdate        struct{ u DlUpdate }
+	msgPlaylistFetched struct {
+		info *PlaylistInfo
+		err  error
+	}
+	msgDlUpdate struct{ u DlUpdate }
 )
 
 type screen int
@@ -250,20 +253,15 @@ func (m model) gotoChecks() (tea.Model, tea.Cmd) {
 	r := DetectDeps()
 	if r.YtdlpVer == "" {
 		m.depLabel, m.depProgress, m.scr = "yt-dlp", FileProgress{}, scrDepDl
-		m.depCh, _ = launch(InstallYtDlp, false)
-		return m, cmdStream(m.depCh, false)
+		var cmd tea.Cmd
+		m.depCh, cmd = launch(InstallYtDlp, false)
+		return m, cmd
 	}
-	if IsWindows && r.FFmpegMissing {
-		m.scr, m.menuCursor = scrFFmpegAsk, 0
-		return m, nil
-	}
-	m.scr = scrURL
-	return m, nil
+	return m.afterDepInstall()
 }
 
 func (m model) afterDepInstall() (tea.Model, tea.Cmd) {
-	r := DetectDeps()
-	if m.depLabel == "yt-dlp" && IsWindows && r.FFmpegMissing {
+	if IsWindows && DetectDeps().FFmpegMissing {
 		m.scr, m.menuCursor = scrFFmpegAsk, 0
 		return m, nil
 	}
@@ -294,6 +292,11 @@ func (m model) handleDlUpdate(u DlUpdate) (tea.Model, tea.Cmd) {
 			s := &m.slots[u.Slot]
 			s.proc, s.label = true, u.Label
 		}
+	case EvFallback:
+		if u.Slot < len(m.slots) {
+			m.slots[u.Slot].label = u.Label
+			m.slots[u.Slot].proc = true
+		}
 	case EvReset:
 		if u.Slot < len(m.slots) {
 			m.slots[u.Slot] = slotState{}
@@ -312,20 +315,16 @@ func (m model) handleDlUpdate(u DlUpdate) (tea.Model, tea.Cmd) {
 			if m.dlTotal == 0 {
 				m.singleOK = u.OK
 			}
-			m.recordSession(m.dlFailed == 0 || (m.dlTotal == 0 && u.OK))
+			label := m.cfg.Label
+			if m.dlTotal > 0 {
+				label += fmt.Sprintf(" [плейлист/%d]", m.dlTotal)
+			}
+			m.session.Record(label, m.url, m.dlFailed == 0 || (m.dlTotal == 0 && u.OK))
 			m.scr, m.menuCursor = scrSummary, 0
 			return m, nil
 		}
 	}
 	return m, cmdListenDl(m.dlCh)
-}
-
-func (m *model) recordSession(ok bool) {
-	label := m.cfg.Label
-	if m.dlTotal > 0 {
-		label += fmt.Sprintf(" [плейлист/%d]", m.dlTotal)
-	}
-	m.session.Record(label, m.url, ok)
 }
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -434,9 +433,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		maxW := min(len(m.dlEntries), 5)
 		switch k {
 		case "up", "k":
-			if m.menuCursor > 0 { m.menuCursor-- }
+			if m.menuCursor > 0 {
+				m.menuCursor--
+			}
 		case "down", "j":
-			if m.menuCursor < maxW-1 { m.menuCursor++ }
+			if m.menuCursor < maxW-1 {
+				m.menuCursor++
+			}
 		case "enter":
 			m.workers = m.menuCursor + 1
 			m.scr, m.menuCursor = scrQuality, 0
@@ -445,15 +448,22 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case scrQuality:
 		switch k {
 		case "up", "k":
-			if m.menuCursor > 0 { m.menuCursor-- }
+			if m.menuCursor > 0 {
+				m.menuCursor--
+			}
 		case "down", "j":
-			if m.menuCursor < 2 { m.menuCursor++ }
+			if m.menuCursor < 2 {
+				m.menuCursor++
+			}
 		case "1":
-			m.menuCursor = 0; return m.startDownload()
+			m.menuCursor = 0
+			return m.startDownload()
 		case "2":
-			m.menuCursor = 1; return m.startDownload()
+			m.menuCursor = 1
+			return m.startDownload()
 		case "3":
-			m.menuCursor = 2; return m.startDownload()
+			m.menuCursor = 2
+			return m.startDownload()
 		case "enter":
 			return m.startDownload()
 		}
@@ -465,7 +475,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "down", "j", "n", "н":
 			m.menuCursor = 1
 		case "enter":
-			if m.menuCursor == 0 { return m.resetForNext() }
+			if m.menuCursor == 0 {
+				return m.resetForNext()
+			}
 			return m, tea.Quit
 		case "q":
 			return m, tea.Quit
@@ -869,7 +881,7 @@ func viewSummary(m model) string {
 	} else {
 		b.WriteString(sOk.Render("  ✔  ") +
 			sBold.Render(fmt.Sprintf("Плейлист завершён · успешно: %d/%d",
-				m.dlTotal-m.dlFailed, m.dlTotal)) + "\n\n")
+				m.dlDone, m.dlTotal)) + "\n\n")
 	}
 	if len(m.session.Items) > 0 {
 		sep := sGray.Render("  " + strings.Repeat("─", 54))
@@ -896,14 +908,16 @@ func viewSummary(m model) string {
 func main() {
 	if slices.Contains(os.Args[1:], "--update") {
 		fmt.Println("Обновляю yt-dlp…")
-		ch := make(chan FileProgress, 16)
-		go func() { InstallYtDlp(ch); close(ch) }()
-		for range ch {}
+		if err := InstallYtDlp(nil); err != nil {
+			fmt.Fprintln(os.Stderr, "Ошибка yt-dlp:", err)
+			os.Exit(1)
+		}
 		if IsWindows {
 			fmt.Println("Обновляю ffmpeg…")
-			ch := make(chan FileProgress, 16)
-			go func() { InstallFFmpeg(ch); close(ch) }()
-			for range ch {}
+			if err := InstallFFmpeg(nil); err != nil {
+				fmt.Fprintln(os.Stderr, "Ошибка ffmpeg:", err)
+				os.Exit(1)
+			}
 		}
 		fmt.Println("Готово.")
 		return
@@ -922,4 +936,5 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	signal.Stop(sigs)
 }
