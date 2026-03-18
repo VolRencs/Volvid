@@ -8,15 +8,16 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
-	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 func init() {
-	k := syscall.NewLazyDLL("kernel32.dll")
-	h, _, _ := k.NewProc("GetStdHandle").Call(uintptr(^uint32(10) + 1))
+	stdout := windows.Handle(os.Stdout.Fd())
 	var mode uint32
-	k.NewProc("GetConsoleMode").Call(h, uintptr(unsafe.Pointer(&mode)))
-	k.NewProc("SetConsoleMode").Call(h, uintptr(mode|0x0004))
+	if err := windows.GetConsoleMode(stdout, &mode); err == nil {
+		windows.SetConsoleMode(stdout, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+	}
 }
 
 func detachedProcess() *syscall.SysProcAttr {

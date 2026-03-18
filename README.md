@@ -5,7 +5,7 @@
 <pre>
 ╔══════════════════════════════════════════════════════╗
 ║         VolRen  Video / Audio  Downloader            ║
-║         версия 3.4.0  •  powered by yt-dlp           ║
+║         версия 3.5.0  •  powered by yt-dlp           ║
 ╚══════════════════════════════════════════════════════╝
 </pre>
 
@@ -14,7 +14,7 @@
 ![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-3.4.0-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-3.5.0-orange?style=flat-square)
 
 </div>
 
@@ -22,7 +22,7 @@
 
 ## О проекте
 
-**VolRen Downloader** — загрузчик видео и аудио с YouTube с интерактивным TUI на базе [Bubble Tea](https://github.com/charmbracelet/bubbletea).  
+**VolRen Downloader** — загрузчик видео и аудио с YouTube с интерактивным TUI на базе [Bubble Tea v2](https://charm.land/bubbletea/v2).  
 Написан на Go — собирается в один бинарник без рантайма. `yt-dlp` и `ffmpeg` скачиваются автоматически в папку `_deps/` при первом запуске.
 
 ---
@@ -83,7 +83,7 @@ go build -ldflags="-s -w" -o VolRenDownloader .
 Если обновление найдено — TUI предложит выбор:
 
 ```
-  ✔  Доступна новая версия: 3.1.0  (текущая: 3.0.0)
+  ✔  Доступна новая версия: 3.4.0  (текущая: 3.3.0)
 
 ▶ Да
   Нет
@@ -91,7 +91,10 @@ go build -ldflags="-s -w" -o VolRenDownloader .
   [↑↓] выбрать  [Enter] / [y/n]
 ```
 
-При согласии скачивает новый `.exe`, запускает `.bat`-скрипт, который заменяет файл после выхода. Папки `_deps/` и `downloads/` не затрагиваются.
+**Windows** — скачивает новый `.exe`, запускает `.bat`-скрипт, который заменяет файл после выхода программы.  
+**Linux** — заменяет бинарник атомарно через `rename(2)`. Просто перезапустите программу после обновления.  
+
+Папки `_deps/` и `downloads/` не затрагиваются.
 
 ---
 
@@ -108,6 +111,8 @@ go build -ldflags="-s -w" -o VolRenDownloader .
 | `/` | Ввести выбор вручную (диапазоны) |
 | `y` / `д` | Быстрое «Да» |
 | `n` / `н` | Быстрое «Нет» |
+| `Ctrl+V` / `Cmd+V` | Вставить ссылку (Windows) |
+| `Shift+Insert` | Вставить ссылку (Linux) |
 | `Ctrl+C` | Выход |
 
 ---
@@ -231,11 +236,11 @@ https://www.youtube.com/watch?v=XXX&list=XXXXX   ← видео внутри п�
 
 ## Платформенная поддержка
 
-| ОС | Архитектура | yt-dlp | ffmpeg |
-|---|---|---|---|
-| Windows | x64 | `yt-dlp.exe` (GitHub) | BtbN build (GitHub, ~80 МБ) |
-| Linux | x86_64 | `yt-dlp_linux` (GitHub) | системный (`apt`/`dnf`/`pacman`) |
-| Linux | arm64 / aarch64 | `yt-dlp_linux_aarch64` (GitHub) | системный |
+| ОС | Архитектура | yt-dlp | ffmpeg | Автообновление |
+|---|---|---|---|---|
+| Windows | x64 | `yt-dlp.exe` (GitHub) | BtbN build (GitHub, ~80 МБ) | ✔ bat-скрипт |
+| Linux | x86_64 | `yt-dlp_linux` (GitHub) | системный (`apt`/`dnf`/`pacman`) | ✔ atomic rename |
+| Linux | arm64 | `yt-dlp_linux_aarch64` (GitHub) | системный | ✔ atomic rename |
 
 ---
 
@@ -245,14 +250,14 @@ https://www.youtube.com/watch?v=XXX&list=XXXXX   ← видео внутри п�
 # Зависимости
 go mod tidy
 
-# Linux
+# Linux amd64
 go build -ldflags="-s -w" -o VolRenDownloader .
-
-# Windows
-GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o VolRenDownloader.exe .
 
 # Linux arm64
 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o VolRenDownloader_arm64 .
+
+# Windows
+GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o VolRenDownloader.exe .
 ```
 
 **Структура кода:**
@@ -260,9 +265,9 @@ GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o VolRenDownloader_arm64 .
 | Файл | Назначение |
 |---|---|
 | `core.go` | Логика: загрузка, плейлисты, зависимости, автообновление |
-| `main.go` | Bubble Tea TUI: модель, экраны, клавиши, отображение |
-| `platform_windows.go` | Windows: ANSI-консоль, DETACHED_PROCESS для .bat |
-| `platform_unix.go` | Linux/macOS: Setsid для фонового процесса |
+| `main.go` | Bubble Tea v2 TUI: модель, экраны, клавиши, отображение |
+| `platform_windows.go` | Windows: ANSI-консоль через `golang.org/x/sys/windows`, DETACHED_PROCESS |
+| `platform_unix.go` | Linux: Setsid, атомарная замена бинарника |
 
 ---
 
@@ -289,21 +294,16 @@ sudo pacman -S ffmpeg        # Arch
 **Плейлист не загружается**  
 Плейлист должен быть публичным — приватные и закрытые недоступны без авторизации.
 
-**Автообновление не срабатывает**  
-Автообновление работает только для `.exe` на Windows. На Linux обнови бинарник вручную из [releases](../../releases/latest).
-
 ---
 
 ## Зависимости и лицензии
 
-| Компонент | Лицензия | Источник |
-|---|---|---|
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Unlicense | github.com/yt-dlp/yt-dlp |
-| [ffmpeg](https://ffmpeg.org) | LGPL 2.1+ / GPL 2+ | ffmpeg.org |
-| [BtbN FFmpeg Builds](https://github.com/BtbN/FFmpeg-Builds) | GPL | github.com/BtbN |
-| [Bubble Tea](https://github.com/charmbracelet/bubbletea) | MIT | github.com/charmbracelet |
-| [Bubbles](https://github.com/charmbracelet/bubbles) | MIT | github.com/charmbracelet |
-| [Lip Gloss](https://github.com/charmbracelet/lipgloss) | MIT | github.com/charmbracelet |
+| Компонент | Версия | Лицензия | Источник |
+|---|---|---|---|
+| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | latest | Unlicense | github.com/yt-dlp/yt-dlp |
+| [ffmpeg](https://ffmpeg.org) | latest | LGPL 2.1+ / GPL 2+ | ffmpeg.org |
+| [BtbN FFmpeg Builds](https://github.com/BtbN/FFmpeg-Builds) | latest | GPL | github.com/BtbN |
+| [Bubble Tea](https://charm.land/bubbletea/v2) | v2 | MIT | charm.land/bubbletea/v2 |
 
 Исходный код — **MIT License**.
 

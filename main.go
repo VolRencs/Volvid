@@ -8,9 +8,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 var (
@@ -144,13 +144,12 @@ func newModel() model {
 	ti := textinput.New()
 	ti.Placeholder = "https://youtu.be/..."
 	ti.CharLimit = 300
-	ti.Width = 58
-	ti.Focus()
+	ti.SetWidth(58)
 
 	pi := textinput.New()
 	pi.Placeholder = "1-5, 2,4,7 или а (все)"
 	pi.CharLimit = 100
-	pi.Width = 40
+	pi.SetWidth(40)
 
 	return model{
 		scr:        scrUpdateCheck,
@@ -208,12 +207,12 @@ func cmdListenDl(ch <-chan DlUpdate) tea.Cmd {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(cmdCheckUpdate(), textinput.Blink)
+	return cmdCheckUpdate()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	case msgUpdateChecked:
 		if msg.info == nil {
@@ -246,6 +245,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case msgDlUpdate:
 		return m.handleDlUpdate(msg.u)
 	}
+
+	switch {
+	case m.scr == scrURL:
+		var cmd tea.Cmd
+		m.urlInput, cmd = m.urlInput.Update(msg)
+		return m, cmd
+	case m.scr == scrPlaylist && m.plInputMode:
+		var cmd tea.Cmd
+		m.plInput, cmd = m.plInput.Update(msg)
+		return m, cmd
+	}
 	return m, nil
 }
 
@@ -266,7 +276,7 @@ func (m model) afterDepInstall() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.scr = scrURL
-	return m, nil
+	return m, tea.Batch(m.urlInput.Focus(), textinput.Blink)
 }
 
 func (m model) handleDlUpdate(u DlUpdate) (tea.Model, tea.Cmd) {
@@ -327,7 +337,7 @@ func (m model) handleDlUpdate(u DlUpdate) (tea.Model, tea.Cmd) {
 	return m, cmdListenDl(m.dlCh)
 }
 
-func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 	if k == "ctrl+c" {
 		return m, tea.Quit
@@ -346,10 +356,11 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.menuCursor == 0 {
 				m.scr, m.depProgress = scrUpdateDl, FileProgress{}
 				info := m.updateInfo
-				m.depCh, _ = launch(func(ch chan<- FileProgress) error {
+				var cmd tea.Cmd
+				m.depCh, cmd = launch(func(ch chan<- FileProgress) error {
 					return ApplyUpdate(info, ch)
 				}, true)
-				return m, cmdStream(m.depCh, true)
+				return m, cmd
 			}
 			return m.gotoChecks()
 		case "n", "н", "esc", "q":
@@ -371,12 +382,15 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.menuCursor == 0 {
 				m.depLabel, m.depProgress, m.scr = "ffmpeg", FileProgress{}, scrDepDl
-				m.depCh, _ = launch(InstallFFmpeg, false)
-				return m, cmdStream(m.depCh, false)
+				var cmd tea.Cmd
+				m.depCh, cmd = launch(InstallFFmpeg, false)
+				return m, cmd
 			}
 			m.scr = scrURL
+			return m, tea.Batch(m.urlInput.Focus(), textinput.Blink)
 		case "n", "н", "q":
 			m.scr = scrURL
+			return m, tea.Batch(m.urlInput.Focus(), textinput.Blink)
 		}
 
 	case scrURL:
@@ -486,7 +500,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) handlePlaylistKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 	if m.plInputMode {
 		switch k {
@@ -527,7 +541,7 @@ func (m model) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.plPage++
 			}
 		}
-	case " ":
+	case "space":
 		idx := m.plInfo.Entries[m.plCursor].Index
 		if m.plSelected[idx] {
 			delete(m.plSelected, idx)
@@ -546,8 +560,7 @@ func (m model) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		m.plInputMode = true
 		m.plInput.SetValue("")
-		m.plInput.Focus()
-		return m, textinput.Blink
+		return m, tea.Batch(m.plInput.Focus(), textinput.Blink)
 	case "enter":
 		if len(m.plSelected) == 0 {
 			m.plInputErr = "Выбери хотя бы одно видео."
@@ -591,17 +604,16 @@ func (m model) resetForNext() (tea.Model, tea.Cmd) {
 	m.scr = scrURL
 	m.url = ""
 	m.urlInput.SetValue("")
-	m.urlInput.Focus()
 	m.plInfo, m.dlEntries = nil, nil
 	m.plSelected = map[int]bool{}
 	m.forceSingle, m.workers = false, 1
 	m.slots = nil
 	m.dlDone, m.dlFailed, m.dlTotal = 0, 0, 0
 	m.menuCursor = 0
-	return m, textinput.Blink
+	return m, tea.Batch(m.urlInput.Focus(), textinput.Blink)
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
 	var b strings.Builder
 	b.WriteString(sBox.Render(
 		sTitle.Render("VolRen  Video / Audio  Downloader")+"\n"+
@@ -684,7 +696,11 @@ func (m model) View() string {
 	case scrSummary:
 		b.WriteString(viewSummary(m))
 	}
-	return b.String()
+
+	v := tea.NewView(b.String())
+	v.AltScreen = true
+	v.WindowTitle = "VolRen Downloader"
+	return v
 }
 
 func viewMenu(title string, opts []string, sel int) string {
@@ -923,7 +939,7 @@ func main() {
 		return
 	}
 
-	p := tea.NewProgram(newModel(), tea.WithAltScreen())
+	p := tea.NewProgram(newModel())
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)

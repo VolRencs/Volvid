@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	Version    = "3.4.0"
+	Version    = "3.5.0"
 	GithubRepo = "VolRencs/YouTubeDownloader"
 
 	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
