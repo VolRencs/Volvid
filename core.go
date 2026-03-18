@@ -22,11 +22,12 @@ import (
 )
 
 const (
-	Version    = "3.5.0"
+	Version    = "3.6.0"
 	GithubRepo = "VolRencs/YouTubeDownloader"
 
-	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-	ytdlpBase    = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
+	ffmpegWinURL  = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+	ytdlpBase     = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
+	githubAPIURL  = "https://api.github.com/repos/" + GithubRepo + "/releases/latest"
 )
 
 var (
@@ -134,9 +135,11 @@ type dlWriter struct {
 func (w *dlWriter) Write(p []byte) (int, error) {
 	n, err := w.w.Write(p)
 	w.done += int64(n)
-	if w.ch != nil && time.Now().After(w.nextEmit) {
-		w.emit(false, nil)
-		w.nextEmit = time.Now().Add(100 * time.Millisecond)
+	if w.ch != nil {
+		if now := time.Now(); now.After(w.nextEmit) {
+			w.emit(false, nil)
+			w.nextEmit = now.Add(100 * time.Millisecond)
+		}
 	}
 	return n, err
 }
@@ -337,7 +340,6 @@ func FetchPlaylistInfo(url string) (*PlaylistInfo, error) {
 
 	var entries []PlaylistEntry
 	var first map[string]any
-	idx := 0
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	for sc.Scan() {
@@ -356,19 +358,19 @@ func FetchPlaylistInfo(url string) (*PlaylistInfo, error) {
 				continue
 			}
 		}
-		idx++
-		dur := 0
-		if d, ok := e["duration"].(float64); ok {
-			dur = int(d)
-		}
+		n := len(entries) + 1
+		dur, _ := e["duration"].(float64)
 		entries = append(entries, PlaylistEntry{
-			Index:    idx,
-			Title:    strVal(e, "title", strVal(e, "id", fmt.Sprintf("Видео %d", idx))),
+			Index:    n,
+			Title:    strVal(e, "title", strVal(e, "id", fmt.Sprintf("Видео %d", n))),
 			URL:      videoURL,
-			Duration: dur,
+			Duration: int(dur),
 		})
 	}
 	cmd.Wait()
+	if err := sc.Err(); err != nil && len(entries) == 0 {
+		return nil, fmt.Errorf("ошибка чтения вывода yt-dlp: %w", err)
+	}
 
 	if len(entries) == 0 {
 		return nil, fmt.Errorf("плейлист пуст или недоступен")
@@ -399,7 +401,8 @@ func ParseSelection(raw string, maxIdx int) ([]int, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("выбор не может быть пустым")
 	}
-	if slices.Contains([]string{"а", "a", "all", "все", "всё", "*"}, raw) {
+	switch raw {
+	case "а", "a", "all", "все", "всё", "*":
 		r := make([]int, maxIdx)
 		for i := range r {
 			r[i] = i + 1
@@ -473,8 +476,7 @@ const (
 type DlUpdate struct {
 	Type   DlEventType
 	Slot   int
-	Stem   string
-	Label  string
+	Text   string
 	Pct    float64
 	DoneB  int64
 	TotalB int64
@@ -497,7 +499,7 @@ func ffmpegArgs() []string {
 }
 
 func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
-	cmd := exec.Command(YtdlpBin, append([]string{"--newline", "--no-warnings"}, args...)...)
+	cmd := exec.Command(YtdlpBin, slices.Concat([]string{"--newline", "--no-warnings"}, args)...)
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		return false
@@ -511,6 +513,7 @@ func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
 	pw.Close()
 
 	sc := bufio.NewScanner(pr)
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	for sc.Scan() {
 		line := sc.Text()
 		if m := destRE.FindStringSubmatch(line); m != nil {
@@ -519,7 +522,7 @@ func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
 			if r := []rune(stem); len(r) > 58 {
 				stem = string(r[:58])
 			}
-			ch <- DlUpdate{Type: EvDest, Slot: slot, Stem: stem}
+			ch <- DlUpdate{Type: EvDest, Slot: slot, Text: stem}
 		} else if m := dlRE.FindStringSubmatch(line); m != nil {
 			pct, _ := strconv.ParseFloat(group(dlRE, m, "pct"), 64)
 			size, _ := strconv.ParseFloat(group(dlRE, m, "size"), 64)
@@ -537,7 +540,7 @@ func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
 			if strings.Contains(strings.ToLower(m[1]), "audio") {
 				label = "конвертация в MP3 (ffmpeg)…"
 			}
-			ch <- DlUpdate{Type: EvProc, Slot: slot, Label: label}
+			ch <- DlUpdate{Type: EvProc, Slot: slot, Text: label}
 		}
 	}
 	pr.Close()
@@ -564,7 +567,7 @@ func runWithFallback(slot int, cfg QualityConfig, url, tmpl string, extra []stri
 	}
 	for i, format := range cfg.FmtChain {
 		if i > 0 {
-			ch <- DlUpdate{Type: EvFallback, Slot: slot, Label: fmt.Sprintf("Запасной формат #%d: %s", i, format)}
+			ch <- DlUpdate{Type: EvFallback, Slot: slot, Text: fmt.Sprintf("Запасной формат #%d: %s", i, format)}
 		}
 		if streamYtdlp(slot, buildArgs(cfg, url, tmpl, format, extra), ch) {
 			return true
@@ -608,7 +611,7 @@ func StartDownload(cfg QualityConfig, url string, forceSingle bool,
 					ch <- DlUpdate{Type: EvReset, Slot: slot}
 					slotCh <- slot
 				}()
-				ch <- DlUpdate{Type: EvStart, Slot: slot, Stem: e.Title}
+				ch <- DlUpdate{Type: EvStart, Slot: slot, Text: e.Title}
 				tmpl := filepath.Join(plDir, fmt.Sprintf("%03d - %%(title)s.%%(ext)s", e.Index))
 				ok := runWithFallback(slot, cfg, e.URL, tmpl, []string{"--no-playlist"}, ch)
 				ch <- DlUpdate{Type: EvDone, Slot: slot, OK: ok}
@@ -634,8 +637,7 @@ func assetName() string {
 }
 
 func CheckUpdate() *UpdateInfo {
-	req, err := http.NewRequest(http.MethodGet,
-		"https://api.github.com/repos/"+GithubRepo+"/releases/latest", nil)
+	req, err := http.NewRequest(http.MethodGet, githubAPIURL, nil)
 	if err != nil {
 		return nil
 	}
@@ -685,7 +687,6 @@ func ApplyUpdate(info *UpdateInfo, ch chan<- FileProgress) error {
 		tmp = dest + ".new"
 	}
 	if err := DownloadFile(info.DlURL, tmp, ch); err != nil {
-		os.Remove(tmp)
 		return err
 	}
 	return applyUpdatePlatform(tmp, dest)

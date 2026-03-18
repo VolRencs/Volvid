@@ -3,10 +3,10 @@
 <div align="center">
 
 <pre>
-╔══════════════════════════════════════════════════════╗
-║         VolRen  Video / Audio  Downloader            ║
-║         версия 3.5.0  •  powered by yt-dlp           ║
-╚══════════════════════════════════════════════════════╝
+    ╭────────────────────────────────────────────╮
+    │    VolRen  ·  Video / Audio  Downloader    │
+    │    версия 3.6.0  •  powered by yt-dlp      │
+    ╰────────────────────────────────────────────╯
 </pre>
 
 **Скачивает видео и аудио с YouTube — один бинарник, никаких зависимостей.**
@@ -14,7 +14,7 @@
 ![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-3.5.0-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-3.6.0-orange?style=flat-square)
 
 </div>
 
