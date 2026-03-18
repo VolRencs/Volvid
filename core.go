@@ -12,34 +12,24 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-// ─────────────────────────────────────────────
-//  Константы
-// ─────────────────────────────────────────────
-
 const (
-	Version    = "3.0.0"
+	Version    = "3.1.0"
 	GithubRepo = "VolRencs/YouTubeDownloader"
 
-	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/" +
-		"ffmpeg-master-latest-win64-gpl.zip"
-	ytdlpBase = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
+	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+	ytdlpBase    = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
 )
 
-// ─────────────────────────────────────────────
-//  Пути и окружение
-// ─────────────────────────────────────────────
-
 var (
-	IsWindows = runtime.GOOS == "windows"
-	Arch      = strings.ToLower(runtime.GOARCH)
-
+	IsWindows      = runtime.GOOS == "windows"
+	Arch           = strings.ToLower(runtime.GOARCH)
 	ScriptDir      string
 	DepsDir        string
 	DlDir          string
@@ -62,9 +52,7 @@ func init() {
 	}
 }
 
-// ─────────────────────────────────────────────
-//  Форматирование
-// ─────────────────────────────────────────────
+// ── Форматирование ────────────────────────────
 
 func FmtBytes(n int64) string {
 	switch {
@@ -90,35 +78,10 @@ func FmtDuration(secs int) string {
 	return fmt.Sprintf("%d:%02d", m, s)
 }
 
-func FmtIndices(idx []int) string {
-	if len(idx) == 0 {
-		return ""
-	}
-	var parts []string
-	start, end := idx[0], idx[0]
-	for _, n := range idx[1:] {
-		if n == end+1 {
-			end = n
-		} else {
-			parts = append(parts, rangeStr(start, end))
-			start, end = n, n
-		}
-	}
-	return strings.Join(append(parts, rangeStr(start, end)), ",")
-}
-
-func rangeStr(a, b int) string {
-	if a == b {
-		return strconv.Itoa(a)
-	}
-	return fmt.Sprintf("%d-%d", a, b)
-}
-
 var invalidFilenameRE = regexp.MustCompile(`[<>:"/\\|?*]`)
 
 func SanitizeDirname(name string) string {
-	name = strings.TrimRight(
-		invalidFilenameRE.ReplaceAllString(strings.TrimSpace(name), "_"), " .")
+	name = strings.TrimRight(invalidFilenameRE.ReplaceAllString(strings.TrimSpace(name), "_"), " .")
 	if r := []rune(name); len(r) > 180 {
 		name = string(r[:180])
 	}
@@ -128,8 +91,13 @@ func SanitizeDirname(name string) string {
 	return name
 }
 
+// unitToMult преобразует суффикс размера в множитель (KB→1024 и т.д.)
 func unitToMult(unit string) int64 {
-	switch strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(unit, "IB", ""), "B", "")) {
+	// Убираем суффиксы B/IB: "KiB"→"K", "MB"→"M", "G"→"G"
+	u := strings.ToUpper(unit)
+	u, _ = strings.CutSuffix(u, "IB")
+	u, _ = strings.CutSuffix(u, "B")
+	switch u {
 	case "K": return 1_024
 	case "M": return 1_048_576
 	case "G": return 1_073_741_824
@@ -138,9 +106,7 @@ func unitToMult(unit string) int64 {
 	}
 }
 
-// ─────────────────────────────────────────────
-//  Скачивание файлов
-// ─────────────────────────────────────────────
+// ── Скачивание файлов ─────────────────────────
 
 type FileProgress struct {
 	Pct    float64
@@ -162,7 +128,6 @@ func DownloadFile(url, dest string, ch chan<- FileProgress) error {
 	defer resp.Body.Close()
 
 	total := max(resp.ContentLength, 0)
-
 	f, err := os.Create(dest)
 	if err != nil {
 		return err
@@ -170,11 +135,10 @@ func DownloadFile(url, dest string, ch chan<- FileProgress) error {
 	defer f.Close()
 
 	var (
-		done     int64
-		lastDone int64
-		lastTime = time.Now()
-		nextEmit = time.Now()
-		speedStr string
+		done, lastDone int64
+		lastTime       = time.Now()
+		nextEmit       = time.Now()
+		speedStr       string
 	)
 
 	emit := func(fin bool, e error) {
@@ -221,15 +185,11 @@ func DownloadFile(url, dest string, ch chan<- FileProgress) error {
 	}
 }
 
-// ─────────────────────────────────────────────
-//  Зависимости
-// ─────────────────────────────────────────────
+// ── Зависимости ───────────────────────────────
 
 type CheckDepsResult struct {
 	YtdlpVer      string
-	FFmpegPath    string
-	FFmpegMissing bool // Windows: нет в _deps
-	FFmpegNoPath  bool // Linux: нет в PATH
+	FFmpegMissing bool
 }
 
 func DetectDeps() CheckDepsResult {
@@ -237,18 +197,12 @@ func DetectDeps() CheckDepsResult {
 	if IsWindows {
 		bin := filepath.Join(DepsDir, "ffmpeg.exe")
 		if _, err := os.Stat(bin); err == nil {
-			r.FFmpegPath = bin
 			FFmpegResolved = bin
 		} else {
 			r.FFmpegMissing = true
 		}
-	} else {
-		if path, err := exec.LookPath("ffmpeg"); err == nil {
-			r.FFmpegPath = path
-			FFmpegResolved = path
-		} else {
-			r.FFmpegNoPath = true
-		}
+	} else if path, err := exec.LookPath("ffmpeg"); err == nil {
+		FFmpegResolved = path
 	}
 	return r
 }
@@ -265,13 +219,14 @@ func YtdlpVersion() string {
 }
 
 func YtdlpURL() string {
-	if IsWindows {
+	switch {
+	case IsWindows:
 		return ytdlpBase + "yt-dlp.exe"
-	}
-	if Arch == "aarch64" || Arch == "arm64" {
+	case Arch == "aarch64" || Arch == "arm64":
 		return ytdlpBase + "yt-dlp_linux_aarch64"
+	default:
+		return ytdlpBase + "yt-dlp_linux"
 	}
-	return ytdlpBase + "yt-dlp_linux"
 }
 
 func InstallYtDlp(ch chan<- FileProgress) error {
@@ -310,11 +265,11 @@ func InstallFFmpeg(ch chan<- FileProgress) error {
 	}
 	defer zr.Close()
 
-	targets := map[string]bool{"ffmpeg.exe": true, "ffprobe.exe": true}
+	targets := []string{"ffmpeg.exe", "ffprobe.exe"}
 	found := false
 	for _, zf := range zr.File {
 		name := filepath.Base(zf.Name)
-		if !targets[name] {
+		if !slices.Contains(targets, name) {
 			continue
 		}
 		rc, _ := zf.Open()
@@ -331,9 +286,7 @@ func InstallFFmpeg(ch chan<- FileProgress) error {
 	return nil
 }
 
-// ─────────────────────────────────────────────
-//  Плейлист
-// ─────────────────────────────────────────────
+// ── Плейлист ──────────────────────────────────
 
 type PlaylistEntry struct {
 	Index    int
@@ -417,23 +370,19 @@ var (
 	singleRE = regexp.MustCompile(`^\d+$`)
 )
 
-var allKeywords = map[string]bool{
-	"а": true, "a": true, "all": true, "все": true, "всё": true, "*": true,
-}
-
 func ParseSelection(raw string, maxIdx int) ([]int, error) {
 	raw = strings.ToLower(strings.TrimSpace(raw))
 	if raw == "" {
 		return nil, fmt.Errorf("выбор не может быть пустым")
 	}
-	if allKeywords[raw] {
+	if slices.Contains([]string{"а", "a", "all", "все", "всё", "*"}, raw) {
 		r := make([]int, maxIdx)
 		for i := range r {
 			r[i] = i + 1
 		}
 		return r, nil
 	}
-	seen := map[int]bool{}
+	seen := make(map[int]bool, maxIdx)
 	for _, part := range sepRE.Split(raw, -1) {
 		if part == "" {
 			continue
@@ -467,17 +416,15 @@ func ParseSelection(raw string, maxIdx int) ([]int, error) {
 	for n := range seen {
 		result = append(result, n)
 	}
-	sort.Ints(result)
+	slices.Sort(result)
 	return result, nil
 }
 
-// ─────────────────────────────────────────────
-//  Качество
-// ─────────────────────────────────────────────
+// ── Качество ──────────────────────────────────
 
 type QualityConfig struct {
 	Label    string
-	FmtChain []string // nil = MP3
+	FmtChain []string
 }
 
 var Qualities = [3]QualityConfig{
@@ -486,9 +433,7 @@ var Qualities = [3]QualityConfig{
 	{"MP3", nil},
 }
 
-// ─────────────────────────────────────────────
-//  Парсинг вывода yt-dlp
-// ─────────────────────────────────────────────
+// ── Парсинг вывода yt-dlp ─────────────────────
 
 var (
 	dlRE    = regexp.MustCompile(`(?i)\[download\]\s+(?P<pct>[\d.]+)%\s+of\s+~?\s*(?P<size>[\d.]+)\s*(?P<unit>[KMGTkmgt]i?[Bb])`)
@@ -500,7 +445,7 @@ var (
 
 type DlUpdate struct {
 	Slot   int
-	Type   string // start | dest | dl | proc | done | reset | fallback
+	Type   string
 	Stem   string
 	Label  string
 	Pct    float64
@@ -508,14 +453,12 @@ type DlUpdate struct {
 	TotalB int64
 	Speed  string
 	OK     bool
-	Entry  PlaylistEntry
 }
 
-func namedGroup(re *regexp.Regexp, m []string, name string) string {
-	for i, g := range re.SubexpNames() {
-		if g == name && i < len(m) {
-			return m[i]
-		}
+// group возвращает значение именованной группы в результате FindStringSubmatch.
+func group(re *regexp.Regexp, m []string, name string) string {
+	if i := re.SubexpIndex(name); i >= 0 && i < len(m) {
+		return m[i]
 	}
 	return ""
 }
@@ -548,20 +491,19 @@ func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
 		case destRE.MatchString(line):
 			m := destRE.FindStringSubmatch(line)
 			stem := strings.TrimSpace(m[1])
-			stem = strings.TrimSuffix(stem, filepath.Ext(stem))
-			stem = numRE.ReplaceAllString(filepath.Base(stem), "")
+			stem = numRE.ReplaceAllString(filepath.Base(strings.TrimSuffix(stem, filepath.Ext(stem))), "")
 			if r := []rune(stem); len(r) > 58 {
 				stem = string(r[:58])
 			}
 			ch <- DlUpdate{Slot: slot, Type: "dest", Stem: stem}
 		case dlRE.MatchString(line):
 			m := dlRE.FindStringSubmatch(line)
-			pct, _ := strconv.ParseFloat(namedGroup(dlRE, m, "pct"), 64)
-			size, _ := strconv.ParseFloat(namedGroup(dlRE, m, "size"), 64)
-			totalB := int64(size * float64(unitToMult(namedGroup(dlRE, m, "unit"))))
+			pct, _ := strconv.ParseFloat(group(dlRE, m, "pct"), 64)
+			size, _ := strconv.ParseFloat(group(dlRE, m, "size"), 64)
+			totalB := int64(size * float64(unitToMult(group(dlRE, m, "unit"))))
 			speed := ""
 			if sm := speedRE.FindStringSubmatch(line); sm != nil {
-				speed = namedGroup(speedRE, sm, "speed")
+				speed = group(speedRE, sm, "speed")
 			}
 			ch <- DlUpdate{Slot: slot, Type: "dl",
 				Pct: pct, DoneB: int64(float64(totalB) * pct / 100), TotalB: totalB, Speed: speed}
@@ -575,8 +517,7 @@ func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
 }
 
 func buildArgs(cfg QualityConfig, url, tmpl, fmt_ string, extra []string) []string {
-	var args []string
-	args = append(args, ffmpegArgs()...)
+	args := ffmpegArgs()
 	if len(cfg.FmtChain) == 0 {
 		args = append(args, "--extract-audio", "--audio-format", "mp3", "--audio-quality", "0")
 	} else {
@@ -586,9 +527,7 @@ func buildArgs(cfg QualityConfig, url, tmpl, fmt_ string, extra []string) []stri
 		}
 		args = append(args, "-f", f, "--merge-output-format", "mp4")
 	}
-	args = append(args, "-o", tmpl, "--windows-filenames")
-	args = append(args, extra...)
-	return append(args, url)
+	return append(append(args, "-o", tmpl, "--windows-filenames"), append(extra, url)...)
 }
 
 func runWithFallback(slot int, cfg QualityConfig, url, tmpl string, extra []string, ch chan<- DlUpdate) bool {
@@ -597,8 +536,7 @@ func runWithFallback(slot int, cfg QualityConfig, url, tmpl string, extra []stri
 	}
 	for i, fmt_ := range cfg.FmtChain {
 		if i > 0 {
-			ch <- DlUpdate{Slot: slot, Type: "fallback",
-				Label: fmt.Sprintf("Запасной формат #%d: %s", i, fmt_)}
+			ch <- DlUpdate{Slot: slot, Type: "fallback", Label: fmt.Sprintf("Запасной формат #%d: %s", i, fmt_)}
 		}
 		if streamYtdlp(slot, buildArgs(cfg, url, tmpl, fmt_, extra), ch) {
 			return true
@@ -607,21 +545,14 @@ func runWithFallback(slot int, cfg QualityConfig, url, tmpl string, extra []stri
 	return false
 }
 
-// ─────────────────────────────────────────────
-//  Загрузка
-// ─────────────────────────────────────────────
+// ── Загрузка ──────────────────────────────────
 
-// StartDownload запускает загрузку в фоне.
-// ch закрывается гарантированно после ALL горутин (WaitGroup).
 func StartDownload(cfg QualityConfig, url string, forceSingle bool,
 	plInfo *PlaylistInfo, plSelected []PlaylistEntry, workers int, ch chan<- DlUpdate) {
 
 	go func() {
 		var wg sync.WaitGroup
-		defer func() {
-			wg.Wait()
-			close(ch)
-		}()
+		defer func() { wg.Wait(); close(ch) }()
 
 		if plInfo == nil || forceSingle || len(plSelected) == 0 {
 			ok := runWithFallback(0, cfg, url,
@@ -642,8 +573,7 @@ func StartDownload(cfg QualityConfig, url string, forceSingle bool,
 			slotCh <- i
 		}
 
-		for _, entry := range plSelected {
-			e := entry
+		for _, e := range plSelected {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -656,31 +586,23 @@ func StartDownload(cfg QualityConfig, url string, forceSingle bool,
 				ch <- DlUpdate{Slot: slot, Type: "start", Stem: e.Title}
 				tmpl := filepath.Join(plDir, fmt.Sprintf("%03d - %%(title)s.%%(ext)s", e.Index))
 				ok := runWithFallback(slot, cfg, e.URL, tmpl, []string{"--no-playlist"}, ch)
-				ch <- DlUpdate{Slot: slot, Type: "done", OK: ok, Entry: e}
+				ch <- DlUpdate{Slot: slot, Type: "done", OK: ok}
 			}()
 		}
 	}()
 }
 
-// ─────────────────────────────────────────────
-//  Автообновление — только Windows .exe
-// ─────────────────────────────────────────────
+// ── Автообновление (только Windows .exe) ──────
 
 type UpdateInfo struct {
 	Latest string
 	DlURL  string
 }
 
-// CheckUpdate проверяет GitHub и возвращает UpdateInfo только если:
-// - запущены на Windows как .exe
-// - версия на GitHub новее текущей
-// - в релизе есть .exe ассет
 func CheckUpdate() *UpdateInfo {
-	// Автообновление только для Windows .exe
 	if !IsWindows {
 		return nil
 	}
-
 	client := &http.Client{Timeout: 8 * time.Second}
 	req, _ := http.NewRequest("GET",
 		"https://api.github.com/repos/"+GithubRepo+"/releases/latest", nil)
@@ -699,15 +621,10 @@ func CheckUpdate() *UpdateInfo {
 	if latest == "" || !versionGT(latest, Version) {
 		return nil
 	}
-	assets, _ := data["assets"].([]any)
-	for _, a := range assets {
+	for _, a := range data["assets"].([]any) {
 		if asset, ok := a.(map[string]any); ok {
-			name := strVal(asset, "name", "")
-			if strings.HasSuffix(name, ".exe") {
-				return &UpdateInfo{
-					Latest: latest,
-					DlURL:  strVal(asset, "browser_download_url", ""),
-				}
+			if strings.HasSuffix(strVal(asset, "name", ""), ".exe") {
+				return &UpdateInfo{Latest: latest, DlURL: strVal(asset, "browser_download_url", "")}
 			}
 		}
 	}
@@ -738,41 +655,25 @@ func ApplyUpdate(info *UpdateInfo, ch chan<- FileProgress) error {
 }
 
 func versionGT(a, b string) bool {
-	av, bv := splitVer(a), splitVer(b)
+	parse := func(s string) [3]int {
+		var v [3]int
+		for i, p := range strings.SplitN(s, ".", 3) {
+			v[i], _ = strconv.Atoi(p)
+		}
+		return v
+	}
+	av, bv := parse(a), parse(b)
 	for i := range 3 {
-		ai, bi := getIdx(av, i), getIdx(bv, i)
-		if ai != bi {
-			return ai > bi
+		if av[i] != bv[i] {
+			return av[i] > bv[i]
 		}
 	}
 	return false
 }
 
-func splitVer(s string) []int {
-	parts := strings.Split(s, ".")
-	r := make([]int, len(parts))
-	for i, p := range parts {
-		r[i], _ = strconv.Atoi(p)
-	}
-	return r
-}
+// ── Сессия ────────────────────────────────────
 
-func getIdx(s []int, i int) int {
-	if i < len(s) {
-		return s[i]
-	}
-	return 0
-}
-
-// ─────────────────────────────────────────────
-//  Сессия
-// ─────────────────────────────────────────────
-
-type SessionItem struct {
-	Label string
-	URL   string
-	OK    bool
-}
+type SessionItem struct{ Label, URL string; OK bool }
 
 type Session struct {
 	Success int
@@ -789,9 +690,7 @@ func (s *Session) Record(label, url string, ok bool) {
 	s.Items = append(s.Items, SessionItem{label, url, ok})
 }
 
-// ─────────────────────────────────────────────
-//  Регулярки URL
-// ─────────────────────────────────────────────
+// ── Регулярки URL ─────────────────────────────
 
 var (
 	YtRE              = regexp.MustCompile(`(?i)(youtube\.com/(watch\?.*v=|shorts/|live/|playlist\?list=)|youtu\.be/)[\w\-]+`)
