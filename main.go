@@ -52,7 +52,6 @@ var (
 	keyEnter   = key.NewBinding(key.WithKeys("enter"),     key.WithHelp("enter", "выбрать"))
 	keyQuit    = key.NewBinding(key.WithKeys("ctrl+c"),    key.WithHelp("ctrl+c", "выход"))
 	keyUpdDeps = key.NewBinding(key.WithKeys("ctrl+u"),    key.WithHelp("ctrl+u", "обновить зависимости"))
-	keyBack    = key.NewBinding(key.WithKeys("esc", "q"),  key.WithHelp("esc", "назад"))
 	keySpace   = key.NewBinding(key.WithKeys("space"),      key.WithHelp("пробел", "выбрать"))
 	keyAll     = key.NewBinding(key.WithKeys("a", "а"),    key.WithHelp("a", "все"))
 	keySlash   = key.NewBinding(key.WithKeys("/"),         key.WithHelp("/", "ввод номеров"))
@@ -700,10 +699,10 @@ func (m model) renderBody() string {
 			b.WriteString(sOk.Render("  ✔  Зависимости обновлены") + "\n\n")
 			b.WriteString("  " + sGray.Render("yt-dlp  ") + sOk.Render(m.ytdlpVer) + "\n")
 			if m.ffmpegVer != "" { b.WriteString("  " + sGray.Render("ffmpeg  ") + sOk.Render(m.ffmpegVer) + "\n") }
-			b.WriteString(m.hint(keyEnter, keyBack))
+			b.WriteString(m.hint(keyEnter))
 		} else if m.depErr != "" {
 			b.WriteString(sErr.Render("  ✘  Ошибка: ")+sDim.Render(m.depErr)+"\n")
-			b.WriteString(m.hint(keyEnter, keyBack))
+			b.WriteString(m.hint(keyEnter))
 		} else {
 			b.WriteString(viewDlProgress(m, "Обновление зависимостей…"))
 		}
