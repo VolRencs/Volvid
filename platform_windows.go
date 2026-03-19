@@ -16,7 +16,7 @@ func init() {
 	stdout := windows.Handle(os.Stdout.Fd())
 	var mode uint32
 	if err := windows.GetConsoleMode(stdout, &mode); err == nil {
-		windows.SetConsoleMode(stdout, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+		_ = windows.SetConsoleMode(stdout, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING)
 	}
 }
 
@@ -39,14 +39,14 @@ func applyUpdatePlatform(tmp, dest string) error {
 	)
 	if err := os.WriteFile(bat, []byte(content), 0o644); err != nil {
 		os.Remove(tmp)
-		return err
+		return fmt.Errorf("создание bat-скрипта: %w", err)
 	}
 	cmd := exec.Command("cmd", "/c", bat)
 	cmd.SysProcAttr = detachedProcess()
 	if err := cmd.Start(); err != nil {
 		os.Remove(tmp)
 		os.Remove(bat)
-		return err
+		return fmt.Errorf("запуск bat-скрипта: %w", err)
 	}
 	return nil
 }
