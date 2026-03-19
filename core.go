@@ -28,6 +28,8 @@ const (
 	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ytdlpBase    = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
 	githubAPIURL = "https://api.github.com/repos/" + GithubRepo + "/releases/latest"
+
+	slotResetDelay = 300 * time.Millisecond
 )
 
 var (
@@ -256,13 +258,9 @@ func FFmpegVersion() string {
 			return ""
 		}
 	}
-	out, err := exec.Command(bin, "-version").Output()
-	if err != nil {
-		cmd := exec.Command(bin, "-version")
-		out, err = cmd.CombinedOutput()
-		if err != nil && len(out) == 0 {
-			return ""
-		}
+	out, _ := exec.Command(bin, "-version").CombinedOutput()
+	if len(out) == 0 {
+		return ""
 	}
 	line := strings.SplitN(string(out), "\n", 2)[0]
 	fields := strings.Fields(line)
@@ -696,7 +694,7 @@ func StartDownload(
 		plDir := filepath.Join(DlDir, SanitizeDirname(plInfo.Title))
 		if err := os.MkdirAll(plDir, 0o755); err != nil {
 			plDir = filepath.Join(DlDir, "playlist")
-			os.MkdirAll(plDir, 0o755) //nolint:errcheck
+			os.MkdirAll(plDir, 0o755)
 		}
 
 		slotCh := make(chan int, workers)
@@ -705,18 +703,17 @@ func StartDownload(
 		}
 		for _, e := range entries {
 			wg.Add(1)
-			entry := e
 			go func() {
 				defer wg.Done()
 				slot := <-slotCh
 				defer func() {
-					time.Sleep(300 * time.Millisecond)
+					time.Sleep(slotResetDelay)
 					ch <- DlUpdate{Type: EvReset, Slot: slot}
 					slotCh <- slot
 				}()
-				ch <- DlUpdate{Type: EvStart, Slot: slot, Text: entry.Title}
-				tmpl := filepath.Join(plDir, fmt.Sprintf("%03d - %%(title)s.%%(ext)s", entry.Index))
-				ok := runWithFallback(slot, cfg, entry.URL, tmpl, []string{"--no-playlist"}, ch)
+				ch <- DlUpdate{Type: EvStart, Slot: slot, Text: e.Title}
+				tmpl := filepath.Join(plDir, fmt.Sprintf("%03d - %%(title)s.%%(ext)s", e.Index))
+				ok := runWithFallback(slot, cfg, e.URL, tmpl, []string{"--no-playlist"}, ch)
 				ch <- DlUpdate{Type: EvDone, Slot: slot, OK: ok}
 			}()
 		}
