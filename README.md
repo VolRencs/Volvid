@@ -6,7 +6,7 @@
 ![youtube downloader screenshot](assets/youtubedownloader.png)
 
 
-**Скачивает видео и аудио с YouTube в один бинарник с TUI-интерфейсом.**
+**Скачивает видео и аудио с YouTube с TUI-интерфейсом.**
 
 ![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
