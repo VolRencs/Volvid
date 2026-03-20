@@ -6,7 +6,7 @@
 ![youtube downloader screenshot](assets/youtubedownloader.png)
 
 
-**Скачивает видео и аудио с YouTube с TUI-интерфейсом.**
+**Скачивайте видео и аудио с YouTube при помощь TUI-интерфейса!**
 
 ![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
