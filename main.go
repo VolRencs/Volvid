@@ -21,28 +21,28 @@ import (
 )
 
 var (
-	cCyan   = lipgloss.Color("14")
-	cGreen  = lipgloss.Color("10")
-	cRed    = lipgloss.Color("9")
-	cYellow = lipgloss.Color("11")
-	cGray   = lipgloss.Color("8")
-	cDim    = lipgloss.Color("240")
-	cWhite  = lipgloss.Color("15")
+	cPrimary = lipgloss.Color("12")
+	cBlue    = lipgloss.Color("12")
+	cRed     = lipgloss.Color("9")
+	cYellow  = lipgloss.Color("11")
+	cGray    = lipgloss.Color("8")
+	cDim     = lipgloss.Color("240")
+	cWhite   = lipgloss.Color("15")
 
-	sTitle  = lipgloss.NewStyle().Bold(true).Foreground(cCyan)
-	sOk     = lipgloss.NewStyle().Foreground(cGreen)
-	sErr    = lipgloss.NewStyle().Foreground(cRed)
-	sWarn   = lipgloss.NewStyle().Foreground(cYellow)
-	sGray   = lipgloss.NewStyle().Foreground(cGray)
-	sBold   = lipgloss.NewStyle().Bold(true).Foreground(cWhite)
-	sDim    = lipgloss.NewStyle().Foreground(cDim)
-	sNormal = sBold.Bold(false)
+	sTitle   = lipgloss.NewStyle().Bold(true).Foreground(cPrimary)
+	sOk      = lipgloss.NewStyle().Foreground(cBlue)
+	sErr     = lipgloss.NewStyle().Foreground(cRed)
+	sWarn    = lipgloss.NewStyle().Foreground(cYellow)
+	sGray    = lipgloss.NewStyle().Foreground(cGray)
+	sBold    = lipgloss.NewStyle().Bold(true).Foreground(cWhite)
+	sDim     = lipgloss.NewStyle().Foreground(cDim)
+	sNormal  = sBold.Bold(false)
 
-	sHeader = lipgloss.NewStyle().Bold(true).Foreground(cCyan).
-		Border(lipgloss.RoundedBorder()).BorderForeground(cCyan).Padding(0, 3)
+	sHeader = lipgloss.NewStyle().Bold(true).Foreground(cPrimary).
+		Border(lipgloss.RoundedBorder()).BorderForeground(cPrimary).Padding(0, 3)
 
 	sInputBox      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cGray).Padding(0, 1)
-	sInputBoxFocus = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cCyan).Padding(0, 1)
+	sInputBoxFocus = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cPrimary).Padding(0, 1)
 
 	sPlTitle = lipgloss.NewStyle().Width(44).Inline(true)
 	sSlotTitle = lipgloss.NewStyle().Width(46).Inline(true)
@@ -497,7 +497,7 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.scr = scrWorkers
 				maxW := min(len(sel), 5)
 				opts := make([]string, maxW)
-				for i := 0; i < maxW; i++ {
+				for i := range maxW {
 					if i == 0 { opts[i] = "Последовательно (1 поток)" } else { opts[i] = fmt.Sprintf("%d потоков", i+1) }
 				}
 				m.menuList = createMenuList(opts)

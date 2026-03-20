@@ -2,14 +2,11 @@
 
 <div align="center">
 
-<pre>
-    ╭────────────────────────────────────────────╮
-    │    VolRen  ·  Video / Audio  Downloader    │
-    │    версия 4.0.1  •  powered by yt-dlp      │
-    ╰────────────────────────────────────────────╯
-</pre>
 
-**Скачивает видео и аудио с YouTube — один бинарник, никаких зависимостей.**
+![youtube downloader screenshot](assets/youtubedownloader.png)
+
+
+**Скачивает видео и аудио с YouTube в один бинарник с TUI-интерфейсом.**
 
 ![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
@@ -22,8 +19,8 @@
 
 ## О проекте
 
-**VolRen Downloader** — загрузчик видео и аудио с YouTube с интерактивным TUI на базе [Bubble Tea v2](https://charm.land/bubbletea/v2).  
-Написан на Go — собирается в один бинарник без рантайма. `yt-dlp` и `ffmpeg` скачиваются автоматически в папку `_deps/` при первом запуске.
+**VolRen Downloader** — это компактный загрузчик видео, аудио и плейлистов с YouTube, с интерактивным TUI на базе [Bubble Tea v2](https://charm.land/bubbletea/v2).  
+Написан на Go — собирается в один бинарник. `yt-dlp` и `ffmpeg` скачиваются автоматически в папку `_deps/` при первом запуске.
 
 ---
 
@@ -128,14 +125,9 @@ go build -ldflags="-s -w" -o VolRenDownloader .
 
   Выбери качество:
 
-▶ ▲ Лучшее качество (HD·4K)
-  ▼ Экономичное (360p)
-  ♪ Только аудио (MP3)
-
-  Загружаю…
-
-  Rick Astley - Never Gonna Give You Up
-  ↓  [████████████████████░░░░░░░░░░]   62.4%  24.1 МБ/38.7 МБ  3.2 МБ/с
+ > ▲ Лучшее качество (HD·4K)
+   ▼ Экономичное (360p)
+   ♪ Только аудио (MP3)
 ```
 
 ### Плейлист
@@ -145,13 +137,11 @@ go build -ldflags="-s -w" -o VolRenDownloader .
   ──────────────────────────────────────────────────────
 
 ▶ [✔]    1.  Chilledcow — beats to study/relax to     3:00:14
-  [✔]    2.  Lofi Girl — morning vibes                58:23
-  [ ]    3.  College Music — focus mix                1:23:01
+   [✔]    2.  Lofi Girl — morning vibes                58:23
+   [ ]    3.  College Music — focus mix                1:23:01
   ...
 
   Выбрано: 2/47
-
-  [↑↓] навигация  [Пробел] выбрать  [a] все  [/] ввод  [Enter] далее
 ```
 
 **Форматы ручного ввода (`/`):**
@@ -169,10 +159,10 @@ go build -ldflags="-s -w" -o VolRenDownloader .
   Параллельная загрузка:  (47 видео)
 
 ▶ Последовательно (1 поток)
-  2 потоков
-  3 потоков
-  4 потоков
-  5 потоков
+   2 потоков
+   3 потоков
+   4 потоков
+   5 потоков
 ```
 
 Прогресс-бар для каждого потока в реальном времени:

@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	Version    = "4.0.1"
+	Version    = "4.1.0"
 	GithubRepo = "VolRencs/YouTubeDownloader"
 
 	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
@@ -472,7 +472,7 @@ func ParseSelection(raw string, maxIdx int) ([]int, error) {
 	switch raw {
 	case "а", "a", "all", "все", "всё", "*":
 		r := make([]int, maxIdx)
-		for i := range r {
+		for i := range maxIdx {
 			r[i] = i + 1
 		}
 		return r, nil
