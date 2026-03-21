@@ -1,51 +1,59 @@
-# VolRen Video/Audio Downloader
+# VolRen Video / Audio Downloader
 
 <div align="center">
 
-
 ![youtube downloader screenshot](assets/youtubedownloader.png)
 
+**Download video and audio from YouTube through a terminal UI.**
 
-**Скачивайте видео и аудио с YouTube при помощь TUI-интерфейса!**
-
-![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go)
+![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-4.0.1-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-5.0.0-orange?style=flat-square)
 
 </div>
 
 ---
 
-## О проекте
+## About
 
-**VolRen Downloader** — это компактный загрузчик видео, аудио и плейлистов с YouTube, с интерактивным TUI на базе [Bubble Tea v2](https://charm.land/bubbletea/v2).  
-Написан на Go — собирается в один бинарник. `yt-dlp` и `ffmpeg` скачиваются автоматически в папку `_deps/` при первом запуске.
+**VolRen Downloader** is a compact YouTube downloader with an interactive TUI built on [Bubble Tea v2](https://charm.land/bubbletea/v2). It ships as a single Go binary. On first run it pulls **yt-dlp** into `_deps/` (and **ffmpeg** on Windows when you opt in).
 
----
-
-## Возможности
-
-- 🎬 **Лучшее качество** — HD / 4K, склейка потоков через ffmpeg
-- 📱 **Экономичное** — 360p для медленного интернета
-- 🎵 **Только аудио** — MP3 с наилучшим VBR-качеством
-- 📋 **Плейлисты** — просмотр списка, выбор видео пробелом, диапазонами или вводом
-- ⚡ **Параллельная загрузка** — до 5 потоков одновременно
-- 🔄 **Цепочка форматов** — автоматически пробует запасной если основной недоступен
-- 📊 **Итоги сессии** — статистика всех загрузок за время работы
-- 🔔 **Автообновление** — проверяет новые версии на GitHub при запуске
-- 🔧 **Обновление зависимостей** — `Ctrl+U` в любой момент из TUI
-- 🖥 **Интерактивный TUI** — навигация стрелками, живой прогресс-бар
+The interface is available in **English** and **Russian**. Press **Tab** to switch language; the choice is saved in `.volren_locale` next to the executable.
 
 ---
 
-## Быстрый старт
+## What’s new in 5.0.0
 
-### Windows — скачать .exe
+- **5.0.0** starts a new release cycle.
+- **Modular code** — downloads, dependencies, playlists, and GitHub releases live in separate files; the TUI is in `tui.go` / `view.go` with a minimal `main.go`.
+- **Safer I/O** — HTTP downloads close files explicitly and clean up on failure; playlist metadata uses a timeout.
+- **UI** — terminal window title includes the version where supported; **Tab** toggles **EN/RU**.
 
-Скачай `VolRenDownloader.exe` из [последнего релиза](../../releases/latest) и запусти. Go не нужен.
+---
 
-### Linux — скачать бинарник
+## Features
+
+- **Best quality** — HD / 4K with stream merge via ffmpeg  
+- **Economy** — 360p for slow connections  
+- **Audio only** — MP3 with high-quality VBR  
+- **Playlists** — browse, toggle with Space, ranges or manual index entry  
+- **Parallel downloads** — up to five workers  
+- **Format fallback** — tries alternate formats if the first choice fails  
+- **Session summary** — per-run download stats  
+- **Auto-update** — optional GitHub release check on startup  
+- **Dependency updates** — `Ctrl+U` inside the TUI  
+- **TUI** — keyboard-driven UI with live progress  
+
+---
+
+## Quick start
+
+### Windows — download the `.exe`
+
+Grab `VolRenDownloader.exe` from the [latest release](https://github.com/VolRencs/YouTubeDownloader/releases/latest) and run it. You do not need Go installed.
+
+### Linux — binary
 
 ```bash
 # amd64
@@ -59,7 +67,9 @@ chmod +x VolRenDownloader
 ./VolRenDownloader
 ```
 
-### Собрать из исходников
+### Build from source
+
+Requires **Go 1.26+**.
 
 ```bash
 git clone https://github.com/VolRencs/YouTubeDownloader
@@ -68,226 +78,119 @@ go mod tidy
 go build -ldflags="-s -w" -o VolRenDownloader .
 ```
 
-При первом запуске:
-1. Проверяется наличие `yt-dlp` — скачивается если нет (~11 МБ)
-2. На Windows предлагается скачать `ffmpeg` (~80 МБ) — нужен для HD и MP3
-3. На Linux ffmpeg берётся из системы (`apt install ffmpeg` и т.д.)
+On first launch:
+
+1. **yt-dlp** is checked; if missing it is downloaded (~11 MB).  
+2. On **Windows**, you may be offered **ffmpeg** (~80 MB).  
+3. On **Linux**, ffmpeg is expected on the system (`apt install ffmpeg`, etc.).
 
 ---
 
-## Автообновление
+## Auto-update
 
-При каждом запуске автоматически проверяет наличие новой версии на GitHub.  
-Если обновление найдено — TUI предложит выбор:
+On startup the app can check GitHub for a newer release and offer to update.
 
-```
-  ✔  Доступна версия 4.0.1  (сейчас 4.0.0)
+- **Windows** — new `.exe` plus a `.bat` that replaces the file after you quit.  
+- **Linux** — atomic binary replace; restart the app manually.
 
-▶ Да, обновить
-  Пропустить
-
-  [↑↓] выбрать  [Enter] выбрать
-```
-
-**Windows** — скачивает новый `.exe`, запускает `.bat`-скрипт, который заменяет файл после выхода программы.  
-**Linux** — заменяет бинарник атомарно через `rename(2)`. Просто перезапустите программу после обновления.  
-
-Папки `_deps/` и `downloads/` не затрагиваются.
+The `_deps/` and `downloads/` folders are left as-is.
 
 ---
 
-## Интерфейс
+## Controls
 
-Программа полностью управляется с клавиатуры:
-
-| Клавиша | Действие |
-|---|---|
-| `↑` / `↓` или `k` / `j` | Навигация по меню |
-| `Enter` | Подтвердить выбор |
-| `Пробел` | Выбрать / снять видео в плейлисте |
-| `a` / `а` | Выбрать все / снять все |
-| `/` | Ввести выбор вручную (диапазоны) |
-| `Ctrl+U` | Обновить зависимости (yt-dlp, ffmpeg) |
-| `Ctrl+C` | Выход |
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` or `k` / `j` | Move in menus |
+| `Enter` | Confirm |
+| `Space` | Toggle item in playlist view |
+| `a` / `а` | Select all / clear all |
+| `/` | Enter indices manually |
+| `Tab` | Switch UI language (EN / RU) |
+| `Ctrl+U` | Update yt-dlp (and ffmpeg on Windows) |
+| `Ctrl+C` | Quit |
 
 ---
 
-## Использование
-
-### Обычное видео
+## Folder layout
 
 ```
-  Вставь ссылку на видео или плейлист
-
- ╭──────────────────────────────────────────────────────────────╮
- │ https://youtu.be/dQw4w9WgXcQ                                 │
- ╰──────────────────────────────────────────────────────────────╯
-
-  Выбери качество:
-
- > ▲ Лучшее качество (HD·4K)
-   ▼ Экономичное (360p)
-   ♪ Только аудио (MP3)
-```
-
-### Плейлист
-
-```
-  Плейлист: «Lo-Fi Hip Hop Mix»  (47 видео)
-  ──────────────────────────────────────────────────────
-
-▶ [✔]    1.  Chilledcow — beats to study/relax to     3:00:14
-   [✔]    2.  Lofi Girl — morning vibes                58:23
-   [ ]    3.  College Music — focus mix                1:23:01
-  ...
-
-  Выбрано: 2/47
-```
-
-**Форматы ручного ввода (`/`):**
-
-| Ввод | Результат |
-|---|---|
-| `а` или `all` | Все видео |
-| `1-10` | С 1 по 10 |
-| `1,4,7` | Только №1, №4, №7 |
-| `1-3,7,10-12` | Смешанный |
-
-### Параллельная загрузка
-
-```
-  Параллельная загрузка:  (47 видео)
-
-▶ Последовательно (1 поток)
-   2 потоков
-   3 потоков
-   4 потоков
-   5 потоков
-```
-
-Прогресс-бар для каждого потока в реальном времени:
-
-```
-  Плейлист  ·  47 видео
-  [████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]  17.0%  8/47
-
-  ● [1]  Chilledcow — beats to study
-         [████████████░░░░░░░░]   45.2%  12.3 МБ/27.2 МБ  2.1 МБ/с
-  ● [2]  Lofi Girl — morning vibes
-         [████████████████░░░░]   72.8%   8.9 МБ/12.2 МБ  1.8 МБ/с
-  ● [3]  College Music — focus mix
-         ⚙ слияние видео+аудио (ffmpeg)…
-
-  ✔ 4  ✘ 0  ◷ 40 в очереди  00:42
-```
-
-### Поддерживаемые ссылки
-
-```
-https://www.youtube.com/watch?v=XXXXXXXXXXX      ← обычное видео
-https://youtu.be/XXXXXXXXXXX                     ← короткая ссылка
-https://www.youtube.com/shorts/XXXXXXXXXXX       ← Shorts
-https://www.youtube.com/live/XXXXXXXXXXX         ← прямой эфир / запись
-https://www.youtube.com/playlist?list=XXXXX      ← плейлист
-https://www.youtube.com/watch?v=XXX&list=XXXXX   ← видео внутри плейлиста
+next to the binary/
+├── VolRenDownloader / VolRenDownloader.exe
+├── .volren_locale          ← saved language (en / ru)
+├── _deps/                  ← yt-dlp; on Windows also ffmpeg.exe
+└── downloads/              ← downloaded files and playlist folders
 ```
 
 ---
 
-## Структура папок
+## Platforms
 
-```
-📁 твоя-папка/
-├── VolRenDownloader          ← бинарник (Linux)
-├── VolRenDownloader.exe      ← бинарник (Windows)
-├── _deps/                    ← зависимости (создаётся автоматически)
-│   ├── yt-dlp                ← yt-dlp (Linux)
-│   ├── yt-dlp.exe            ← yt-dlp (Windows)
-│   └── ffmpeg.exe            ← ffmpeg (Windows)
-└── downloads/                ← скачанные файлы
-    ├── Название видео.mp4
-    ├── Другое видео.mp3
-    └── 📁 Название плейлиста/
-        ├── 001 - Первое видео.mp4
-        └── 002 - Второе видео.mp4
-```
+| OS | Arch | yt-dlp | ffmpeg | App update |
+|----|------|--------|--------|------------|
+| Windows | x64 | from GitHub | BtbN build | `.bat` after exit |
+| Linux | amd64 / arm64 | from GitHub | system | binary rename |
 
 ---
 
-## Платформенная поддержка
-
-| ОС | Архитектура | yt-dlp | ffmpeg | Автообновление |
-|---|---|---|---|---|
-| Windows | x64 | `yt-dlp.exe` (GitHub) | BtbN build (GitHub, ~80 МБ) | ✔ bat-скрипт |
-| Linux | x86_64 | `yt-dlp_linux` (GitHub) | системный (`apt`/`dnf`/`pacman`) | ✔ atomic rename |
-| Linux | arm64 | `yt-dlp_linux_aarch64` (GitHub) | системный | ✔ atomic rename |
-
----
-
-## Сборка и разработка
+## Cross-compilation
 
 ```bash
-# Зависимости
 go mod tidy
-
-# Linux amd64
-go build -ldflags="-s -w" -o VolRenDownloader .
-
-# Linux arm64
 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o VolRenDownloader_arm64 .
-
-# Windows
 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o VolRenDownloader.exe .
 ```
 
-**Структура кода:**
+---
 
-| Файл | Назначение |
-|---|---|
-| `core.go` | Логика: загрузка, плейлисты, зависимости, автообновление |
-| `main.go` | Bubble Tea v2 TUI: модель, экраны, клавиши, отображение |
-| `platform_windows.go` | Windows: ANSI-консоль через `golang.org/x/sys/windows`, DETACHED_PROCESS |
-| `platform_unix.go` | Linux: Setsid, атомарная замена бинарника |
+## Source layout (5.0)
+
+| File | Role |
+|------|------|
+| `main.go` | Entry: `signal.NotifyContext`, `tea.NewProgram` |
+| `tui.go` | Bubble Tea model: screens, keys, downloads |
+| `view.go` | lipgloss styles and rendering |
+| `ui_strings.go` / `locale.go` | EN/RU strings and locale persistence |
+| `app.go` | Version, paths, HTTP clients |
+| `format.go` | Size, duration, folder names |
+| `fetch.go` | HTTP download + progress |
+| `deps.go` | yt-dlp / ffmpeg install |
+| `playlist.go` | Playlist metadata, selection parsing |
+| `download_engine.go` | yt-dlp workers, quality, fallback |
+| `release.go` | GitHub update check and apply |
+| `session.go` | Per-session history |
+| `youtube.go` | YouTube URL regexes |
+| `platform_windows.go` / `platform_unix.go` | Binary swap on update |
 
 ---
 
-## Устранение проблем
+## Troubleshooting
 
-**`yt-dlp` не скачивается**  
-Проверь доступность `github.com`. Можно скачать вручную в `_deps/`: [github.com/yt-dlp/yt-dlp/releases](https://github.com/yt-dlp/yt-dlp/releases).
+**yt-dlp fails to download** — Check access to `github.com`; you can place the binary in `_deps/` manually.
 
-**Ошибка `Sign in to confirm you're not a bot`**  
-YouTube блокирует старые версии yt-dlp. Обнови зависимости через `Ctrl+U` прямо в TUI.
+**YouTube: “Sign in…”** — Update yt-dlp with `Ctrl+U`.
 
-**HD и MP3 недоступны (нет ffmpeg)**  
-На Linux установи ffmpeg через пакетный менеджер:
-```bash
-sudo apt install ffmpeg      # Debian / Ubuntu
-sudo dnf install ffmpeg      # Fedora
-sudo pacman -S ffmpeg        # Arch
-```
-На Windows программа предложит скачать ffmpeg при первом запуске.
+**No ffmpeg (HD / MP3)** — On Linux: `sudo apt install ffmpeg` (or your distro’s package). On Windows, accept the download in the TUI.
 
-**Плейлист не загружается**  
-Плейлист должен быть публичным — приватные и закрытые недоступны без авторизации.
+**Empty playlist** — The playlist must be public.
 
 ---
 
-## Зависимости и лицензии
+## Dependencies
 
-| Компонент | Версия | Лицензия | Источник |
-|---|---|---|---|
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | latest | Unlicense | github.com/yt-dlp/yt-dlp |
-| [ffmpeg](https://ffmpeg.org) | latest | LGPL 2.1+ / GPL 2+ | ffmpeg.org |
-| [BtbN FFmpeg Builds](https://github.com/BtbN/FFmpeg-Builds) | latest | GPL | github.com/BtbN |
-| [Bubble Tea](https://charm.land/bubbletea/v2) | v2 | MIT | charm.land/bubbletea/v2 |
+| Component | License |
+|-----------|---------|
+| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Unlicense |
+| [ffmpeg](https://ffmpeg.org) | LGPL/GPL |
+| [Bubble Tea v2](https://charm.land/bubbletea/v2), [Bubbles](https://charm.land/bubbles/v2), [Lip Gloss](https://charm.land/lipgloss/v2) | MIT |
+| `golang.org/x/sys` (Windows) | BSD-3-Clause |
 
-Исходный код — **MIT License**.
+Project source is **MIT**.
 
 ---
 
 <div align="center">
 
-Сделано с ♥ by **VolRen**
+Made with ♥ by **VolRen**
 
 </div>
