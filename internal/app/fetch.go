@@ -65,7 +65,6 @@ func (w *dlWriter) emit(fin bool, e error) {
 	}
 }
 
-// DownloadFile загружает URL в dest и шлёт прогресс в ch (если не nil).
 func DownloadFile(url, dest string, ch chan<- FileProgress) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return fmt.Errorf("создание директории: %w", err)

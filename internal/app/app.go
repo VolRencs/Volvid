@@ -10,13 +10,12 @@ import (
 )
 
 const (
-	Version    = "5.1.0"
-	GithubRepo = "VolRencs/YouTubeDownloader"
+	Version    = "5.1.1"
 
 	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ytdlpBase    = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
 
-	githubAPIURL = "https://api.github.com/repos/" + GithubRepo + "/releases/latest"
+	githubAPIURL = "https://api.github.com/repos/VolRencs/YouTubeDownloader/releases/latest"
 
 	slotResetDelay = 300 * time.Millisecond
 )
