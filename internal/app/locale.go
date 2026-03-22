@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"os"
@@ -29,7 +29,7 @@ func parseLocale(s string) Locale {
 	}
 }
 
-func nextLocale(l Locale) Locale {
+func NextLocale(l Locale) Locale {
 	if l == LocaleEN {
 		return LocaleRU
 	}
@@ -38,7 +38,7 @@ func nextLocale(l Locale) Locale {
 
 const localeFileName = ".volren_locale"
 
-func loadLocale() Locale {
+func LoadLocale() Locale {
 	if AppDir == "" {
 		return LocaleEN
 	}
@@ -49,7 +49,7 @@ func loadLocale() Locale {
 	return parseLocale(string(b))
 }
 
-func saveLocale(l Locale) error {
+func SaveLocale(l Locale) error {
 	if AppDir == "" {
 		return nil
 	}

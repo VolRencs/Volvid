@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"bufio"
@@ -25,8 +25,11 @@ var qualityChains = [3][]string{
 	nil,
 }
 
-func (m model) qualityAt(idx int) QualityConfig {
-	return QualityConfig{Label: m.qualityOpts()[idx], FmtChain: qualityChains[idx]}
+func QualityChainAt(idx int) []string {
+	if idx < 0 || idx >= len(qualityChains) {
+		return nil
+	}
+	return slices.Clone(qualityChains[idx])
 }
 
 var (

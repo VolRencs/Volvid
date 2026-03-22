@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"archive/zip"
@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 )
 
 type CheckDepsResult struct {
@@ -16,6 +17,11 @@ type CheckDepsResult struct {
 	FFmpegVer     string
 	FFmpegMissing bool
 }
+
+const (
+	versionProbeAttempts = 8
+	versionProbeDelay    = 250 * time.Millisecond
+)
 
 func DetectDeps() CheckDepsResult {
 	r := CheckDepsResult{YtdlpVer: YtdlpVersion()}
@@ -38,11 +44,7 @@ func YtdlpVersion() string {
 	if _, err := os.Stat(YtdlpBin); err != nil {
 		return ""
 	}
-	out, err := exec.Command(YtdlpBin, "--version").Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
+	return probeCommandVersion(YtdlpBin, "--version")
 }
 
 func FFmpegVersion() string {
@@ -67,6 +69,22 @@ func FFmpegVersion() string {
 				ver = ver[:idx]
 			}
 			return ver
+		}
+	}
+	return ""
+}
+
+func probeCommandVersion(bin string, args ...string) string {
+	for attempt := 0; attempt < versionProbeAttempts; attempt++ {
+		out, err := exec.Command(bin, args...).Output()
+		if err == nil {
+			version := strings.TrimSpace(string(out))
+			if version != "" {
+				return version
+			}
+		}
+		if attempt+1 < versionProbeAttempts {
+			time.Sleep(versionProbeDelay)
 		}
 	}
 	return ""

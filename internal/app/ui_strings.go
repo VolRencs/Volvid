@@ -1,4 +1,4 @@
-package main
+package app
 
 import "fmt"
 
@@ -12,24 +12,24 @@ type UIStrings struct {
 	SpinnerUpdate, SpinnerPlaylist string
 
 	UpdateAvail, CurrentVerShort string
-	FFmpegWarn, FFmpegHint      string
-	PlaylistMixWarn             string
+	FFmpegWarn, FFmpegHint       string
+	PlaylistMixWarn              string
 
-	DepUpdatingVer, DepsUpdating string
+	DepUpdatingVer, DepsUpdating                          string
 	UpdateAppliedWin, UpdateAppliedUnix, UpdateDonePrefix string
-	HelpAnyKey, HelpExit, DepsOK, ErrPrefix string
+	HelpAnyKey, HelpExit, DepsOK, ErrPrefix               string
 
 	AppSubtitle, TopBarDeps, TopBarDepsBusy string
 
 	PasteURL, URLErrEmpty, URLErrBad, URLHints string
 
 	PlVideosFmt, PlEnterNums, PlSelectedFmt string
-	ErrPickOne string
+	ErrPickOne                              string
 
-	PlInputPlaceholder string
+	PlInputPlaceholder                                              string
 	PlParseEmpty, PlParseRange, PlParseNum, PlParseBad, PlParseNone string
-	PlEmptyPlaylist, PlTimeout string
-	VideoTitleFmt              string
+	PlEmptyPlaylist, PlTimeout                                      string
+	VideoTitleFmt                                                   string
 
 	ParallelFmt, QualityTitle, WorkersQueuedFmt string
 
@@ -38,7 +38,7 @@ type UIStrings struct {
 	SummaryOK, SummaryFail, SummaryPlaylistTitle, SessionHist, SuccessFmt string
 
 	MenuUpdateY, MenuUpdateN, MenuFFmpegY, MenuFFmpegN, MenuVidOnly, MenuOpenPl string
-	MenuAgainY, MenuAgainN, WorkerSeq, WorkerNFmt string
+	MenuAgainY, MenuAgainN, WorkerSeq, WorkerNFmt                               string
 
 	DepLabelFmt string
 	LangTab     string
@@ -62,13 +62,13 @@ var strEN = UIStrings{
 	PlaylistMixWarn: "  ⚠️ URL has both a video and a playlist",
 
 	DepUpdatingVer: "update ", DepsUpdating: "Updating dependencies…",
-	UpdateAppliedWin: "  The file will be replaced after exit. Run the new build manually.",
+	UpdateAppliedWin:  "  The file will be replaced after exit. Run the new build manually.",
 	UpdateAppliedUnix: "  Binary replaced. Restart the app.",
-	UpdateDonePrefix: "  ✔  Update applied — ",
-	HelpAnyKey: "any key", HelpExit: "exit", DepsOK: "  ✔  Dependencies updated", ErrPrefix: "  ✘  Error: ",
+	UpdateDonePrefix:  "  ✔  Update applied — ",
+	HelpAnyKey:        "any key", HelpExit: "exit", DepsOK: "  ✔  Dependencies updated", ErrPrefix: "  ✘  Error: ",
 
 	AppSubtitle: "  ·  Video / Audio Downloader",
-	TopBarDeps: "↻ update dependencies", TopBarDepsBusy: " updating…",
+	TopBarDeps:  "↻ update dependencies", TopBarDepsBusy: " updating…",
 
 	PasteURL: "  Paste a video or playlist URL", URLErrEmpty: "URL cannot be empty",
 	URLErrBad: "Does not look like a YouTube URL", URLHints: "\nyoutube.com/watch   youtube.com/playlist   youtu.be/",
@@ -77,7 +77,7 @@ var strEN = UIStrings{
 	ErrPickOne: "Select at least one video",
 
 	PlInputPlaceholder: "1-5, 2,4,7 or a (all)",
-	PlParseEmpty: "selection cannot be empty", PlParseRange: "range %d-%d outside 1–%d",
+	PlParseEmpty:       "selection cannot be empty", PlParseRange: "range %d-%d outside 1–%d",
 	PlParseNum: "number %d outside 1–%d", PlParseBad: "invalid token: %q", PlParseNone: "nothing selected",
 	PlEmptyPlaylist: "playlist empty or unavailable", PlTimeout: "yt-dlp: timed out",
 	VideoTitleFmt: "Video %d",
@@ -98,7 +98,7 @@ var strEN = UIStrings{
 	WorkerSeq: "Sequential (1 worker)", WorkerNFmt: "%d workers",
 
 	DepLabelFmt: "update %s",
-	LangTab: "Tab · language",
+	LangTab:     "Tab · language",
 
 	FallbackFmt: "Fallback format #%d: %s",
 	PlaylistTag: " [pl/%d]",
@@ -119,13 +119,13 @@ var strRU = UIStrings{
 	PlaylistMixWarn: "  ⚠️ В ссылке и видео, и плейлист",
 
 	DepUpdatingVer: "обновление ", DepsUpdating: "Обновление зависимостей…",
-	UpdateAppliedWin: "  Файл заменится после закрытия. Запустите вручную.",
+	UpdateAppliedWin:  "  Файл заменится после закрытия. Запустите вручную.",
 	UpdateAppliedUnix: "  Бинарник заменён. Перезапустите программу.",
-	UpdateDonePrefix: "  ✔  Обновление применено — ",
-	HelpAnyKey: "любая клавиша", HelpExit: "выйти", DepsOK: "  ✔  Зависимости обновлены", ErrPrefix: "  ✘  Ошибка: ",
+	UpdateDonePrefix:  "  ✔  Обновление применено — ",
+	HelpAnyKey:        "любая клавиша", HelpExit: "выйти", DepsOK: "  ✔  Зависимости обновлены", ErrPrefix: "  ✘  Ошибка: ",
 
 	AppSubtitle: "  ·  Загрузчик видео / аудио",
-	TopBarDeps: "↻ обновить зависимости", TopBarDepsBusy: " обновление…",
+	TopBarDeps:  "↻ обновить зависимости", TopBarDepsBusy: " обновление…",
 
 	PasteURL: "  Вставь ссылку на видео или плейлист", URLErrEmpty: "Ссылка не может быть пустой",
 	URLErrBad: "Не похоже на YouTube-ссылку", URLHints: "\nyoutube.com/watch   youtube.com/playlist   youtu.be/",
@@ -134,7 +134,7 @@ var strRU = UIStrings{
 	ErrPickOne: "Выбери хотя бы одно видео",
 
 	PlInputPlaceholder: "1-5, 2,4,7 или а (все)",
-	PlParseEmpty: "выбор не может быть пустым", PlParseRange: "диапазон %d-%d вне 1–%d",
+	PlParseEmpty:       "выбор не может быть пустым", PlParseRange: "диапазон %d-%d вне 1–%d",
 	PlParseNum: "номер %d вне 1–%d", PlParseBad: "непонятный ввод: %q", PlParseNone: "ничего не выбрано",
 	PlEmptyPlaylist: "плейлист пуст или недоступен", PlTimeout: "yt-dlp: превышено время ожидания",
 	VideoTitleFmt: "Видео %d",
@@ -155,7 +155,7 @@ var strRU = UIStrings{
 	WorkerSeq: "Последовательно (1 поток)", WorkerNFmt: "%d потоков",
 
 	DepLabelFmt: "обновление %s",
-	LangTab: "Tab · язык",
+	LangTab:     "Tab · язык",
 
 	FallbackFmt: "Запасной формат #%d: %s",
 	PlaylistTag: " [плейлист/%d]",
@@ -163,7 +163,7 @@ var strRU = UIStrings{
 
 var Loc = &strEN
 
-func syncLoc(l Locale) {
+func SyncLoc(l Locale) {
 	if l == LocaleRU {
 		Loc = &strRU
 	} else {
@@ -171,25 +171,25 @@ func syncLoc(l Locale) {
 	}
 }
 
-func (m model) u() *UIStrings {
-	return strFor(m.locale)
-}
-
-func strFor(l Locale) *UIStrings {
+func StringsFor(l Locale) *UIStrings {
 	if l == LocaleRU {
 		return &strRU
 	}
 	return &strEN
 }
 
-func (m model) qualityOpts() []string {
-	s := m.u()
+func ActiveStrings() *UIStrings {
+	return Loc
+}
+
+func QualityOptionsFor(l Locale) []string {
+	s := StringsFor(l)
 	return []string{s.QBest, s.QEcon, s.QMP3}
 }
 
-func (m model) sessionPlaylistSuffix(n int) string {
+func PlaylistSuffix(l Locale, n int) string {
 	if n <= 0 {
 		return ""
 	}
-	return fmt.Sprintf(m.u().PlaylistTag, n)
+	return fmt.Sprintf(StringsFor(l).PlaylistTag, n)
 }

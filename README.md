@@ -9,7 +9,7 @@
 ![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-5.0.0-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-5.1.0-orange?style=flat-square)
 
 </div>
 
@@ -20,17 +20,6 @@
 **VolRen Downloader** is a compact YouTube downloader with an interactive TUI built on [Bubble Tea v2](https://charm.land/bubbletea/v2). It ships as a single Go binary. On first run it pulls **yt-dlp** into `_deps/` (and **ffmpeg** on Windows when you opt in).
 
 The interface is available in **English** and **Russian**. Press **Tab** to switch language; the choice is saved in `.volren_locale` next to the executable.
-
----
-
-## What’s new in 5.0.0
-
-- **5.0.0** starts a new release cycle.
-- **Modular code** — downloads, dependencies, playlists, and GitHub releases live in separate files; the TUI is in `tui.go` / `view.go` with a minimal `main.go`.
-- **Safer I/O** — HTTP downloads close files explicitly and clean up on failure; playlist metadata uses a timeout.
-- **UI** — terminal window title includes the version where supported; **Tab** toggles **EN/RU**.
-
----
 
 ## Features
 
@@ -148,19 +137,8 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o VolRenDownloader.exe .
 | File | Role |
 |------|------|
 | `main.go` | Entry: `signal.NotifyContext`, `tea.NewProgram` |
-| `tui.go` | Bubble Tea model: screens, keys, downloads |
-| `view.go` | lipgloss styles and rendering |
-| `ui_strings.go` / `locale.go` | EN/RU strings and locale persistence |
-| `app.go` | Version, paths, HTTP clients |
-| `format.go` | Size, duration, folder names |
-| `fetch.go` | HTTP download + progress |
-| `deps.go` | yt-dlp / ffmpeg install |
-| `playlist.go` | Playlist metadata, selection parsing |
-| `download_engine.go` | yt-dlp workers, quality, fallback |
-| `release.go` | GitHub update check and apply |
-| `session.go` | Per-session history |
-| `youtube.go` | YouTube URL regexes |
-| `platform_windows.go` / `platform_unix.go` | Binary swap on update |
+| `tui/` | Bubble Tea UI: model, events, rendering, styles, custom widgets |
+| `internal/app/` | App core: downloads, dependencies, updates, locale strings, playlists |
 
 ---
 
@@ -182,7 +160,7 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o VolRenDownloader.exe .
 |-----------|---------|
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Unlicense |
 | [ffmpeg](https://ffmpeg.org) | LGPL/GPL |
-| [Bubble Tea v2](https://charm.land/bubbletea/v2), [Bubbles](https://charm.land/bubbles/v2), [Lip Gloss](https://charm.land/lipgloss/v2) | MIT |
+| [Bubble Tea v2](https://charm.land/bubbletea/v2), [Lip Gloss](https://charm.land/lipgloss/v2) | MIT |
 | `golang.org/x/sys` (Windows) | BSD-3-Clause |
 
 Project source is **MIT**.
