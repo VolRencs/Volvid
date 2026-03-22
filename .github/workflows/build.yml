@@ -18,6 +18,7 @@ jobs:
       - run: go build -ldflags="-s -w" -o VolRenDownloader.exe .
       - uses: ncipollo/release-action@v1
         with:
+          allowUpdates: true
           artifacts: VolRenDownloader.exe
 
   build-linux:
@@ -31,6 +32,7 @@ jobs:
       - run: GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o VolRenDownloader_linux_arm64 .
       - uses: ncipollo/release-action@v1
         with:
+          allowUpdates: true
           artifacts: |
             VolRenDownloader_linux_amd64
             VolRenDownloader_linux_arm64
