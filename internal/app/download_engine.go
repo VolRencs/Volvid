@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,8 +16,9 @@ import (
 )
 
 type QualityConfig struct {
-	Label    string
-	FmtChain []string
+	Label     string
+	FmtChain  []string
+	FmtLabels []string
 }
 
 var qualityChains = [3][]string{
@@ -78,8 +80,8 @@ func ffmpegArgs() []string {
 	return nil
 }
 
-func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
-	cmd := exec.Command(YtdlpBin, slices.Concat([]string{"--newline", "--no-warnings"}, args)...)
+func streamYtdlp(ctx context.Context, slot int, args []string, ch chan<- DlUpdate) bool {
+	cmd := exec.CommandContext(ctx, YtdlpBin, slices.Concat([]string{"--newline", "--no-warnings"}, args)...)
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		return false
@@ -142,7 +144,13 @@ func streamYtdlp(slot int, args []string, ch chan<- DlUpdate) bool {
 		return false
 	}
 	_ = pr.Close()
-	return cmd.Wait() == nil
+	if err := cmd.Wait(); err != nil {
+		return false
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return false
+	}
+	return true
 }
 
 func buildArgs(cfg QualityConfig, url, tmpl, format string, extra []string) []string {
@@ -158,23 +166,38 @@ func buildArgs(cfg QualityConfig, url, tmpl, format string, extra []string) []st
 	return args
 }
 
-func runWithFallback(slot int, cfg QualityConfig, url, tmpl string, extra []string, ch chan<- DlUpdate) bool {
+func runWithFallback(ctx context.Context, slot int, cfg QualityConfig, url, tmpl string, extra []string, ch chan<- DlUpdate) bool {
 	if len(cfg.FmtChain) == 0 {
-		return streamYtdlp(slot, buildArgs(cfg, url, tmpl, "", extra), ch)
+		return streamYtdlp(ctx, slot, buildArgs(cfg, url, tmpl, "", extra), ch)
 	}
 	for i, format := range cfg.FmtChain {
+		if ctx != nil && ctx.Err() != nil {
+			return false
+		}
 		if i > 0 {
+			label := format
+			if i < len(cfg.FmtLabels) && cfg.FmtLabels[i] != "" {
+				label = cfg.FmtLabels[i]
+			}
 			ch <- DlUpdate{
 				Type: EvFallback,
 				Slot: slot,
-				Text: fmt.Sprintf(Loc.FallbackFmt, i, format),
+				Text: fmt.Sprintf(Loc.FallbackFmt, i, label),
 			}
 		}
-		if streamYtdlp(slot, buildArgs(cfg, url, tmpl, format, extra), ch) {
+		if streamYtdlp(ctx, slot, buildArgs(cfg, url, tmpl, format, extra), ch) {
 			return true
 		}
 	}
 	return false
+}
+
+func normalizeWorkerCount(workers, jobs int) int {
+	if jobs <= 0 {
+		return 1
+	}
+	workers = max(workers, 1)
+	return min(workers, jobs)
 }
 
 func StartDownload(
@@ -186,55 +209,91 @@ func StartDownload(
 	workers int,
 	ch chan<- DlUpdate,
 ) {
+	StartDownloadContextInDir(context.Background(), DlDir, cfg, url, forceSingle, plInfo, entries, workers, ch)
+}
+
+func StartDownloadContext(
+	ctx context.Context,
+	cfg QualityConfig,
+	url string,
+	forceSingle bool,
+	plInfo *PlaylistInfo,
+	entries []PlaylistEntry,
+	workers int,
+	ch chan<- DlUpdate,
+) {
+	StartDownloadContextInDir(ctx, DlDir, cfg, url, forceSingle, plInfo, entries, workers, ch)
+}
+
+func StartDownloadContextInDir(
+	ctx context.Context,
+	baseDir string,
+	cfg QualityConfig,
+	url string,
+	forceSingle bool,
+	plInfo *PlaylistInfo,
+	entries []PlaylistEntry,
+	workers int,
+	ch chan<- DlUpdate,
+) {
 	go func() {
 		var wg sync.WaitGroup
 		defer func() { wg.Wait(); close(ch) }()
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		if strings.TrimSpace(baseDir) == "" {
+			baseDir = DlDir
+		}
 
 		if plInfo == nil || forceSingle || len(entries) == 0 {
-			ok := runWithFallback(0, cfg, url,
-				filepath.Join(DlDir, "%(title)s.%(ext)s"),
+			ok := runWithFallback(ctx, 0, cfg, url,
+				filepath.Join(baseDir, "%(title)s.%(ext)s"),
 				[]string{"--no-playlist"}, ch,
 			)
 			ch <- DlUpdate{Type: EvDone, OK: ok}
 			return
 		}
 
-		plDir := filepath.Join(DlDir, SanitizeDirname(plInfo.Title))
+		plDir := filepath.Join(baseDir, SanitizeDirname(plInfo.Title))
 		if err := os.MkdirAll(plDir, 0o755); err != nil {
-			plDir = filepath.Join(DlDir, "playlist")
+			plDir = filepath.Join(baseDir, "playlist")
 			_ = os.MkdirAll(plDir, 0o755)
 		}
 
-		slotCh := make(chan int, workers)
-		for i := range workers {
-			slotCh <- i
-		}
+		workerCount := normalizeWorkerCount(workers, len(entries))
 		jobs := make(chan PlaylistEntry)
 		go func() {
+			defer close(jobs)
 			for _, e := range entries {
-				jobs <- e
+				select {
+				case <-ctx.Done():
+					return
+				case jobs <- e:
+				}
 			}
-			close(jobs)
 		}()
-		for range workers {
+
+		for slot := 0; slot < workerCount; slot++ {
 			wg.Add(1)
-			go func() {
+			go func(slot int) {
 				defer wg.Done()
 				for e := range jobs {
-					slot := <-slotCh
+					if ctx.Err() != nil {
+						return
+					}
 					func() {
 						defer func() {
 							time.Sleep(slotResetDelay)
 							ch <- DlUpdate{Type: EvReset, Slot: slot}
-							slotCh <- slot
 						}()
 						ch <- DlUpdate{Type: EvStart, Slot: slot, Text: e.Title}
 						tmpl := filepath.Join(plDir, fmt.Sprintf("%03d - %%(title)s.%%(ext)s", e.Index))
-						ok := runWithFallback(slot, cfg, e.URL, tmpl, []string{"--no-playlist"}, ch)
+						ok := runWithFallback(ctx, slot, cfg, e.URL, tmpl, []string{"--no-playlist"}, ch)
 						ch <- DlUpdate{Type: EvDone, Slot: slot, OK: ok}
 					}()
 				}
-			}()
+			}(slot)
 		}
 	}()
 }

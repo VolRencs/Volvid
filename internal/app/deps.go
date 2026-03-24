@@ -23,6 +23,8 @@ const (
 	versionProbeDelay    = 250 * time.Millisecond
 )
 
+type DepsLogger func(format string, args ...any)
+
 func DetectDeps() CheckDepsResult {
 	r := CheckDepsResult{YtdlpVer: YtdlpVersion()}
 	if IsWindows {
@@ -188,4 +190,42 @@ func InstallAllDeps(ch chan<- FileProgress) error {
 		return InstallFFmpeg(ch)
 	}
 	return nil
+}
+
+func EnsureRuntimeDeps(logf DepsLogger) (CheckDepsResult, error) {
+	deps := DetectDeps()
+
+	if deps.YtdlpVer == "" {
+		if logf != nil {
+			logf("Зависимости: yt-dlp не найден, скачиваю…")
+		}
+		if err := InstallYtDlp(nil); err != nil {
+			return DetectDeps(), fmt.Errorf("установка yt-dlp: %w", err)
+		}
+		deps = DetectDeps()
+		if deps.YtdlpVer == "" {
+			return deps, fmt.Errorf("yt-dlp скачан, но версия не определяется")
+		}
+		if logf != nil {
+			logf("Зависимости: yt-dlp готов (%s)", deps.YtdlpVer)
+		}
+	}
+
+	if IsWindows && deps.FFmpegMissing {
+		if logf != nil {
+			logf("Зависимости: ffmpeg не найден, скачиваю…")
+		}
+		if err := InstallFFmpeg(nil); err != nil {
+			return DetectDeps(), fmt.Errorf("установка ffmpeg: %w", err)
+		}
+		deps = DetectDeps()
+		if deps.FFmpegVer == "" {
+			return deps, fmt.Errorf("ffmpeg скачан, но версия не определяется")
+		}
+		if logf != nil {
+			logf("Зависимости: ffmpeg готов (%s)", deps.FFmpegVer)
+		}
+	}
+
+	return deps, nil
 }

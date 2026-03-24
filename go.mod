@@ -6,6 +6,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.2
 	charm.land/lipgloss/v2 v2.0.2
 	github.com/atotto/clipboard v0.1.4
+	github.com/go-telegram/bot v1.20.0
 	golang.org/x/sys v0.42.0
 )
 

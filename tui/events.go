@@ -72,9 +72,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case msgPlaylistFetched:
 		if msg.err != nil || msg.info == nil {
 			m.forceSingle = true
-			m.screen = scrQuality
-			m = m.syncMenu()
-			return m, nil
+			return m.startQualityScan()
 		}
 		m.plInfo = msg.info
 		m.plCursor = 0
@@ -82,6 +80,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.plSelected = map[int]bool{}
 		m.plInputErr = ""
 		m.screen = scrPlaylist
+		return m, nil
+
+	case msgQualityScanned:
+		if len(msg.choices) == 0 {
+			m.qualityChoices = app.DefaultQualityChoices()
+		} else {
+			m.qualityChoices = msg.choices
+		}
+		m.screen = scrQuality
+		m = m.syncMenu()
 		return m, nil
 
 	case msgDlUpdate:
@@ -285,6 +293,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.plInputMode = false
 		m.plInputErr = ""
 		m.dlEntries = nil
+		m.qualityChoices = nil
 		m.forceSingle = false
 		m.numWorkers = 1
 
@@ -298,9 +307,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, fetchPlaylistCmd(url)
 		}
 
-		m.screen = scrQuality
-		m = m.syncMenu()
-		return m, nil
+		return m.startQualityScan()
 	}
 
 	return m, nil
@@ -424,11 +431,10 @@ func (m Model) handlePlaylistKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		if len(m.dlEntries) >= 2 {
 			m.screen = scrWorkers
-		} else {
-			m.screen = scrQuality
+			m = m.syncMenu()
+			return m, nil
 		}
-		m = m.syncMenu()
-		return m, nil
+		return m.startQualityScan()
 	default:
 		return m, nil
 	}
@@ -471,9 +477,7 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 	case scrPlaylistAsk:
 		if idx == 0 {
 			m.forceSingle = true
-			m.screen = scrQuality
-			m = m.syncMenu()
-			return m, nil
+			return m.startQualityScan()
 		}
 		m.screen = scrPlaylistFetch
 		return m, fetchPlaylistCmd(m.url)
@@ -486,9 +490,7 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 
 	case scrWorkers:
 		m.numWorkers = idx + 1
-		m.screen = scrQuality
-		m = m.syncMenu()
-		return m, nil
+		return m.startQualityScan()
 
 	case scrQuality:
 		m.cfg = m.qualityConfigAt(idx)
@@ -504,6 +506,24 @@ func (m Model) isMenuScreen() bool {
 		return true
 	}
 	return false
+}
+
+func (m Model) startQualityScan() (tea.Model, tea.Cmd) {
+	m.qualityChoices = nil
+	m.screen = scrQualityFetch
+	return m, loadQualityChoicesCmd(m.qualityScanURLs())
+}
+
+func (m Model) qualityScanURLs() []string {
+	if m.forceSingle || m.plInfo == nil || len(m.dlEntries) == 0 {
+		return []string{m.url}
+	}
+
+	urls := make([]string, 0, len(m.dlEntries))
+	for _, entry := range m.dlEntries {
+		urls = append(urls, entry.URL)
+	}
+	return urls
 }
 
 func (m Model) startDownload() (tea.Model, tea.Cmd) {
@@ -547,6 +567,7 @@ func (m Model) resetForNext() (tea.Model, tea.Cmd) {
 	m.forceSingle = false
 	m.numWorkers = 1
 	m.dlEntries = nil
+	m.qualityChoices = nil
 	m.slots = nil
 	m.dlDone = 0
 	m.dlFailed = 0

@@ -7,7 +7,15 @@ import (
 )
 
 func FmtBytes(n int64) string {
-	ru := Loc == &strRU
+	l := LocaleEN
+	if Loc == &strRU {
+		l = LocaleRU
+	}
+	return FmtBytesFor(n, l)
+}
+
+func FmtBytesFor(n int64, l Locale) string {
+	ru := l == LocaleRU
 	switch {
 	case n >= 1_073_741_824:
 		if ru {

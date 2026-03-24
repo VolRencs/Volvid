@@ -67,6 +67,23 @@ go mod tidy
 go build -ldflags="-s -w" -o VolRenDownloader .
 ```
 
+### Build Telegram Bot
+
+Edit [`bot.go`](/home/volren/Загрузки/YouTubeDownloader/bot.go) and fill in:
+
+- `BotToken`
+- `BotUseLocalServer`
+- `BotAPIURL`
+- `BotAdminIDs`
+- `BotOwnerIDs`
+
+Then build the bot entry:
+
+```bash
+go build -tags bot -o tgbot .
+./tgbot
+```
+
 On first launch:
 
 1. **yt-dlp** is checked; if missing it is downloaded (~11 MB).  
@@ -137,8 +154,10 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o VolRenDownloader.exe .
 | File | Role |
 |------|------|
 | `main.go` | Entry: `signal.NotifyContext`, `tea.NewProgram` |
+| `bot.go` | Telegram bot entry for `go build -tags bot` |
 | `tui/` | Bubble Tea UI: model, events, rendering, styles, custom widgets |
 | `internal/app/` | App core: downloads, dependencies, updates, locale strings, playlists |
+| `internal/bot/` | Telegram bot logic: handlers, access control, playlist selection, file sending |
 
 ---
 

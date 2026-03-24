@@ -1,0 +1,382 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os/exec"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+const (
+	qualityScanTimeout          = 90 * time.Second
+	maxDetailedQualityURLs      = 5
+	maxParallelQualityScans     = 6
+	maxParallelPlaylistDownload = 4
+)
+
+type QualityChoice struct {
+	Key       string
+	Height    int
+	AudioOnly bool
+	Best      bool
+	Worst     bool
+	Available int
+	Total     int
+	SizeBytes int64
+	FmtChain  []string
+	FmtLabels []string
+}
+
+type qualityProbe struct {
+	Formats []qualityProbeFormat `json:"formats"`
+}
+
+type qualityProbeFormat struct {
+	Height         int    `json:"height"`
+	VCodec         string `json:"vcodec"`
+	ACodec         string `json:"acodec"`
+	Filesize       int64  `json:"filesize"`
+	FilesizeApprox int64  `json:"filesize_approx"`
+}
+
+type videoQualityInfo struct {
+	heights      []int
+	hasHeight    map[int]bool
+	sizeByHeight map[int]int64
+	audioSize    int64
+}
+
+func DefaultQualityChoices() []QualityChoice {
+	return []QualityChoice{
+		{Key: "best", Best: true, FmtChain: QualityChainAt(0)},
+		{
+			Key:       "worst",
+			Worst:     true,
+			FmtChain:  QualityChainAt(1),
+			FmtLabels: []string{"worst", "360p", "worst"},
+		},
+		{Key: "mp3", AudioOnly: true},
+	}
+}
+
+func ShouldScanQualityChoices(n int) bool {
+	return n > 0 && n <= maxDetailedQualityURLs
+}
+
+func ResolveQualityChoices(urls []string) ([]QualityChoice, error) {
+	urls = compactQualityURLs(urls)
+	if len(urls) == 0 {
+		return nil, errors.New("quality scan: empty input")
+	}
+	if !ShouldScanQualityChoices(len(urls)) {
+		return DefaultQualityChoices(), nil
+	}
+
+	choices, err := ScanQualityChoices(urls)
+	if err != nil || len(choices) == 0 {
+		return DefaultQualityChoices(), err
+	}
+	return choices, nil
+}
+
+func AutoDownloadWorkers(items int) int {
+	return optimalParallelism(items, maxParallelPlaylistDownload)
+}
+
+func autoQualityScanWorkers(items int) int {
+	return optimalParallelism(items, maxParallelQualityScans)
+}
+
+func ScanQualityChoices(urls []string) ([]QualityChoice, error) {
+	urls = compactQualityURLs(urls)
+	if len(urls) == 0 {
+		return nil, errors.New("quality scan: empty input")
+	}
+
+	type result struct {
+		info videoQualityInfo
+		err  error
+	}
+
+	jobs := make(chan string, min(len(urls), maxParallelQualityScans))
+	results := make(chan result, len(urls))
+	workers := autoQualityScanWorkers(len(urls))
+
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for url := range jobs {
+				info, err := scanVideoInfo(url)
+				results <- result{info: info, err: err}
+			}
+		}()
+	}
+
+	go func() {
+		for _, url := range urls {
+			jobs <- url
+		}
+		close(jobs)
+		wg.Wait()
+		close(results)
+	}()
+
+	counts := make(map[int]int)
+	seen := make(map[int]bool)
+	videos := make([]videoQualityInfo, 0, len(urls))
+	scanned := 0
+	var firstErr error
+
+	for res := range results {
+		if res.err != nil {
+			if firstErr == nil {
+				firstErr = res.err
+			}
+			continue
+		}
+		if len(res.info.heights) == 0 {
+			continue
+		}
+		scanned++
+		videos = append(videos, res.info)
+		for _, h := range res.info.heights {
+			counts[h]++
+			seen[h] = true
+		}
+	}
+
+	if scanned == 0 {
+		if firstErr != nil {
+			return nil, firstErr
+		}
+		return nil, errors.New("quality scan: no formats found")
+	}
+
+	heights := make([]int, 0, len(seen))
+	for h := range seen {
+		heights = append(heights, h)
+	}
+	slices.Sort(heights)
+	slices.Reverse(heights)
+
+	return buildQualityChoices(heights, counts, videos, len(urls)), nil
+}
+
+func FindQualityChoice(choices []QualityChoice, key string) (QualityChoice, bool) {
+	for _, choice := range choices {
+		if choice.Key == key {
+			return choice, true
+		}
+	}
+	return QualityChoice{}, false
+}
+
+func QualityChoiceLabels(choices []QualityChoice, l Locale) []string {
+	labels := make([]string, len(choices))
+	for i, choice := range choices {
+		labels[i] = choice.Label(l)
+	}
+	return labels
+}
+
+func (q QualityChoice) Label(l Locale) string {
+	label := q.labelWithoutSize(l)
+	if q.SizeBytes > 0 {
+		label += " ~" + FmtBytesFor(q.SizeBytes, l)
+	}
+	return label
+}
+
+func (q QualityChoice) labelWithoutSize(l Locale) string {
+	switch {
+	case q.AudioOnly:
+		return StringsFor(l).QMP3
+	case q.Best:
+		return StringsFor(l).QBest
+	case q.Worst:
+		return StringsFor(l).QEcon
+	default:
+		label := fmt.Sprintf("%dp", q.Height)
+		if q.Total > 1 {
+			label = fmt.Sprintf("%s (%d/%d)", label, q.Available, q.Total)
+		}
+		return label
+	}
+}
+
+func (q QualityChoice) Config(l Locale) QualityConfig {
+	return QualityConfig{
+		Label:     q.labelWithoutSize(l),
+		FmtChain:  slices.Clone(q.FmtChain),
+		FmtLabels: slices.Clone(q.FmtLabels),
+	}
+}
+
+func buildQualityChoices(heights []int, counts map[int]int, videos []videoQualityInfo, total int) []QualityChoice {
+	choices := make([]QualityChoice, 0, len(heights)+1)
+	for i, height := range heights {
+		chain, labels := buildHeightChain(heights[i:])
+		choices = append(choices, QualityChoice{
+			Key:       strconv.Itoa(height),
+			Height:    height,
+			Available: counts[height],
+			Total:     total,
+			SizeBytes: estimateChoiceSize(heights[i:], videos, false),
+			FmtChain:  chain,
+			FmtLabels: labels,
+		})
+	}
+	choices = append(choices, QualityChoice{
+		Key:       "mp3",
+		AudioOnly: true,
+		SizeBytes: estimateChoiceSize(nil, videos, true),
+	})
+	return choices
+}
+
+func buildHeightChain(heights []int) ([]string, []string) {
+	chain := make([]string, 0, len(heights))
+	labels := make([]string, 0, len(heights))
+	for _, height := range heights {
+		chain = append(chain, fmt.Sprintf(
+			"bestvideo[height=%d]+bestaudio/best[height=%d]",
+			height, height,
+		))
+		labels = append(labels, fmt.Sprintf("%dp", height))
+	}
+	return chain, labels
+}
+
+func compactQualityURLs(urls []string) []string {
+	compacted := make([]string, 0, len(urls))
+	seen := make(map[string]bool, len(urls))
+	for _, url := range urls {
+		url = strings.TrimSpace(url)
+		if url == "" || seen[url] {
+			continue
+		}
+		seen[url] = true
+		compacted = append(compacted, url)
+	}
+	return compacted
+}
+
+func scanVideoInfo(url string) (videoQualityInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), qualityScanTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(
+		ctx,
+		YtdlpBin,
+		"--dump-single-json",
+		"--no-playlist",
+		"--no-warnings",
+		url,
+	).Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			return videoQualityInfo{}, ctx.Err()
+		}
+		return videoQualityInfo{}, err
+	}
+
+	var probe qualityProbe
+	if err := json.Unmarshal(out, &probe); err != nil {
+		return videoQualityInfo{}, err
+	}
+
+	audioSize := int64(0)
+	heightsSeen := make(map[int]bool)
+	videoOnlySizes := make(map[int]int64)
+	combinedSizes := make(map[int]int64)
+	for _, format := range probe.Formats {
+		size := qualityFormatSize(format)
+		if format.VCodec == "none" && format.ACodec != "" && format.ACodec != "none" {
+			audioSize = max(audioSize, size)
+		}
+		if format.Height <= 0 || format.VCodec == "" || format.VCodec == "none" {
+			continue
+		}
+		heightsSeen[format.Height] = true
+		if format.ACodec == "" || format.ACodec == "none" {
+			videoOnlySizes[format.Height] = max(videoOnlySizes[format.Height], size)
+			continue
+		}
+		combinedSizes[format.Height] = max(combinedSizes[format.Height], size)
+	}
+	if len(heightsSeen) == 0 {
+		return videoQualityInfo{}, errors.New("quality scan: no video heights")
+	}
+
+	sizeByHeight := make(map[int]int64, len(heightsSeen))
+	heights := make([]int, 0, len(heightsSeen))
+	for height := range heightsSeen {
+		heights = append(heights, height)
+		switch {
+		case videoOnlySizes[height] > 0 && audioSize > 0:
+			sizeByHeight[height] = videoOnlySizes[height] + audioSize
+		case videoOnlySizes[height] > 0:
+			sizeByHeight[height] = videoOnlySizes[height]
+		case combinedSizes[height] > 0:
+			sizeByHeight[height] = combinedSizes[height]
+		}
+	}
+	slices.Sort(heights)
+	slices.Reverse(heights)
+	return videoQualityInfo{
+		heights:      heights,
+		hasHeight:    heightsSeen,
+		sizeByHeight: sizeByHeight,
+		audioSize:    audioSize,
+	}, nil
+}
+
+func qualityFormatSize(format qualityProbeFormat) int64 {
+	if format.Filesize > 0 {
+		return format.Filesize
+	}
+	return format.FilesizeApprox
+}
+
+func estimateChoiceSize(heights []int, videos []videoQualityInfo, audioOnly bool) int64 {
+	total := int64(0)
+	found := false
+	for _, video := range videos {
+		size, ok := estimateVideoSize(video, heights, audioOnly)
+		if !ok {
+			continue
+		}
+		total += size
+		found = true
+	}
+	if !found {
+		return 0
+	}
+	return total
+}
+
+func estimateVideoSize(video videoQualityInfo, heights []int, audioOnly bool) (int64, bool) {
+	if audioOnly {
+		if video.audioSize <= 0 {
+			return 0, false
+		}
+		return video.audioSize, true
+	}
+	for _, height := range heights {
+		if !video.hasHeight[height] {
+			continue
+		}
+		if size := video.sizeByHeight[height]; size > 0 {
+			return size, true
+		}
+	}
+	return 0, false
+}

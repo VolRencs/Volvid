@@ -9,7 +9,7 @@ type UIStrings struct {
 
 	QBest, QEcon, QMP3 string
 
-	SpinnerUpdate, SpinnerPlaylist string
+	SpinnerUpdate, SpinnerPlaylist, SpinnerQuality string
 
 	UpdateAvail, CurrentVerShort string
 	FFmpegWarn, FFmpegHint       string
@@ -55,7 +55,7 @@ var strEN = UIStrings{
 
 	QBest: "▲ Best (HD·4K)", QEcon: "▼ Economy (360p)", QMP3: "♪ Audio only (MP3)",
 
-	SpinnerUpdate: "  Checking for updates…", SpinnerPlaylist: "  Loading playlist…",
+	SpinnerUpdate: "  Checking for updates…", SpinnerPlaylist: "  Loading playlist…", SpinnerQuality: "  Scanning qualities…",
 
 	UpdateAvail: "  ✔  New version ", CurrentVerShort: "  (current %s)",
 	FFmpegWarn: "  ⚠️ ffmpeg not found", FFmpegHint: "     Required for HD, 4K and MP3",
@@ -112,7 +112,7 @@ var strRU = UIStrings{
 
 	QBest: "▲ Лучшее качество (HD·4K)", QEcon: "▼ Экономичное (360p)", QMP3: "♪ Только аудио (MP3)",
 
-	SpinnerUpdate: "  Проверяю обновления…", SpinnerPlaylist: "  Загружаю плейлист…",
+	SpinnerUpdate: "  Проверяю обновления…", SpinnerPlaylist: "  Загружаю плейлист…", SpinnerQuality: "  Сканирую доступные качества…",
 
 	UpdateAvail: "  ✔  Доступна версия ", CurrentVerShort: "  (сейчас %s)",
 	FFmpegWarn: "  ⚠️ ffmpeg не найден", FFmpegHint: "     Нужен для HD, 4K и MP3",
@@ -180,11 +180,6 @@ func StringsFor(l Locale) *UIStrings {
 
 func ActiveStrings() *UIStrings {
 	return Loc
-}
-
-func QualityOptionsFor(l Locale) []string {
-	s := StringsFor(l)
-	return []string{s.QBest, s.QEcon, s.QMP3}
 }
 
 func PlaylistSuffix(l Locale, n int) string {

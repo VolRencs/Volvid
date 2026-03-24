@@ -24,6 +24,7 @@ const (
 	scrPlaylistFetch
 	scrPlaylist
 	scrWorkers
+	scrQualityFetch
 	scrQuality
 	scrDownload
 	scrSummary
@@ -58,6 +59,10 @@ type (
 	msgPlaylistFetched struct {
 		info *app.PlaylistInfo
 		err  error
+	}
+	msgQualityScanned struct {
+		choices []app.QualityChoice
+		err     error
 	}
 	msgDlUpdate       struct{ update app.DlUpdate }
 	msgClipboardPaste struct {
@@ -106,20 +111,21 @@ type Model struct {
 
 	menu menu
 
-	cfg         app.QualityConfig
-	url         string
-	dlEntries   []app.PlaylistEntry
-	forceSingle bool
-	numWorkers  int
-	dlCh        <-chan app.DlUpdate
-	slots       []slotState
-	dlDone      int
-	dlFailed    int
-	dlTotal     int
-	singleOK    bool
-	dlStartedAt time.Time
-	dlElapsed   time.Duration
-	timerActive bool
+	cfg            app.QualityConfig
+	qualityChoices []app.QualityChoice
+	url            string
+	dlEntries      []app.PlaylistEntry
+	forceSingle    bool
+	numWorkers     int
+	dlCh           <-chan app.DlUpdate
+	slots          []slotState
+	dlDone         int
+	dlFailed       int
+	dlTotal        int
+	singleOK       bool
+	dlStartedAt    time.Time
+	dlElapsed      time.Duration
+	timerActive    bool
 
 	session       app.Session
 	prevScreen    screen
@@ -183,6 +189,13 @@ func fetchPlaylistCmd(url string) tea.Cmd {
 	}
 }
 
+func loadQualityChoicesCmd(urls []string) tea.Cmd {
+	return func() tea.Msg {
+		choices, err := app.ResolveQualityChoices(urls)
+		return msgQualityScanned{choices: choices, err: err}
+	}
+}
+
 func listenDownloadCmd(ch <-chan app.DlUpdate) tea.Cmd {
 	return func() tea.Msg {
 		u, ok := <-ch
@@ -205,14 +218,14 @@ func (m Model) u() *app.UIStrings {
 }
 
 func (m Model) qualityOptions() []string {
-	return app.QualityOptionsFor(m.locale)
+	return app.QualityChoiceLabels(m.qualityChoices, m.locale)
 }
 
 func (m Model) qualityConfigAt(idx int) app.QualityConfig {
-	return app.QualityConfig{
-		Label:    m.qualityOptions()[idx],
-		FmtChain: app.QualityChainAt(idx),
+	if idx < 0 || idx >= len(m.qualityChoices) {
+		return app.QualityConfig{}
 	}
+	return m.qualityChoices[idx].Config(m.locale)
 }
 
 func (m Model) sessionPlaylistSuffix(n int) string {
@@ -221,7 +234,7 @@ func (m Model) sessionPlaylistSuffix(n int) string {
 
 func (m Model) uiBusy() bool {
 	switch m.screen {
-	case scrUpdateDl, scrDepDl, scrDepUpdate, scrDownload, scrPlaylistFetch:
+	case scrUpdateDl, scrDepDl, scrDepUpdate, scrDownload, scrPlaylistFetch, scrQualityFetch:
 		return true
 	}
 	return false

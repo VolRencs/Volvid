@@ -67,10 +67,12 @@ func (m Model) renderBody() string {
 	b.WriteString("\n\n")
 
 	switch m.screen {
-	case scrUpdateCheck, scrPlaylistFetch:
+	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch:
 		msg := u.SpinnerUpdate
 		if m.screen == scrPlaylistFetch {
 			msg = u.SpinnerPlaylist
+		} else if m.screen == scrQualityFetch {
+			msg = u.SpinnerQuality
 		}
 		b.WriteString("  " + sTitle.Render(m.spinnerView()) + sDim.Render(msg))
 

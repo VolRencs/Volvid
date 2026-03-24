@@ -35,9 +35,9 @@ func FetchPlaylistInfo(url string) (*PlaylistInfo, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, YtdlpBin,
-		"--flat-playlist", "--dump-json",
-		"--quiet", "--ignore-errors", "--no-warnings",
-		url,
+				   "--flat-playlist", "--dump-json",
+			    "--quiet", "--ignore-errors", "--no-warnings",
+			    url,
 	)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -75,23 +75,23 @@ func FetchPlaylistInfo(url string) (*PlaylistInfo, error) {
 		entries = append(entries, PlaylistEntry{
 			Index:    n,
 			Title:    strVal(e, "title", strVal(e, "id", defTitle)),
-			URL:      videoURL,
-			Duration: int(dur),
+				 URL:      videoURL,
+				 Duration: int(dur),
 		})
 	}
 	scanErr := sc.Err()
 	waitErr := cmd.Wait()
 	if len(entries) == 0 {
 		switch {
-		case scanErr != nil:
-			return nil, fmt.Errorf("yt-dlp output: %w", scanErr)
-		case waitErr != nil:
-			if ctx.Err() != nil {
-				return nil, errors.New(Loc.PlTimeout)
-			}
-			return nil, fmt.Errorf("yt-dlp: %w", waitErr)
-		default:
-			return nil, errors.New(Loc.PlEmptyPlaylist)
+			case scanErr != nil:
+				return nil, fmt.Errorf("yt-dlp output: %w", scanErr)
+			case waitErr != nil:
+				if ctx.Err() != nil {
+					return nil, errors.New(Loc.PlTimeout)
+				}
+				return nil, fmt.Errorf("yt-dlp: %w", waitErr)
+			default:
+				return nil, errors.New(Loc.PlEmptyPlaylist)
 		}
 	}
 	title := "playlist"
@@ -121,12 +121,12 @@ func ParseSelection(raw string, maxIdx int) ([]int, error) {
 		return nil, errors.New(Loc.PlParseEmpty)
 	}
 	switch raw {
-	case "а", "a", "all", "все", "всё", "*":
-		r := make([]int, maxIdx)
-		for i := range maxIdx {
-			r[i] = i + 1
-		}
-		return r, nil
+		case "а", "a", "all", "все", "всё", "*":
+			r := make([]int, maxIdx)
+			for i := range maxIdx {
+				r[i] = i + 1
+			}
+			return r, nil
 	}
 	seen := make(map[int]bool, maxIdx)
 	for _, part := range sepRE.Split(raw, -1) {
