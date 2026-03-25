@@ -2,30 +2,32 @@
 package app
 
 import (
-    "fmt"
-    "os"
-    "os/exec"
-    "strings"
-    "syscall"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"syscall"
+	"unsafe"
 )
 
-const (
-    windowsUpdateRetrySeconds          = 90
-    enableVirtualTerminalProcessing    = 0x0004
-    detachedProcess             uint32 = 0x00000008
+var (
+	kernel32                = syscall.NewLazyDLL("kernel32.dll")
+	procGetConsoleMode      = kernel32.NewProc("GetConsoleMode")
+	procSetConsoleMode      = kernel32.NewProc("SetConsoleMode")
 )
+
+const enableVirtualTerminalProcessing = 0x0004
 
 func init() {
-    handle := syscall.Handle(os.Stdout.Fd())
-    var mode uint32
-    if err := syscall.GetConsoleMode(handle, &mode); err == nil {
-        _ = syscall.SetConsoleMode(handle, mode|enableVirtualTerminalProcessing)
-    }
+	handle := syscall.Handle(os.Stdout.Fd())
+	var mode uint32
+	procGetConsoleMode.Call(uintptr(handle), uintptr(unsafe.Pointer(&mode)))
+	procSetConsoleMode.Call(uintptr(handle), uintptr(mode|enableVirtualTerminalProcessing))
 }
 
-func detachedProcessAttr() *syscall.SysProcAttr {
+func detachedProcess() *syscall.SysProcAttr {
     return &syscall.SysProcAttr{
-        CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | detachedProcess,
+        CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008,
     }
 }
 
@@ -48,7 +50,7 @@ func applyUpdatePlatform(tmp, dest string) error {
     }
 
     cmd := exec.Command("cmd", "/c", bat)
-    cmd.SysProcAttr = detachedProcessAttr()
+    cmd.SysProcAttr = detachedProcess()
     if err := cmd.Start(); err != nil {
         _ = os.Remove(tmp)
         _ = os.Remove(bat)
