@@ -9,7 +9,7 @@
 ![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-5.1.1-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-6.1.1-orange?style=flat-square)
 
 </div>
 
@@ -25,7 +25,8 @@ The interface is available in **English** and **Russian**. Press **Tab** to swit
 
 - **Best quality** — HD / 4K with stream merge via ffmpeg  
 - **Economy** — 360p for slow connections  
-- **Audio only** — MP3 with high-quality VBR  
+- **Audio only** — 5 presets: MP3 320k, MP3 192k, M4A/AAC Best, Opus Best, FLAC  
+- **Thumbnail download** — save the video preview as a separate file  
 - **Playlists** — browse, toggle with Space, ranges or manual index entry  
 - **Parallel downloads** — up to five workers  
 - **Format fallback** — tries alternate formats if the first choice fails  
@@ -63,13 +64,12 @@ Requires **Go 1.26+**.
 ```bash
 git clone https://github.com/VolRencs/YouTubeDownloader
 cd YouTubeDownloader
-go mod tidy
-go build -ldflags="-s -w" -o VolRenDownloader .
+go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader ./cmd/downloader
 ```
 
 ### Build Telegram Bot
 
-Edit [`bot.go`](/home/volren/Загрузки/YouTubeDownloader/bot.go) and fill in:
+Edit `cmd/tgbot/main.go` and fill in:
 
 - `BotToken`
 - `BotUseLocalServer`
@@ -80,9 +80,17 @@ Edit [`bot.go`](/home/volren/Загрузки/YouTubeDownloader/bot.go) and fill
 Then build the bot entry:
 
 ```bash
-go build -tags bot -o tgbot .
+go build -trimpath -buildvcs=false -ldflags="-s -w" -o tgbot ./cmd/tgbot
 ./tgbot
 ```
+
+Flow inside the app:
+
+1. Paste a YouTube link.
+2. Choose what to download: **Video / Audio / Thumbnail**.
+3. For **Video**: choose video quality.
+4. For **Audio**: choose one of 5 presets.
+5. Start the download.
 
 On first launch:
 
@@ -142,9 +150,8 @@ next to the binary/
 ## Cross-compilation
 
 ```bash
-go mod tidy
-GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o VolRenDownloader_arm64 .
-GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o VolRenDownloader.exe .
+GOOS=linux GOARCH=arm64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader_arm64 ./cmd/downloader
+GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader.exe ./cmd/downloader
 ```
 
 ---
@@ -153,8 +160,8 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o VolRenDownloader.exe .
 
 | File | Role |
 |------|------|
-| `main.go` | Entry: `signal.NotifyContext`, `tea.NewProgram` |
-| `bot.go` | Telegram bot entry for `go build -tags bot` |
+| `cmd/downloader/` | TUI entrypoint |
+| `cmd/tgbot/` | Telegram bot entrypoint |
 | `tui/` | Bubble Tea UI: model, events, rendering, styles, custom widgets |
 | `internal/app/` | App core: downloads, dependencies, updates, locale strings, playlists |
 | `internal/bot/` | Telegram bot logic: handlers, access control, playlist selection, file sending |
@@ -167,7 +174,7 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o VolRenDownloader.exe .
 
 **YouTube: “Sign in…”** — Update yt-dlp with `Ctrl+U`.
 
-**No ffmpeg (HD / MP3)** — On Linux: `sudo apt install ffmpeg` (or your distro’s package). On Windows, accept the download in the TUI.
+**No ffmpeg (HD / audio conversion)** — On Linux: `sudo apt install ffmpeg` (or your distro’s package). On Windows, accept the download in the TUI.
 
 **Empty playlist** — The playlist must be public.
 

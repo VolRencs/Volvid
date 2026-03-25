@@ -23,9 +23,11 @@ const (
 	scrPlaylistAsk
 	scrPlaylistFetch
 	scrPlaylist
-	scrWorkers
+	scrMode
+	scrAudio
 	scrQualityFetch
 	scrQuality
+	scrWorkers
 	scrDownload
 	scrSummary
 )
@@ -65,12 +67,7 @@ type (
 		choices []app.QualityChoice
 		err     error
 	}
-	msgDlUpdate       struct{ update app.DlUpdate }
-	msgClipboardPaste struct {
-		target  inputTarget
-		content string
-		err     error
-	}
+	msgDlUpdate struct{ update app.DlUpdate }
 
 	spinnerTickMsg struct{}
 	timerTickMsg   time.Time
@@ -101,6 +98,7 @@ type Model struct {
 
 	urlInput inputField
 	urlErr   string
+	target   app.ParsedTarget
 
 	plInfo      *app.PlaylistInfo
 	plCursor    int
@@ -112,8 +110,11 @@ type Model struct {
 
 	menu menu
 
-	cfg            app.QualityConfig
+	mode           app.DownloadMode
+	profile        app.OutputProfile
 	qualityChoices []app.QualityChoice
+	audioProfiles  []app.OutputProfile
+	flowErr        string
 	url            string
 	dlEntries      []app.PlaylistEntry
 	forceSingle    bool
@@ -146,6 +147,8 @@ func newModel() Model {
 		locale:     loc,
 		urlInput:   newInput(inputURL, "https://youtu.be/...", inputW, 300),
 		plInput:    newInput(inputPlaylist, app.StringsFor(loc).PlInputPlaceholder, 38, 100),
+		mode:       app.DefaultDownloadMode(),
+		profile:    app.DefaultVideoProfile(loc),
 		numWorkers: 1,
 		plSelected: map[int]bool{},
 	}
@@ -226,11 +229,42 @@ func (m Model) qualityOptions() []string {
 	return app.QualityChoiceLabels(m.qualityChoices, m.locale)
 }
 
-func (m Model) qualityConfigAt(idx int) app.QualityConfig {
+func (m Model) qualityProfileAt(idx int) app.OutputProfile {
 	if idx < 0 || idx >= len(m.qualityChoices) {
-		return app.QualityConfig{}
+		return app.OutputProfile{}
 	}
-	return m.qualityChoices[idx].Config(m.locale)
+	return m.qualityChoices[idx].Profile(m.locale)
+}
+
+func (m Model) audioOptions() []string {
+	return app.OutputProfileLabels(m.audioProfiles)
+}
+
+func (m Model) audioProfileAt(idx int) app.OutputProfile {
+	if idx < 0 || idx >= len(m.audioProfiles) {
+		return app.OutputProfile{}
+	}
+	return m.audioProfiles[idx]
+}
+
+func (m Model) modeAt(idx int) app.DownloadMode {
+	switch idx {
+	case 1:
+		return app.ModeAudio
+	case 2:
+		return app.ModeThumbnail
+	default:
+		return app.ModeVideo
+	}
+}
+
+func (m Model) shouldAskWorkers() bool {
+	return len(m.dlEntries) > 1
+}
+
+func (m Model) modeOptions() []string {
+	u := m.u()
+	return []string{u.ModeVideo, u.ModeAudio, u.ModeThumbnail}
 }
 
 func (m Model) sessionPlaylistSuffix(n int) string {
@@ -264,12 +298,16 @@ func (m Model) syncMenu() Model {
 		m.menu.SetItems([]string{u.MenuFFmpegY, u.MenuFFmpegN})
 	case scrPlaylistAsk:
 		m.menu.SetItems([]string{u.MenuVidOnly, u.MenuOpenPl})
+	case scrMode:
+		m.menu.SetItems(m.modeOptions())
+	case scrAudio:
+		m.menu.SetItems(m.audioOptions())
 	case scrSummary:
 		m.menu.SetItems([]string{u.MenuAgainY, u.MenuAgainN})
-	case scrWorkers:
-		m.menu.SetItems(m.workerMenuOptions(min(len(m.dlEntries), 5)))
 	case scrQuality:
 		m.menu.SetItems(m.qualityOptions())
+	case scrWorkers:
+		m.menu.SetItems(m.workerMenuOptions(min(len(m.dlEntries), 5)))
 	default:
 		m.menu.SetItems(nil)
 	}

@@ -53,6 +53,14 @@ func (m Model) menuAndNav() string {
 	return m.menu.View() + "\n" + m.hint(m.kbUp(), m.kbDown(), m.kbEnter())
 }
 
+func (m Model) menuAndNavWithError() string {
+	body := m.menuAndNav()
+	if m.flowErr == "" {
+		return body
+	}
+	return body + "\n" + sErr.Render("  ✘  "+m.flowErr)
+}
+
 func (m Model) renderBody() string {
 	u := m.u()
 	var b strings.Builder
@@ -78,6 +86,14 @@ func (m Model) renderBody() string {
 
 	case scrUpdateReady, scrFFmpegAsk, scrPlaylistAsk:
 		b.WriteString(m.renderPromptMenu())
+
+	case scrMode:
+		b.WriteString(sBold.Render(u.ModeTitle) + "\n\n")
+		b.WriteString(m.menuAndNavWithError())
+
+	case scrAudio:
+		b.WriteString(sBold.Render(u.AudioTitle) + "\n\n")
+		b.WriteString(m.menuAndNavWithError())
 
 	case scrUpdateDl, scrDepDl:
 		label := m.depLabel
@@ -141,7 +157,7 @@ func (m Model) renderBody() string {
 		} else {
 			b.WriteString(sBold.Render(u.QualityTitle) + "\n\n")
 		}
-		b.WriteString(m.menuAndNav())
+		b.WriteString(m.menuAndNavWithError())
 
 	case scrDownload:
 		b.WriteString(m.viewDownload())

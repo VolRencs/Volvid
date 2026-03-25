@@ -7,7 +7,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/atotto/clipboard"
 )
 
 type menu struct {
@@ -129,14 +128,9 @@ func blinkInputCmd(target inputTarget, tag int) tea.Cmd {
 	})
 }
 
-func pasteClipboardCmd(target inputTarget) tea.Cmd {
+func pasteClipboardCmd(_ inputTarget) tea.Cmd {
 	return func() tea.Msg {
-		text, err := clipboard.ReadAll()
-		return msgClipboardPaste{
-			target:  target,
-			content: text,
-			err:     err,
-		}
+		return tea.ReadClipboard()
 	}
 }
 

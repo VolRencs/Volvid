@@ -55,7 +55,8 @@ func (b *Bot) helpText(msg *models.Message) string {
 	lines := []string{
 		"👋 <b>VolRen Downloader Bot</b> v" + app.Version,
 		"",
-		"Пришли ссылку на YouTube — скачаю видео или аудио.",
+		"Пришли ссылку на YouTube — скачаю видео, аудио или превью.",
+		"Есть выбор качества видео и 5 аудио-пресетов.",
 		"",
 		"<b>Команды:</b>",
 		"/cancel — отменить скачивание",

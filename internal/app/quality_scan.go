@@ -1,8 +1,6 @@
 package app
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -22,7 +20,6 @@ const (
 type QualityChoice struct {
 	Key       string
 	Height    int
-	AudioOnly bool
 	Best      bool
 	Worst     bool
 	Available int
@@ -30,18 +27,6 @@ type QualityChoice struct {
 	SizeBytes int64
 	FmtChain  []string
 	FmtLabels []string
-}
-
-type qualityProbe struct {
-	Formats []qualityProbeFormat `json:"formats"`
-}
-
-type qualityProbeFormat struct {
-	Height         int    `json:"height"`
-	VCodec         string `json:"vcodec"`
-	ACodec         string `json:"acodec"`
-	Filesize       int64  `json:"filesize"`
-	FilesizeApprox int64  `json:"filesize_approx"`
 }
 
 type videoQualityInfo struct {
@@ -60,7 +45,6 @@ func DefaultQualityChoices() []QualityChoice {
 			FmtChain:  QualityChainAt(1),
 			FmtLabels: []string{"worst", "360p", "worst"},
 		},
-		{Key: "mp3", AudioOnly: true},
 	}
 }
 
@@ -196,8 +180,6 @@ func (q QualityChoice) Label(l Locale) string {
 
 func (q QualityChoice) labelWithoutSize(l Locale) string {
 	switch {
-	case q.AudioOnly:
-		return StringsFor(l).QMP3
 	case q.Best:
 		return StringsFor(l).QBest
 	case q.Worst:
@@ -211,17 +193,18 @@ func (q QualityChoice) labelWithoutSize(l Locale) string {
 	}
 }
 
-func (q QualityChoice) Config(l Locale) QualityConfig {
-	return QualityConfig{
-		Locale:    l,
-		Label:     q.labelWithoutSize(l),
-		FmtChain:  slices.Clone(q.FmtChain),
-		FmtLabels: slices.Clone(q.FmtLabels),
+func (q QualityChoice) Profile(l Locale) OutputProfile {
+	return OutputProfile{
+		Key:            q.Key,
+		Label:          q.Label(l),
+		Mode:           ModeVideo,
+		VideoFmtChain:  slices.Clone(q.FmtChain),
+		VideoFmtLabels: slices.Clone(q.FmtLabels),
 	}
 }
 
 func buildQualityChoices(heights []int, counts map[int]int, videos []videoQualityInfo, total int) []QualityChoice {
-	choices := make([]QualityChoice, 0, len(heights)+1)
+	choices := make([]QualityChoice, 0, len(heights))
 	for i, height := range heights {
 		chain, labels := buildHeightChain(heights[i:])
 		choices = append(choices, QualityChoice{
@@ -234,11 +217,6 @@ func buildQualityChoices(heights []int, counts map[int]int, videos []videoQualit
 			FmtLabels: labels,
 		})
 	}
-	choices = append(choices, QualityChoice{
-		Key:       "mp3",
-		AudioOnly: true,
-		SizeBytes: estimateChoiceSize(nil, videos, true),
-	})
 	return choices
 }
 
@@ -270,24 +248,17 @@ func compactQualityURLs(urls []string) []string {
 }
 
 func scanVideoInfo(url string) (videoQualityInfo, error) {
-	out, err := commandOutput(
-		context.Background(),
-		qualityScanTimeout,
-		YtdlpBin,
-		"--dump-single-json",
-		"--no-playlist",
-		"--no-warnings",
-		url,
-	)
+	probe, err := ProbeMediaURL(url)
 	if err != nil {
 		return videoQualityInfo{}, err
 	}
+	return videoQualityInfoFromProbe(probe)
+}
 
-	var probe qualityProbe
-	if err := json.Unmarshal(out, &probe); err != nil {
-		return videoQualityInfo{}, err
+func videoQualityInfoFromProbe(probe *MediaProbe) (videoQualityInfo, error) {
+	if probe == nil {
+		return videoQualityInfo{}, errors.New("quality scan: nil probe")
 	}
-
 	audioSize := int64(0)
 	heightsSeen := make(map[int]bool)
 	videoOnlySizes := make(map[int]int64)
@@ -334,7 +305,7 @@ func scanVideoInfo(url string) (videoQualityInfo, error) {
 	}, nil
 }
 
-func qualityFormatSize(format qualityProbeFormat) int64 {
+func qualityFormatSize(format MediaFormat) int64 {
 	if format.Filesize > 0 {
 		return format.Filesize
 	}

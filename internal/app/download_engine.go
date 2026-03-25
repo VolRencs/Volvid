@@ -34,11 +34,21 @@ func QualityChainAt(idx int) []string {
 	return slices.Clone(qualityChains[idx])
 }
 
+func profileFromQualityConfig(cfg QualityConfig) OutputProfile {
+	return OutputProfile{
+		Key:            cfg.Label,
+		Label:          cfg.Label,
+		Mode:           ModeVideo,
+		VideoFmtChain:  slices.Clone(cfg.FmtChain),
+		VideoFmtLabels: slices.Clone(cfg.FmtLabels),
+	}
+}
+
 var (
 	dlRE    = regexp.MustCompile(`(?i)\[download\]\s+(?P<pct>[\d.]+)%\s+of\s+~?\s*(?P<size>[\d.]+)\s*(?P<unit>[KMGTkmgt]i?[Bb])`)
 	speedRE = regexp.MustCompile(`(?i)at\s+(?P<speed>[\d.]+\s*[KMGTkmgt]i?[Bb]/s)`)
 	destRE  = regexp.MustCompile(`\[download\]\s+Destination:\s+(.+)`)
-	procRE  = regexp.MustCompile(`(?i)^\s*\[(Merger|ExtractAudio)\]`)
+	procRE  = regexp.MustCompile(`(?i)^\s*\[(Merger|ExtractAudio|Thumbnails?Convertor)\]`)
 	numRE   = regexp.MustCompile(`^\d+\s*[-–]\s*`)
 )
 
@@ -132,8 +142,11 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan
 		case procRE.MatchString(line):
 			m := procRE.FindStringSubmatch(line)
 			label := loc.MergeProc
-			if strings.Contains(strings.ToLower(m[1]), "audio") {
+			switch lower := strings.ToLower(m[1]); {
+			case strings.Contains(lower, "audio"):
 				label = loc.MP3Proc
+			case strings.Contains(lower, "thumbnail"):
+				label = loc.ThumbProc
 			}
 			ch <- DlUpdate{Type: EvProc, Slot: slot, Text: label}
 		}
@@ -154,32 +167,28 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan
 	return true
 }
 
-func buildArgs(cfg QualityConfig, url, tmpl, format string, extra []string) []string {
-	args := ffmpegArgs()
-	if len(cfg.FmtChain) == 0 {
-		args = append(args, "--extract-audio", "--audio-format", "mp3", "--audio-quality", "0")
-	} else {
-		args = append(args, "-f", format, "--merge-output-format", "mp4")
-	}
-	args = append(args, "-o", tmpl, "--windows-filenames")
-	args = append(args, extra...)
-	args = append(args, url)
-	return args
-}
+func runDownloadRequest(ctx context.Context, slot int, req DownloadRequest, url, tmpl string, extra []string, ch chan<- DlUpdate) bool {
+	req = NormalizeDownloadRequest(req)
+	strs := StringsFor(req.Locale)
 
-func runWithFallback(ctx context.Context, slot int, cfg QualityConfig, url, tmpl string, extra []string, ch chan<- DlUpdate) bool {
-	strs := StringsFor(cfg.Locale)
-	if len(cfg.FmtChain) == 0 {
-		return streamYtdlp(ctx, slot, cfg.Locale, buildArgs(cfg, url, tmpl, "", extra), ch)
+	formats := []string{""}
+	labels := []string{""}
+	if req.Profile.Mode == ModeVideo {
+		formats = req.Profile.VideoFmtChain
+		labels = req.Profile.VideoFmtLabels
+		if len(formats) == 0 {
+			formats = []string{"bestvideo+bestaudio/best"}
+		}
 	}
-	for i, format := range cfg.FmtChain {
+
+	for i, format := range formats {
 		if ctx != nil && ctx.Err() != nil {
 			return false
 		}
-		if i > 0 {
+		if req.Profile.Mode == ModeVideo && i > 0 {
 			label := format
-			if i < len(cfg.FmtLabels) && cfg.FmtLabels[i] != "" {
-				label = cfg.FmtLabels[i]
+			if i < len(labels) && labels[i] != "" {
+				label = labels[i]
 			}
 			ch <- DlUpdate{
 				Type: EvFallback,
@@ -187,7 +196,12 @@ func runWithFallback(ctx context.Context, slot int, cfg QualityConfig, url, tmpl
 				Text: fmt.Sprintf(strs.FallbackFmt, i, label),
 			}
 		}
-		if streamYtdlp(ctx, slot, cfg.Locale, buildArgs(cfg, url, tmpl, format, extra), ch) {
+
+		spec, err := BuildCommandSpec(req, url, tmpl, format, extra)
+		if err != nil {
+			return false
+		}
+		if streamYtdlp(ctx, slot, req.Locale, spec.Args, ch) {
 			return true
 		}
 	}
@@ -211,7 +225,24 @@ func StartDownload(
 	workers int,
 	ch chan<- DlUpdate,
 ) {
-	StartDownloadContextInDir(context.Background(), DlDir, cfg, url, forceSingle, plInfo, entries, workers, ch)
+	target, err := ParseTarget(url)
+	if err != nil {
+		go func() {
+			defer close(ch)
+			ch <- DlUpdate{Type: EvDone, OK: false}
+		}()
+		return
+	}
+	StartDownloadRequest(DownloadRequest{
+		Target:       target,
+		Profile:      profileFromQualityConfig(cfg),
+		ForceSingle:  forceSingle,
+		PlaylistInfo: plInfo,
+		Entries:      entries,
+		Workers:      workers,
+		OutputDir:    DlDir,
+		Locale:       cfg.Locale,
+	}, ch)
 }
 
 func StartDownloadContext(
@@ -224,50 +255,64 @@ func StartDownloadContext(
 	workers int,
 	ch chan<- DlUpdate,
 ) {
-	StartDownloadContextInDir(ctx, DlDir, cfg, url, forceSingle, plInfo, entries, workers, ch)
+	target, err := ParseTarget(url)
+	if err != nil {
+		go func() {
+			defer close(ch)
+			ch <- DlUpdate{Type: EvDone, OK: false}
+		}()
+		return
+	}
+	StartDownloadRequestContext(ctx, DownloadRequest{
+		Target:       target,
+		Profile:      profileFromQualityConfig(cfg),
+		ForceSingle:  forceSingle,
+		PlaylistInfo: plInfo,
+		Entries:      entries,
+		Workers:      workers,
+		OutputDir:    DlDir,
+		Locale:       cfg.Locale,
+	}, ch)
 }
 
-func StartDownloadContextInDir(
-	ctx context.Context,
-	baseDir string,
-	cfg QualityConfig,
-	url string,
-	forceSingle bool,
-	plInfo *PlaylistInfo,
-	entries []PlaylistEntry,
-	workers int,
-	ch chan<- DlUpdate,
-) {
+func StartDownloadRequest(req DownloadRequest, ch chan<- DlUpdate) {
+	StartDownloadRequestContext(context.Background(), req, ch)
+}
+
+func StartDownloadRequestContext(ctx context.Context, req DownloadRequest, ch chan<- DlUpdate) {
 	go func() {
 		var wg sync.WaitGroup
 		defer func() { wg.Wait(); close(ch) }()
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		if strings.TrimSpace(baseDir) == "" {
-			baseDir = DlDir
+
+		req = NormalizeDownloadRequest(req)
+		if err := ValidateDownloadRequest(req); err != nil {
+			ch <- DlUpdate{Type: EvDone, OK: false}
+			return
 		}
 
-		if plInfo == nil || forceSingle || len(entries) == 0 {
-			ok := runWithFallback(ctx, 0, cfg, url,
-				filepath.Join(baseDir, "%(title)s.%(ext)s"),
+		if req.PlaylistInfo == nil || req.ForceSingle || len(req.Entries) == 0 {
+			ok := runDownloadRequest(ctx, 0, req, req.Target.DownloadURL(req.ForceSingle),
+				filepath.Join(req.OutputDir, "%(title)s.%(ext)s"),
 				[]string{"--no-playlist"}, ch,
 			)
 			ch <- DlUpdate{Type: EvDone, OK: ok}
 			return
 		}
 
-		plDir := filepath.Join(baseDir, SanitizeDirname(plInfo.Title))
+		plDir := filepath.Join(req.OutputDir, SanitizeDirname(req.PlaylistInfo.Title))
 		if err := os.MkdirAll(plDir, 0o755); err != nil {
-			plDir = filepath.Join(baseDir, "playlist")
+			plDir = filepath.Join(req.OutputDir, "playlist")
 			_ = os.MkdirAll(plDir, 0o755)
 		}
 
-		workerCount := normalizeWorkerCount(workers, len(entries))
+		workerCount := normalizeWorkerCount(req.Workers, len(req.Entries))
 		jobs := make(chan PlaylistEntry)
 		go func() {
 			defer close(jobs)
-			for _, e := range entries {
+			for _, e := range req.Entries {
 				select {
 				case <-ctx.Done():
 					return
@@ -291,11 +336,42 @@ func StartDownloadContextInDir(
 						}()
 						ch <- DlUpdate{Type: EvStart, Slot: slot, Text: e.Title}
 						tmpl := filepath.Join(plDir, fmt.Sprintf("%03d - %%(title)s.%%(ext)s", e.Index))
-						ok := runWithFallback(ctx, slot, cfg, e.URL, tmpl, []string{"--no-playlist"}, ch)
+						ok := runDownloadRequest(ctx, slot, req, e.URL, tmpl, []string{"--no-playlist"}, ch)
 						ch <- DlUpdate{Type: EvDone, Slot: slot, OK: ok}
 					}()
 				}
 			}(slot)
 		}
 	}()
+}
+
+func StartDownloadContextInDir(
+	ctx context.Context,
+	baseDir string,
+	cfg QualityConfig,
+	url string,
+	forceSingle bool,
+	plInfo *PlaylistInfo,
+	entries []PlaylistEntry,
+	workers int,
+	ch chan<- DlUpdate,
+) {
+	target, err := ParseTarget(url)
+	if err != nil {
+		go func() {
+			defer close(ch)
+			ch <- DlUpdate{Type: EvDone, OK: false}
+		}()
+		return
+	}
+	StartDownloadRequestContext(ctx, DownloadRequest{
+		Target:       target,
+		Profile:      profileFromQualityConfig(cfg),
+		ForceSingle:  forceSingle,
+		PlaylistInfo: plInfo,
+		Entries:      entries,
+		Workers:      workers,
+		OutputDir:    baseDir,
+		Locale:       cfg.Locale,
+	}, ch)
 }

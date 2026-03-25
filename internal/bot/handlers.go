@@ -17,7 +17,7 @@ func (b *Bot) handleMessage(msg *models.Message) {
 	sess := b.sessions.get(chatID)
 	snap := sess.snapshot()
 
-	if !messageIsCommand(msg) && snap.State == StateAwaitingPlaylistSelection && text != "" && !app.YtRE.MatchString(text) {
+	if !messageIsCommand(msg) && snap.State == StateAwaitingPlaylistSelection && text != "" && !app.LooksLikeYouTubeURL(text) {
 		b.handlePlaylistSelectionInput(chatID, sess, text)
 		return
 	}
@@ -25,7 +25,7 @@ func (b *Bot) handleMessage(msg *models.Message) {
 	switch {
 	case messageIsCommand(msg):
 		b.handleCommand(msg)
-	case app.YtRE.MatchString(text):
+	case app.LooksLikeYouTubeURL(text):
 		b.handleURL(chatID, text)
 	case text != "":
 		b.send(chatID,
@@ -71,7 +71,13 @@ func (b *Bot) handleCommand(msg *models.Message) {
 	}
 }
 
-func (b *Bot) handleURL(chatID int64, url string) {
+func (b *Bot) handleURL(chatID int64, rawURL string) {
+	target, err := app.ParseTarget(rawURL)
+	if err != nil {
+		b.send(chatID, "⚠️ Не удалось распознать YouTube-ссылку.")
+		return
+	}
+
 	sess := b.sessions.get(chatID)
 	if sess != nil && sess.snapshot().State == StateDownloading {
 		b.send(chatID, "⏳ Уже идёт скачивание. Дождись завершения или отмени /cancel.")
@@ -91,10 +97,13 @@ func (b *Bot) handleURL(chatID int64, url string) {
 		return
 	}
 
-	newSess := newSession(url, workDir)
+	newSess := newSession(rawURL, workDir)
+	newSess.mutate(func(s *Session) {
+		s.Target = target
+	})
 	b.sessions.set(chatID, newSess)
 
-	if app.VideoInPlaylistRE.MatchString(url) {
+	if target.Kind == app.TargetMixed {
 		newSess.mutate(func(s *Session) {
 			s.State = StateAwaitingPlaylistOp
 		})
@@ -102,15 +111,15 @@ func (b *Bot) handleURL(chatID int64, url string) {
 		return
 	}
 
-	if app.IsPlaylistURL(url) {
-		b.fetchAndAskQuality(chatID, newSess)
+	if target.IsPlaylist() {
+		b.fetchAndAskPlaylist(chatID, newSess)
 		return
 	}
 
-	b.scanAndAskQuality(chatID, newSess)
+	b.askMode(chatID, newSess)
 }
 
-func (b *Bot) fetchAndAskQuality(chatID int64, sess *Session) {
+func (b *Bot) fetchAndAskPlaylist(chatID int64, sess *Session) {
 	sess.mutate(func(s *Session) {
 		s.State = StateFetchingPlaylist
 	})
@@ -130,7 +139,7 @@ func (b *Bot) fetchAndAskQuality(chatID int64, sess *Session) {
 				s.ForceSingle = true
 				s.SelectedEntries = nil
 			})
-			b.scanAndAskQuality(chatID, sess)
+			b.askMode(chatID, sess)
 			return
 		}
 		sess.mutate(func(s *Session) {
@@ -139,6 +148,7 @@ func (b *Bot) fetchAndAskQuality(chatID int64, sess *Session) {
 			s.SelectedIndices = nil
 			s.PlaylistPage = 0
 			s.QualityChoices = nil
+			s.Profile = app.OutputProfile{}
 			s.State = StateAwaitingPlaylistScope
 		})
 		state := sess.snapshot()
@@ -178,6 +188,50 @@ func (b *Bot) scanAndAskQuality(chatID int64, sess *Session) {
 	}()
 }
 
+func (b *Bot) askMode(chatID int64, sess *Session) {
+	sess.mutate(func(s *Session) {
+		s.State = StateAwaitingMode
+		s.Mode = app.DefaultDownloadMode()
+		s.Profile = app.DefaultVideoProfile(app.LocaleRU)
+		s.QualityChoices = nil
+	})
+	snap := sess.snapshot()
+	if snap.StatusMsgID == 0 {
+		msg, _ := b.sendKb(chatID, b.modePromptText(sess), kbMode())
+		sess.mutate(func(s *Session) { s.StatusMsgID = msg.ID })
+		return
+	}
+	b.editKb(chatID, snap.StatusMsgID, b.modePromptText(sess), kbMode())
+}
+
+func (b *Bot) askAudioProfiles(chatID int64, sess *Session) {
+	profiles := app.AudioOutputProfiles(app.LocaleRU)
+	sess.mutate(func(s *Session) {
+		s.State = StateAwaitingAudioProfile
+		s.Profile = app.OutputProfile{}
+	})
+	snap := sess.snapshot()
+	b.editKb(chatID, snap.StatusMsgID, b.audioPromptText(sess), kbAudioProfiles(profiles))
+}
+
+func (b *Bot) startConfiguredDownload(chatID int64, sess *Session) error {
+	req, err := b.buildDownloadRequest(sess)
+	if err != nil {
+		return err
+	}
+
+	sess.mutate(func(s *Session) {
+		s.State = StateDownloading
+	})
+
+	snap := sess.snapshot()
+	desc := b.downloadStartText(sess)
+	b.removeKb(chatID, snap.StatusMsgID)
+	b.edit(chatID, snap.StatusMsgID, desc)
+	go b.runDownload(chatID, sess, req)
+	return nil
+}
+
 func (b *Bot) handleCallback(cq *models.CallbackQuery) {
 	chatID, msgID, ok := callbackMessageMeta(cq)
 	if !ok {
@@ -213,6 +267,10 @@ func (b *Bot) handleCallback(cq *models.CallbackQuery) {
 		alert = b.handlePlaylistScopeCallback(chatID, msgID, sess, data)
 	case StateAwaitingPlaylistSelection:
 		alert = b.handlePlaylistSelectionCallback(chatID, msgID, sess, data)
+	case StateAwaitingMode:
+		alert = b.handleModeCallback(chatID, msgID, sess, data)
+	case StateAwaitingAudioProfile:
+		alert = b.handleAudioProfileCallback(chatID, msgID, sess, data)
 	case StateAwaitingQuality:
 		alert = b.handleQualityCallback(chatID, msgID, sess, data)
 	}
@@ -227,13 +285,13 @@ func (b *Bot) handlePlaylistOpCallback(chatID int64, msgID int, sess *Session, d
 			s.StatusMsgID = msgID
 		})
 		b.removeKb(chatID, msgID)
-		b.scanAndAskQuality(chatID, sess)
+		b.askMode(chatID, sess)
 	case cbPlFull:
 		sess.mutate(func(s *Session) {
 			s.StatusMsgID = msgID
 		})
 		b.removeKb(chatID, msgID)
-		b.fetchAndAskQuality(chatID, sess)
+		b.fetchAndAskPlaylist(chatID, sess)
 	}
 	return ""
 }
@@ -252,7 +310,7 @@ func (b *Bot) handlePlaylistScopeCallback(chatID int64, msgID int, sess *Session
 			s.StatusMsgID = msgID
 		})
 		b.removeKb(chatID, msgID)
-		b.scanAndAskQuality(chatID, sess)
+		b.askMode(chatID, sess)
 	case cbPlSelect:
 		sess.mutate(func(s *Session) {
 			s.State = StateAwaitingPlaylistSelection
@@ -289,8 +347,9 @@ func (b *Bot) handlePlaylistSelectionInput(chatID int64, sess *Session, raw stri
 		s.SelectedIndices = selected
 		s.SelectedEntries = entries
 		s.QualityChoices = nil
+		s.Profile = app.OutputProfile{}
 	})
-	b.scanAndAskQuality(chatID, sess)
+	b.askMode(chatID, sess)
 }
 
 func (b *Bot) handlePlaylistSelectionCallback(chatID int64, msgID int, sess *Session, data string) string {
@@ -321,9 +380,10 @@ func (b *Bot) handlePlaylistSelectionCallback(chatID int64, msgID int, sess *Ses
 			s.SelectedIndices = selected
 			s.SelectedEntries = entries
 			s.QualityChoices = nil
+			s.Profile = app.OutputProfile{}
 			s.StatusMsgID = msgID
 		})
-		b.scanAndAskQuality(chatID, sess)
+		b.askMode(chatID, sess)
 		return ""
 	case strings.HasPrefix(data, cbPlTogglePref):
 		idx, err := strconv.Atoi(strings.TrimPrefix(data, cbPlTogglePref))
@@ -355,6 +415,56 @@ func (b *Bot) handlePlaylistSelectionCallback(chatID int64, msgID int, sess *Ses
 	return ""
 }
 
+func (b *Bot) handleModeCallback(chatID int64, msgID int, sess *Session, data string) string {
+	switch data {
+	case cbModeVideo:
+		sess.mutate(func(s *Session) {
+			s.Mode = app.ModeVideo
+			s.Profile = app.OutputProfile{}
+			s.StatusMsgID = msgID
+		})
+		b.scanAndAskQuality(chatID, sess)
+	case cbModeAudio:
+		sess.mutate(func(s *Session) {
+			s.Mode = app.ModeAudio
+			s.Profile = app.OutputProfile{}
+			s.StatusMsgID = msgID
+		})
+		b.askAudioProfiles(chatID, sess)
+	case cbModeThumb:
+		sess.mutate(func(s *Session) {
+			s.Mode = app.ModeThumbnail
+			s.Profile = app.ThumbnailOutputProfile(app.LocaleRU)
+			s.StatusMsgID = msgID
+		})
+		if err := b.startConfiguredDownload(chatID, sess); err != nil {
+			return err.Error()
+		}
+	}
+	return ""
+}
+
+func (b *Bot) handleAudioProfileCallback(chatID int64, msgID int, sess *Session, data string) string {
+	if !strings.HasPrefix(data, cbAudioPrefix) {
+		return ""
+	}
+
+	profiles := app.AudioOutputProfiles(app.LocaleRU)
+	profile, ok := app.FindOutputProfile(profiles, strings.TrimPrefix(data, cbAudioPrefix))
+	if !ok {
+		return ""
+	}
+
+	sess.mutate(func(s *Session) {
+		s.Profile = profile
+		s.StatusMsgID = msgID
+	})
+	if err := b.startConfiguredDownload(chatID, sess); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
 func (b *Bot) handleQualityCallback(chatID int64, msgID int, sess *Session, data string) string {
 	if !strings.HasPrefix(data, cbQualityPrefix) {
 		return ""
@@ -367,47 +477,23 @@ func (b *Bot) handleQualityCallback(chatID int64, msgID int, sess *Session, data
 	if !ok {
 		return ""
 	}
-	cfg := choice.Config(app.LocaleRU)
 
 	sess.mutate(func(s *Session) {
-		s.State = StateDownloading
+		s.Profile = choice.Profile(app.LocaleRU)
 		s.StatusMsgID = msgID
 	})
-
-	b.removeKb(chatID, msgID)
-
-	var sizeNote string
-	if choice.SizeBytes > 0 {
-		sizeStr := app.FmtBytesFor(choice.SizeBytes, app.LocaleRU)
-		aboveLimit := choice.SizeBytes > b.sendLimitBytes()
-		if aboveLimit {
-			sizeNote = fmt.Sprintf("\n📦 Размер: ~%s\n⚠️ %s не принимает файлы больше %s", sizeStr, b.backendLabel(), b.sendLimitText())
-		} else {
-			sizeNote = fmt.Sprintf("\n📦 Размер: ~%s", sizeStr)
-		}
+	if err := b.startConfiguredDownload(chatID, sess); err != nil {
+		return err.Error()
 	}
-
-	var desc string
-	snap := sess.snapshot()
-	if snap.PlInfo != nil && !snap.ForceSingle {
-		desc = fmt.Sprintf("📋 <b>%s</b>\n%d видео%s\n\n⬇️ Начинаю скачивание…",
-			escapeHTML(snap.PlInfo.Title), len(b.playlistEntriesForSession(sess)), sizeNote)
-	} else {
-		desc = "🎬 Видео" + sizeNote + "\n\n⬇️ Начинаю скачивание…"
-	}
-	b.edit(chatID, msgID, desc)
-
-	go b.runDownload(chatID, sess, cfg)
 	return ""
 }
 
-func (b *Bot) runDownload(chatID int64, sess *Session, cfg app.QualityConfig) {
+func (b *Bot) runDownload(chatID int64, sess *Session, req app.DownloadRequest) {
 	snap := sess.snapshot()
 	msgID := snap.StatusMsgID
 
 	dlCh := make(chan app.DlUpdate, 256)
 	entries := b.playlistEntriesForSession(sess)
-	workers := app.AutoDownloadWorkers(len(entries))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -420,7 +506,7 @@ func (b *Bot) runDownload(chatID int64, sess *Session, cfg app.QualityConfig) {
 		cancel()
 	}()
 
-	app.StartDownloadContextInDir(ctx, snap.WorkDir, cfg, snap.URL, snap.ForceSingle, snap.PlInfo, entries, workers, dlCh)
+	app.StartDownloadRequestContext(ctx, req, dlCh)
 
 	var (
 		lastEdit  time.Time
@@ -560,19 +646,19 @@ func (b *Bot) qualityPromptText(sess *Session) string {
 	snap := sess.snapshot()
 	if snap.PlInfo != nil && !snap.ForceSingle {
 		return fmt.Sprintf(
-			"📋 <b>%s</b>\n%d видео\n\nВыбери качество:",
+			"📋 <b>%s</b>\n%d видео\n\nВыбери качество видео:",
 			escapeHTML(snap.PlInfo.Title),
 			len(b.playlistEntriesForSession(sess)),
 		)
 	}
-	return "🎬 Выбери качество:"
+	return "🎬 Выбери качество видео:"
 }
 
 func (b *Bot) qualityScanURLs(sess *Session) []string {
 	entries := b.playlistEntriesForSession(sess)
 	snap := sess.snapshot()
 	if snap.PlInfo == nil || snap.ForceSingle || len(entries) == 0 {
-		return []string{snap.URL}
+		return []string{snap.Target.DownloadURL(snap.ForceSingle)}
 	}
 
 	urls := make([]string, 0, len(entries))
@@ -606,4 +692,71 @@ func (b *Bot) playlistEntriesForSession(sess *Session) []app.PlaylistEntry {
 		return playlistEntriesFromSelection(snap.PlInfo, snap.SelectedIndices)
 	}
 	return snap.PlInfo.Entries
+}
+
+func (b *Bot) modePromptText(sess *Session) string {
+	snap := sess.snapshot()
+	if snap.PlInfo != nil && !snap.ForceSingle {
+		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nЧто скачать?", escapeHTML(snap.PlInfo.Title), len(b.playlistEntriesForSession(sess)))
+	}
+	return "🎛 <b>Выбери режим</b>\n\nЧто скачать?"
+}
+
+func (b *Bot) audioPromptText(sess *Session) string {
+	snap := sess.snapshot()
+	if snap.PlInfo != nil && !snap.ForceSingle {
+		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nВыбери аудио:", escapeHTML(snap.PlInfo.Title), len(b.playlistEntriesForSession(sess)))
+	}
+	return "🎵 Выбери аудио:"
+}
+
+func (b *Bot) buildDownloadRequest(sess *Session) (app.DownloadRequest, error) {
+	snap := sess.snapshot()
+	profile := snap.Profile
+	if profile.Mode == 0 {
+		profile = app.DefaultProfileForMode(snap.Mode, app.LocaleRU)
+	}
+
+	req := app.NormalizeDownloadRequest(app.DownloadRequest{
+		Target:       snap.Target,
+		Profile:      profile,
+		ForceSingle:  snap.ForceSingle,
+		PlaylistInfo: snap.PlInfo,
+		Entries:      b.playlistEntriesForSession(sess),
+		Workers:      app.AutoDownloadWorkers(len(b.playlistEntriesForSession(sess))),
+		OutputDir:    snap.WorkDir,
+		Locale:       app.LocaleRU,
+	})
+	if err := app.ValidateDownloadRequest(req); err != nil {
+		return app.DownloadRequest{}, err
+	}
+	return req, nil
+}
+
+func (b *Bot) downloadStartText(sess *Session) string {
+	snap := sess.snapshot()
+	profile := snap.Profile
+	if profile.Mode == 0 {
+		profile = app.DefaultProfileForMode(snap.Mode, app.LocaleRU)
+	}
+	modeLabel := profile.Label
+	if modeLabel == "" {
+		switch profile.Mode {
+		case app.ModeAudio:
+			modeLabel = "Аудио"
+		case app.ModeThumbnail:
+			modeLabel = "Превью"
+		default:
+			modeLabel = "Видео"
+		}
+	}
+
+	if snap.PlInfo != nil && !snap.ForceSingle {
+		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n🎛 Режим: %s\n\n⬇️ Начинаю скачивание…",
+			escapeHTML(snap.PlInfo.Title),
+			len(b.playlistEntriesForSession(sess)),
+			escapeHTML(modeLabel),
+		)
+	}
+	return fmt.Sprintf("🎬 %s\n\n⬇️ Начинаю скачивание…", escapeHTML(modeLabel))
 }

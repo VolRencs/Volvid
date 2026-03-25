@@ -8,31 +8,28 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: VolRenDownloader.exe
+            build_cmd: go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader.exe ./cmd/downloader
+          - os: ubuntu-latest
+            artifact: VolRenDownloader_linux_amd64
+            build_cmd: GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader_linux_amd64 ./cmd/downloader
+          - os: ubuntu-latest
+            artifact: VolRenDownloader_linux_arm64
+            build_cmd: GOOS=linux GOARCH=arm64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader_linux_arm64 ./cmd/downloader
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           go-version: "1.26.1"
-      - run: go build -ldflags="-s -w" -o VolRenDownloader.exe .
+      - run: ${{ matrix.build_cmd }}
       - uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          artifacts: VolRenDownloader.exe
-
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.26.1"
-      - run: GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o VolRenDownloader_linux_amd64 .
-      - run: GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o VolRenDownloader_linux_arm64 .
-      - uses: ncipollo/release-action@v1
-        with:
-          allowUpdates: true
-          artifacts: |
-            VolRenDownloader_linux_amd64
-            VolRenDownloader_linux_arm64
+          artifacts: ${{ matrix.artifact }}

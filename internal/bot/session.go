@@ -14,6 +14,8 @@ const (
 	StateFetchingPlaylist
 	StateAwaitingPlaylistScope
 	StateAwaitingPlaylistSelection
+	StateAwaitingMode
+	StateAwaitingAudioProfile
 	StateFetchingQuality
 	StateAwaitingQuality
 	StateDownloading
@@ -23,12 +25,15 @@ type Session struct {
 	mu              sync.RWMutex
 	State           UserState
 	URL             string
+	Target          app.ParsedTarget
 	WorkDir         string
 	PlInfo          *app.PlaylistInfo
 	SelectedEntries []app.PlaylistEntry
 	SelectedIndices map[int]bool
 	PlaylistPage    int
 	QualityChoices  []app.QualityChoice
+	Mode            app.DownloadMode
+	Profile         app.OutputProfile
 	ForceSingle     bool
 	StatusMsgID     int
 	stopCh          chan struct{}
@@ -38,12 +43,15 @@ type Session struct {
 type SessionSnapshot struct {
 	State           UserState
 	URL             string
+	Target          app.ParsedTarget
 	WorkDir         string
 	PlInfo          *app.PlaylistInfo
 	SelectedEntries []app.PlaylistEntry
 	SelectedIndices map[int]bool
 	PlaylistPage    int
 	QualityChoices  []app.QualityChoice
+	Mode            app.DownloadMode
+	Profile         app.OutputProfile
 	ForceSingle     bool
 	StatusMsgID     int
 }
@@ -86,12 +94,15 @@ func (s *Session) snapshot() SessionSnapshot {
 	return SessionSnapshot{
 		State:           s.State,
 		URL:             s.URL,
+		Target:          s.Target,
 		WorkDir:         s.WorkDir,
 		PlInfo:          clonePlaylistInfo(s.PlInfo),
 		SelectedEntries: append([]app.PlaylistEntry(nil), s.SelectedEntries...),
 		SelectedIndices: cloneSelection(s.SelectedIndices),
 		PlaylistPage:    s.PlaylistPage,
 		QualityChoices:  append([]app.QualityChoice(nil), s.QualityChoices...),
+		Mode:            s.Mode,
+		Profile:         s.Profile,
 		ForceSingle:     s.ForceSingle,
 		StatusMsgID:     s.StatusMsgID,
 	}
@@ -107,10 +118,14 @@ func (s *Session) mutate(fn func(*Session)) {
 }
 
 func newSession(url, workDir string) *Session {
+	target, _ := app.ParseTarget(url)
 	return &Session{
 		State:   StateIdle,
 		URL:     url,
+		Target:  target,
 		WorkDir: workDir,
+		Mode:    app.DefaultDownloadMode(),
+		Profile: app.DefaultVideoProfile(app.LocaleRU),
 		stopCh:  make(chan struct{}),
 	}
 }

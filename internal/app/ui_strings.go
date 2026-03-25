@@ -7,7 +7,7 @@ type UIStrings struct {
 
 	HelpUp, HelpDown, HelpEnter, HelpQuit, HelpDeps, HelpSpace, HelpAll, HelpSlash string
 
-	QBest, QEcon, QMP3 string
+	QBest, QEcon string
 
 	SpinnerUpdate, SpinnerPlaylist, SpinnerQuality string
 
@@ -31,9 +31,12 @@ type UIStrings struct {
 	PlEmptyPlaylist, PlTimeout                                      string
 	VideoTitleFmt                                                   string
 
-	ParallelFmt, QualityTitle, WorkersQueuedFmt string
+	ParallelFmt, QualityTitle, AudioTitle, WorkersQueuedFmt string
 
-	Downloading, PlaylistBarFmt, QueueFmt, Waiting, ErrSlot, MergeProc, MP3Proc string
+	ModeTitle, ModeVideo, ModeAudio, ModeThumbnail                                 string
+	AudioMP3320, AudioMP3192, AudioM4ABest, AudioOpusBest, AudioFLAC, OutThumbnail string
+
+	Downloading, PlaylistBarFmt, QueueFmt, Waiting, ErrSlot, MergeProc, MP3Proc, ThumbProc string
 
 	SummaryOK, SummaryFail, SummaryPlaylistTitle, SessionHist, SuccessFmt string
 
@@ -53,7 +56,7 @@ var strEN = UIStrings{
 	HelpUp: "up", HelpDown: "down", HelpEnter: "enter", HelpQuit: "quit",
 	HelpDeps: "update deps", HelpSpace: "space", HelpAll: "all", HelpSlash: "numbers",
 
-	QBest: "▲ Best (HD·4K)", QEcon: "▼ Economy (360p)", QMP3: "♪ Audio only (MP3)",
+	QBest: "▲ Best (HD·4K)", QEcon: "▼ Economy (360p)",
 
 	SpinnerUpdate: "  Checking for updates…", SpinnerPlaylist: "  Loading playlist…", SpinnerQuality: "  Scanning qualities…",
 
@@ -82,10 +85,15 @@ var strEN = UIStrings{
 	PlEmptyPlaylist: "playlist empty or unavailable", PlTimeout: "yt-dlp: timed out",
 	VideoTitleFmt: "Video %d",
 
-	ParallelFmt: "  Parallel downloads", QualityTitle: "  Choose quality", WorkersQueuedFmt: "   %d items queued",
+	ParallelFmt: "  Parallel downloads", QualityTitle: "  Choose quality", AudioTitle: "  Choose audio", WorkersQueuedFmt: "   %d items queued",
+
+	ModeTitle: "  Choose mode", ModeVideo: "Video", ModeAudio: "Audio", ModeThumbnail: "Thumbnail",
+	AudioMP3320: "Audio · MP3 320k", AudioMP3192: "Audio · MP3 192k", AudioM4ABest: "Audio · M4A/AAC Best",
+	AudioOpusBest: "Audio · Opus Best", AudioFLAC: "Audio · FLAC Lossless", OutThumbnail: "Thumbnail",
 
 	Downloading: "  Downloading…", PlaylistBarFmt: "  Playlist  ·  %d videos", QueueFmt: "◷ %d queued",
-	Waiting: "waiting…", ErrSlot: "✘  download error", MergeProc: "Merging video+audio (ffmpeg)…", MP3Proc: "Converting to MP3 (ffmpeg)…",
+	Waiting: "waiting…", ErrSlot: "✘  download error", MergeProc: "Merging video+audio (ffmpeg)…", MP3Proc: "Converting audio (ffmpeg)…",
+	ThumbProc: "Downloading thumbnail…",
 
 	SummaryOK: "  ✔  Done!", SummaryFail: "  ✘  Download failed",
 	SummaryPlaylistTitle: "Playlist finished", SessionHist: "  Session history:",
@@ -110,7 +118,7 @@ var strRU = UIStrings{
 	HelpUp: "вверх", HelpDown: "вниз", HelpEnter: "выбрать", HelpQuit: "выход",
 	HelpDeps: "обновить зависимости", HelpSpace: "пробел", HelpAll: "все", HelpSlash: "номера",
 
-	QBest: "▲ Лучшее качество (HD·4K)", QEcon: "▼ Экономичное (360p)", QMP3: "♪ Только аудио (MP3)",
+	QBest: "▲ Лучшее качество (HD·4K)", QEcon: "▼ Экономичное (360p)",
 
 	SpinnerUpdate: "  Проверяю обновления…", SpinnerPlaylist: "  Загружаю плейлист…", SpinnerQuality: "  Сканирую доступные качества…",
 
@@ -139,10 +147,15 @@ var strRU = UIStrings{
 	PlEmptyPlaylist: "плейлист пуст или недоступен", PlTimeout: "yt-dlp: превышено время ожидания",
 	VideoTitleFmt: "Видео %d",
 
-	ParallelFmt: "  Параллельная загрузка", QualityTitle: "  Выбери качество", WorkersQueuedFmt: "   %d видео в очереди",
+	ParallelFmt: "  Параллельная загрузка", QualityTitle: "  Выбери качество", AudioTitle: "  Выбери аудио", WorkersQueuedFmt: "   %d видео в очереди",
+
+	ModeTitle: "  Выбери режим", ModeVideo: "Видео", ModeAudio: "Аудио", ModeThumbnail: "Превью",
+	AudioMP3320: "Аудио · MP3 320k", AudioMP3192: "Аудио · MP3 192k", AudioM4ABest: "Аудио · M4A/AAC Лучшее",
+	AudioOpusBest: "Аудио · Opus Лучшее", AudioFLAC: "Аудио · FLAC Lossless", OutThumbnail: "Превью",
 
 	Downloading: "  Загружаю…", PlaylistBarFmt: "  Плейлист  ·  %d видео", QueueFmt: "◷ %d в очереди",
-	Waiting: "ожидание…", ErrSlot: "✘  ошибка загрузки", MergeProc: "слияние видео+аудио (ffmpeg)…", MP3Proc: "конвертация в MP3 (ffmpeg)…",
+	Waiting: "ожидание…", ErrSlot: "✘  ошибка загрузки", MergeProc: "слияние видео+аудио (ffmpeg)…", MP3Proc: "конвертация аудио (ffmpeg)…",
+	ThumbProc: "скачивание превью…",
 
 	SummaryOK: "  ✔  Готово!", SummaryFail: "  ✘  Не удалось скачать",
 	SummaryPlaylistTitle: "Плейлист завершён", SessionHist: "  История сессии:",

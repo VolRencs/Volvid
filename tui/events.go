@@ -75,7 +75,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case msgPlaylistFetched:
 		if msg.err != nil || msg.info == nil {
 			m.forceSingle = true
-			return m.startQualityScan()
+			return m.startModeSelection()
 		}
 		m.plInfo = msg.info
 		m.plCursor = 0
@@ -97,9 +97,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case msgDlUpdate:
 		return m.handleDlUpdate(msg.update)
-
-	case msgClipboardPaste:
-		return m.handleClipboardPaste(msg)
 
 	case msgUpdateRestart:
 		return m, tea.Quit
@@ -210,7 +207,7 @@ func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {
 		if m.dlTotal == 0 {
 			m.singleOK = u.OK
 		}
-		label := m.cfg.Label
+		label := m.downloadLabel()
 		if m.dlTotal > 0 {
 			label += m.sessionPlaylistSuffix(m.dlTotal)
 		}
@@ -223,6 +220,21 @@ func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {
 	}
 
 	return m, listenDownloadCmd(m.dlCh)
+}
+
+func (m Model) downloadLabel() string {
+	profile := m.currentProfile()
+	if profile.Label != "" {
+		return profile.Label
+	}
+	switch profile.Mode {
+	case app.ModeAudio:
+		return m.u().ModeAudio
+	case app.ModeThumbnail:
+		return m.u().ModeThumbnail
+	default:
+		return m.u().ModeVideo
+	}
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -284,62 +296,46 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, m.urlInput.Update(msg)
 		}
 
-		url := strings.TrimSpace(m.urlInput.Value())
-		if url == "" {
+		rawURL := strings.TrimSpace(m.urlInput.Value())
+		if rawURL == "" {
 			m.urlErr = m.u().URLErrEmpty
 			return m, nil
 		}
-		if !app.YtRE.MatchString(url) {
+		target, err := app.ParseTarget(rawURL)
+		if err != nil {
 			m.urlErr = m.u().URLErrBad
 			return m, nil
 		}
 
 		m.urlErr = ""
-		m.url = url
+		m.url = rawURL
+		m.target = target
 		m.plInfo = nil
 		m.plCursor = 0
 		m.plTop = 0
 		m.plSelected = map[int]bool{}
 		m.plInputMode = false
 		m.plInputErr = ""
+		m.flowErr = ""
+		m.mode = app.DefaultDownloadMode()
+		m.profile = app.DefaultVideoProfile(m.locale)
 		m.dlEntries = nil
 		m.qualityChoices = nil
+		m.audioProfiles = nil
 		m.forceSingle = false
 		m.numWorkers = 1
 
-		if app.IsPlaylistURL(url) {
-			if app.VideoInPlaylistRE.MatchString(url) {
+		if target.IsPlaylist() {
+			if target.Kind == app.TargetMixed {
 				m.screen = scrPlaylistAsk
 				m = m.syncMenu()
 				return m, nil
 			}
 			m.screen = scrPlaylistFetch
-			return m, fetchPlaylistCmd(url, m.locale)
+			return m, fetchPlaylistCmd(rawURL, m.locale)
 		}
 
-		return m.startQualityScan()
-	}
-
-	return m, nil
-}
-
-func (m Model) handleClipboardPaste(msg msgClipboardPaste) (tea.Model, tea.Cmd) {
-	switch msg.target {
-	case inputURL:
-		if msg.err != nil {
-			m.urlErr = msg.err.Error()
-			return m, nil
-		}
-		m.urlErr = ""
-		return m, m.urlInput.insertRunes([]rune(msg.content))
-
-	case inputPlaylist:
-		if msg.err != nil {
-			m.plInputErr = msg.err.Error()
-			return m, nil
-		}
-		m.plInputErr = ""
-		return m, m.plInput.insertRunes([]rune(msg.content))
+		return m.startModeSelection()
 	}
 
 	return m, nil
@@ -439,12 +435,7 @@ func (m Model) handlePlaylistKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.plInputErr = m.u().ErrPickOne
 			return m, nil
 		}
-		if len(m.dlEntries) >= 2 {
-			m.screen = scrWorkers
-			m = m.syncMenu()
-			return m, nil
-		}
-		return m.startQualityScan()
+		return m.startModeSelection()
 	default:
 		return m, nil
 	}
@@ -489,7 +480,7 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 	case scrPlaylistAsk:
 		if idx == 0 {
 			m.forceSingle = true
-			return m.startQualityScan()
+			return m.startModeSelection()
 		}
 		m.screen = scrPlaylistFetch
 		return m, fetchPlaylistCmd(m.url, m.locale)
@@ -500,12 +491,53 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 
-	case scrWorkers:
-		m.numWorkers = idx + 1
-		return m.startQualityScan()
+	case scrMode:
+		m.mode = m.modeAt(idx)
+		m.profile = app.OutputProfile{}
+		m.qualityChoices = nil
+		m.audioProfiles = nil
+		m.flowErr = ""
+
+		switch m.mode {
+		case app.ModeThumbnail:
+			m.profile = app.ThumbnailOutputProfile(m.locale)
+			if m.shouldAskWorkers() {
+				m.screen = scrWorkers
+				m = m.syncMenu()
+				return m, nil
+			}
+			return m.startDownload()
+		case app.ModeAudio:
+			m.audioProfiles = app.AudioOutputProfiles(m.locale)
+			m.screen = scrAudio
+			m = m.syncMenu()
+			return m, nil
+		default:
+			return m.startQualityScan()
+		}
+
+	case scrAudio:
+		m.profile = m.audioProfileAt(idx)
+		m.flowErr = ""
+		if m.shouldAskWorkers() {
+			m.screen = scrWorkers
+			m = m.syncMenu()
+			return m, nil
+		}
+		return m.startDownload()
 
 	case scrQuality:
-		m.cfg = m.qualityConfigAt(idx)
+		m.profile = m.qualityProfileAt(idx)
+		m.flowErr = ""
+		if m.shouldAskWorkers() {
+			m.screen = scrWorkers
+			m = m.syncMenu()
+			return m, nil
+		}
+		return m.startDownload()
+
+	case scrWorkers:
+		m.numWorkers = idx + 1
 		return m.startDownload()
 	}
 
@@ -514,21 +546,34 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 
 func (m Model) isMenuScreen() bool {
 	switch m.screen {
-	case scrUpdateReady, scrFFmpegAsk, scrPlaylistAsk, scrSummary, scrWorkers, scrQuality:
+	case scrUpdateReady, scrFFmpegAsk, scrPlaylistAsk, scrMode, scrAudio, scrSummary, scrWorkers, scrQuality:
 		return true
 	}
 	return false
 }
 
+func (m Model) startModeSelection() (tea.Model, tea.Cmd) {
+	m.mode = app.DefaultDownloadMode()
+	m.profile = app.DefaultVideoProfile(m.locale)
+	m.flowErr = ""
+	m.qualityChoices = nil
+	m.audioProfiles = nil
+	m.screen = scrMode
+	m = m.syncMenu()
+	return m, nil
+}
+
 func (m Model) startQualityScan() (tea.Model, tea.Cmd) {
 	m.qualityChoices = nil
+	m.profile = app.OutputProfile{}
+	m.flowErr = ""
 	m.screen = scrQualityFetch
 	return m, loadQualityChoicesCmd(m.qualityScanURLs())
 }
 
 func (m Model) qualityScanURLs() []string {
 	if m.forceSingle || m.plInfo == nil || len(m.dlEntries) == 0 {
-		return []string{m.url}
+		return []string{m.target.DownloadURL(m.forceSingle)}
 	}
 
 	urls := make([]string, 0, len(m.dlEntries))
@@ -538,7 +583,42 @@ func (m Model) qualityScanURLs() []string {
 	return urls
 }
 
+func (m Model) currentProfile() app.OutputProfile {
+	if m.profile.Mode != 0 {
+		return m.profile
+	}
+	return app.DefaultProfileForMode(m.mode, m.locale)
+}
+
 func (m Model) startDownload() (tea.Model, tea.Cmd) {
+	req := app.NormalizeDownloadRequest(app.DownloadRequest{
+		Target:       m.target,
+		Profile:      m.currentProfile(),
+		ForceSingle:  m.forceSingle,
+		PlaylistInfo: m.plInfo,
+		Entries:      m.dlEntries,
+		Workers:      max(m.numWorkers, 1),
+		OutputDir:    app.DlDir,
+		Locale:       m.locale,
+	})
+	if err := app.ValidateDownloadRequest(req); err != nil {
+		m.flowErr = err.Error()
+		switch req.Profile.Mode {
+		case app.ModeAudio:
+			if m.profile.Mode == 0 {
+				m.screen = scrAudio
+			}
+		case app.ModeThumbnail:
+			m.screen = scrMode
+		default:
+			if m.profile.Mode == 0 {
+				m.screen = scrQuality
+			}
+		}
+		m = m.syncMenu()
+		return m, nil
+	}
+
 	workers := max(m.numWorkers, 1)
 	if len(m.dlEntries) == 0 {
 		workers = 1
@@ -557,7 +637,8 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	m.dlCh = ch
 	m.screen = scrDownload
 
-	app.StartDownload(m.cfg, m.url, m.forceSingle, m.plInfo, m.dlEntries, workers, ch)
+	req.Workers = workers
+	app.StartDownloadRequest(req, ch)
 	return m, tea.Batch(listenDownloadCmd(ch), timerTickCmd())
 }
 
@@ -566,6 +647,7 @@ func (m Model) resetForNext() (tea.Model, tea.Cmd) {
 	m.url = ""
 	m.urlErr = ""
 	m.urlInput.SetValue("")
+	m.target = app.ParsedTarget{}
 
 	m.plInfo = nil
 	m.plCursor = 0
@@ -578,8 +660,12 @@ func (m Model) resetForNext() (tea.Model, tea.Cmd) {
 
 	m.forceSingle = false
 	m.numWorkers = 1
+	m.mode = app.DefaultDownloadMode()
+	m.profile = app.DefaultVideoProfile(m.locale)
+	m.flowErr = ""
 	m.dlEntries = nil
 	m.qualityChoices = nil
+	m.audioProfiles = nil
 	m.slots = nil
 	m.dlDone = 0
 	m.dlFailed = 0
