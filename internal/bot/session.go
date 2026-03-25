@@ -20,6 +20,7 @@ const (
 )
 
 type Session struct {
+	mu              sync.RWMutex
 	State           UserState
 	URL             string
 	WorkDir         string
@@ -31,15 +32,25 @@ type Session struct {
 	ForceSingle     bool
 	StatusMsgID     int
 	stopCh          chan struct{}
+	stopOnce        sync.Once
+}
+
+type SessionSnapshot struct {
+	State           UserState
+	URL             string
+	WorkDir         string
+	PlInfo          *app.PlaylistInfo
+	SelectedEntries []app.PlaylistEntry
+	SelectedIndices map[int]bool
+	PlaylistPage    int
+	QualityChoices  []app.QualityChoice
+	ForceSingle     bool
+	StatusMsgID     int
 }
 
 func (s *Session) cancel() {
 	if s.stopCh != nil {
-		select {
-		case <-s.stopCh:
-		default:
-			close(s.stopCh)
-		}
+		s.stopOnce.Do(func() { close(s.stopCh) })
 	}
 }
 
@@ -53,6 +64,81 @@ func (s *Session) isCancelled() bool {
 	default:
 		return false
 	}
+}
+
+func (s *Session) stopSignal() <-chan struct{} {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.stopCh
+}
+
+func (s *Session) snapshot() SessionSnapshot {
+	if s == nil {
+		return SessionSnapshot{}
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return SessionSnapshot{
+		State:           s.State,
+		URL:             s.URL,
+		WorkDir:         s.WorkDir,
+		PlInfo:          clonePlaylistInfo(s.PlInfo),
+		SelectedEntries: append([]app.PlaylistEntry(nil), s.SelectedEntries...),
+		SelectedIndices: cloneSelection(s.SelectedIndices),
+		PlaylistPage:    s.PlaylistPage,
+		QualityChoices:  append([]app.QualityChoice(nil), s.QualityChoices...),
+		ForceSingle:     s.ForceSingle,
+		StatusMsgID:     s.StatusMsgID,
+	}
+}
+
+func (s *Session) mutate(fn func(*Session)) {
+	if s == nil || fn == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fn(s)
+}
+
+func newSession(url, workDir string) *Session {
+	return &Session{
+		State:   StateIdle,
+		URL:     url,
+		WorkDir: workDir,
+		stopCh:  make(chan struct{}),
+	}
+}
+
+func idleSession() *Session {
+	return &Session{State: StateIdle}
+}
+
+func clonePlaylistInfo(info *app.PlaylistInfo) *app.PlaylistInfo {
+	if info == nil {
+		return nil
+	}
+	cloned := &app.PlaylistInfo{
+		Title:   info.Title,
+		Entries: append([]app.PlaylistEntry(nil), info.Entries...),
+	}
+	return cloned
+}
+
+func cloneSelection(src map[int]bool) map[int]bool {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[int]bool, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
 }
 
 type SessionStore struct {
@@ -76,6 +162,12 @@ func (s *SessionStore) set(id int64, sess *Session) {
 	s.data[id] = sess
 }
 
+func (s *SessionStore) reset(id int64) *Session {
+	sess := idleSession()
+	s.set(id, sess)
+	return sess
+}
+
 func (s *SessionStore) getOrNew(id int64) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -95,7 +187,7 @@ func (s *SessionStore) hasBusy() bool {
 		if sess == nil {
 			continue
 		}
-		if sess.State != StateIdle {
+		if sess.snapshot().State != StateIdle {
 			return true
 		}
 	}

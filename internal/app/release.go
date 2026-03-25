@@ -32,12 +32,16 @@ func assetName() string {
 func CheckUpdate() *UpdateInfo {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
+	return CheckUpdateContext(ctx)
+}
+
+func CheckUpdateContext(ctx context.Context) *UpdateInfo {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubAPIURL, nil)
 	if err != nil {
 		return nil
 	}
 	req.Header.Set("User-Agent", "VolRenDownloader/"+Version)
-	resp, err := apiClient.Do(req)
+	resp, err := doSafeRequest(ctx, apiClient, req)
 	if err != nil {
 		return nil
 	}
@@ -71,6 +75,10 @@ func CheckUpdate() *UpdateInfo {
 }
 
 func ApplyUpdate(info *UpdateInfo, ch chan<- FileProgress) error {
+	return ApplyUpdateFor(LoadLocale(), info, ch)
+}
+
+func ApplyUpdateFor(l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("путь к исполняемому файлу: %w", err)
@@ -85,7 +93,7 @@ func ApplyUpdate(info *UpdateInfo, ch chan<- FileProgress) error {
 	} else {
 		tmp = dest + ".new"
 	}
-	if err := DownloadFile(info.DlURL, tmp, ch); err != nil {
+	if err := DownloadFile(info.DlURL, tmp, l, ch); err != nil {
 		return err
 	}
 	return applyUpdatePlatform(tmp, dest)

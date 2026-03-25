@@ -1,7 +1,6 @@
 package app
 
 import (
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,7 +9,7 @@ import (
 )
 
 const (
-	Version = "6.0.0"
+	Version = "6.0.1"
 
 	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ytdlpBase    = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
@@ -62,8 +61,6 @@ func init() {
 	} else {
 		YtdlpBin = filepath.Join(DepsDir, "yt-dlp")
 	}
-	t := http.DefaultTransport.(*http.Transport).Clone()
-	t.ResponseHeaderTimeout = 60 * time.Second
-	t.DialContext = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext
-	dlClient = &http.Client{Transport: t}
+	apiClient = NewHTTPClient(8 * time.Second)
+	dlClient = newDownloadHTTPClient()
 }

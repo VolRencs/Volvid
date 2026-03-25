@@ -56,6 +56,7 @@ type (
 		err      error
 		isUpdate bool
 	}
+	msgUpdateRestart   struct{}
 	msgPlaylistFetched struct {
 		info *app.PlaylistInfo
 		err  error
@@ -158,6 +159,10 @@ func timerTickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(ts time.Time) tea.Msg { return timerTickMsg(ts) })
 }
 
+func updateRestartCmd() tea.Cmd {
+	return tea.Tick(1200*time.Millisecond, func(time.Time) tea.Msg { return msgUpdateRestart{} })
+}
+
 func streamFileProgressCmd(ch <-chan app.FileProgress, isUpdate bool) tea.Cmd {
 	return func() tea.Msg {
 		p, ok := <-ch
@@ -182,9 +187,9 @@ func launchProgress(fn func(chan<- app.FileProgress) error, isUpdate bool) (<-ch
 	return ch, streamFileProgressCmd(ch, isUpdate)
 }
 
-func fetchPlaylistCmd(url string) tea.Cmd {
+func fetchPlaylistCmd(url string, l app.Locale) tea.Cmd {
 	return func() tea.Msg {
-		info, err := app.FetchPlaylistInfo(url)
+		info, err := app.FetchPlaylistInfoFor(nil, url, l)
 		return msgPlaylistFetched{info: info, err: err}
 	}
 }

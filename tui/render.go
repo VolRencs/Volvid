@@ -96,8 +96,8 @@ func (m Model) renderBody() string {
 			b.WriteString(sDim.Render(u.UpdateAppliedWin))
 		} else {
 			b.WriteString(sDim.Render(u.UpdateAppliedUnix))
+			b.WriteString(m.hint(m.kbAny()))
 		}
-		b.WriteString(m.hint(m.kbAny()))
 
 	case scrDepUpdate:
 		if m.depUpdateDone {
@@ -230,9 +230,9 @@ func (m Model) viewDependencyProgress(label string) string {
 	b.WriteString("  " + renderProgressBar(barW, m.depProgress.Pct) + "\n")
 	b.WriteString("  " + sOk.Render(fmt.Sprintf("%.1f%%", m.depProgress.Pct)))
 	if m.depProgress.DoneB > 0 {
-		b.WriteString("  " + sBold.Render(app.FmtBytes(m.depProgress.DoneB)))
+		b.WriteString("  " + sBold.Render(app.FmtBytesFor(m.depProgress.DoneB, m.locale)))
 		if m.depProgress.TotalB > 0 {
-			b.WriteString(sDim.Render(" / " + app.FmtBytes(m.depProgress.TotalB)))
+			b.WriteString(sDim.Render(" / " + app.FmtBytesFor(m.depProgress.TotalB, m.locale)))
 		}
 		if m.depProgress.Speed != "" {
 			b.WriteString("  " + sTitle.Render(m.depProgress.Speed))
@@ -402,7 +402,7 @@ func (m Model) viewSlot(index int, slot slotState, withBadge bool) string {
 	case slot.proc:
 		return row1 + "\n" + indent + sWarn.Render("⚙ ") + sDim.Render(slot.label) + "\n"
 	default:
-		return row1 + "\n" + indent + renderProgressBar(barW, slot.pct) + "  " + sOk.Render(fmt.Sprintf("%.1f%%", slot.pct)) + "  " + fmtStats(slot.doneB, slot.totalB, slot.speed) + "\n"
+		return row1 + "\n" + indent + renderProgressBar(barW, slot.pct) + "  " + sOk.Render(fmt.Sprintf("%.1f%%", slot.pct)) + "  " + fmtStats(m.locale, slot.doneB, slot.totalB, slot.speed) + "\n"
 	}
 }
 
@@ -511,13 +511,13 @@ func trunc(value string, limit int) string {
 	return string(runes[:limit-1]) + "…"
 }
 
-func fmtStats(done, total int64, speed string) string {
+func fmtStats(l app.Locale, done, total int64, speed string) string {
 	var stat string
 	switch {
 	case total > 0:
-		stat = sBold.Render(app.FmtBytes(done)) + sDim.Render("/"+app.FmtBytes(total))
+		stat = sBold.Render(app.FmtBytesFor(done, l)) + sDim.Render("/"+app.FmtBytesFor(total, l))
 	case done > 0:
-		stat = sBold.Render(app.FmtBytes(done))
+		stat = sBold.Render(app.FmtBytesFor(done, l))
 	default:
 		stat = sDim.Render("…")
 	}

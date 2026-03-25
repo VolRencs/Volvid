@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -16,6 +15,7 @@ import (
 )
 
 type QualityConfig struct {
+	Locale    Locale
 	Label     string
 	FmtChain  []string
 	FmtLabels []string
@@ -80,19 +80,20 @@ func ffmpegArgs() []string {
 	return nil
 }
 
-func streamYtdlp(ctx context.Context, slot int, args []string, ch chan<- DlUpdate) bool {
-	cmd := exec.CommandContext(ctx, YtdlpBin, slices.Concat([]string{"--newline", "--no-warnings"}, args)...)
-	pr, pw, err := os.Pipe()
+func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan<- DlUpdate) bool {
+	cmd, pr, runCtx, cancel, err := startMergedOutputCommand(
+		ctx,
+		0,
+		YtdlpBin,
+		slices.Concat([]string{"--newline", "--no-warnings"}, args)...,
+	)
 	if err != nil {
 		return false
 	}
-	cmd.Stdout, cmd.Stderr = pw, pw
-	if err := cmd.Start(); err != nil {
-		pr.Close()
-		pw.Close()
-		return false
-	}
-	pw.Close()
+	defer cancel()
+	defer pr.Close()
+
+	loc := StringsFor(l)
 
 	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
@@ -130,24 +131,24 @@ func streamYtdlp(ctx context.Context, slot int, args []string, ch chan<- DlUpdat
 
 		case procRE.MatchString(line):
 			m := procRE.FindStringSubmatch(line)
-			label := Loc.MergeProc
+			label := loc.MergeProc
 			if strings.Contains(strings.ToLower(m[1]), "audio") {
-				label = Loc.MP3Proc
+				label = loc.MP3Proc
 			}
 			ch <- DlUpdate{Type: EvProc, Slot: slot, Text: label}
 		}
 	}
 	if err := sc.Err(); err != nil {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		_ = pr.Close()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = waitCommand(cmd, runCtx)
 		return false
 	}
-	_ = pr.Close()
-	if err := cmd.Wait(); err != nil {
+	if err := waitCommand(cmd, runCtx); err != nil {
 		return false
 	}
-	if ctx != nil && ctx.Err() != nil {
+	if runCtx != nil && runCtx.Err() != nil {
 		return false
 	}
 	return true
@@ -167,8 +168,9 @@ func buildArgs(cfg QualityConfig, url, tmpl, format string, extra []string) []st
 }
 
 func runWithFallback(ctx context.Context, slot int, cfg QualityConfig, url, tmpl string, extra []string, ch chan<- DlUpdate) bool {
+	strs := StringsFor(cfg.Locale)
 	if len(cfg.FmtChain) == 0 {
-		return streamYtdlp(ctx, slot, buildArgs(cfg, url, tmpl, "", extra), ch)
+		return streamYtdlp(ctx, slot, cfg.Locale, buildArgs(cfg, url, tmpl, "", extra), ch)
 	}
 	for i, format := range cfg.FmtChain {
 		if ctx != nil && ctx.Err() != nil {
@@ -182,10 +184,10 @@ func runWithFallback(ctx context.Context, slot int, cfg QualityConfig, url, tmpl
 			ch <- DlUpdate{
 				Type: EvFallback,
 				Slot: slot,
-				Text: fmt.Sprintf(Loc.FallbackFmt, i, label),
+				Text: fmt.Sprintf(strs.FallbackFmt, i, label),
 			}
 		}
-		if streamYtdlp(ctx, slot, buildArgs(cfg, url, tmpl, format, extra), ch) {
+		if streamYtdlp(ctx, slot, cfg.Locale, buildArgs(cfg, url, tmpl, format, extra), ch) {
 			return true
 		}
 	}

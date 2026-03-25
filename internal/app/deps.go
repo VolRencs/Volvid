@@ -2,6 +2,7 @@ package app
 
 import (
 	"archive/zip"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -21,6 +22,7 @@ type CheckDepsResult struct {
 const (
 	versionProbeAttempts = 8
 	versionProbeDelay    = 250 * time.Millisecond
+	versionProbeTimeout  = 5 * time.Second
 )
 
 type DepsLogger func(format string, args ...any)
@@ -52,13 +54,13 @@ func YtdlpVersion() string {
 func FFmpegVersion() string {
 	bin := FFmpegResolved
 	if bin == "" {
-		var err error
-		bin, err = exec.LookPath("ffmpeg")
+		path, err := exec.LookPath("ffmpeg")
 		if err != nil {
 			return ""
 		}
+		bin = path
 	}
-	out, _ := exec.Command(bin, "-version").CombinedOutput()
+	out, _ := commandCombinedOutput(context.Background(), versionProbeTimeout, bin, "-version")
 	if len(out) == 0 {
 		return ""
 	}
@@ -78,7 +80,7 @@ func FFmpegVersion() string {
 
 func probeCommandVersion(bin string, args ...string) string {
 	for attempt := 0; attempt < versionProbeAttempts; attempt++ {
-		out, err := exec.Command(bin, args...).Output()
+		out, err := commandOutput(context.Background(), versionProbeTimeout, bin, args...)
 		if err == nil {
 			version := strings.TrimSpace(string(out))
 			if version != "" {
@@ -104,10 +106,14 @@ func YtdlpURL() string {
 }
 
 func InstallYtDlp(ch chan<- FileProgress) error {
+	return InstallYtDlpFor(LoadLocale(), ch)
+}
+
+func InstallYtDlpFor(l Locale, ch chan<- FileProgress) error {
 	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
 	}
-	if err := DownloadFile(YtdlpURL(), YtdlpBin, ch); err != nil {
+	if err := DownloadFile(YtdlpURL(), YtdlpBin, l, ch); err != nil {
 		return err
 	}
 	if !IsWindows {
@@ -139,6 +145,10 @@ func extractZipEntry(zf *zip.File, dest string) error {
 }
 
 func InstallFFmpeg(ch chan<- FileProgress) error {
+	return InstallFFmpegFor(LoadLocale(), ch)
+}
+
+func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
 	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
 	}
@@ -149,7 +159,7 @@ func InstallFFmpeg(ch chan<- FileProgress) error {
 	defer os.RemoveAll(tmp)
 
 	archive := filepath.Join(tmp, "ffmpeg.zip")
-	if err := DownloadFile(ffmpegWinURL, archive, ch); err != nil {
+	if err := DownloadFile(ffmpegWinURL, archive, l, ch); err != nil {
 		return err
 	}
 	zr, err := zip.OpenReader(archive)
@@ -183,11 +193,15 @@ func InstallFFmpeg(ch chan<- FileProgress) error {
 }
 
 func InstallAllDeps(ch chan<- FileProgress) error {
-	if err := InstallYtDlp(ch); err != nil {
+	return InstallAllDepsFor(LoadLocale(), ch)
+}
+
+func InstallAllDepsFor(l Locale, ch chan<- FileProgress) error {
+	if err := InstallYtDlpFor(l, ch); err != nil {
 		return err
 	}
 	if IsWindows {
-		return InstallFFmpeg(ch)
+		return InstallFFmpegFor(l, ch)
 	}
 	return nil
 }
@@ -199,7 +213,7 @@ func EnsureRuntimeDeps(logf DepsLogger) (CheckDepsResult, error) {
 		if logf != nil {
 			logf("Зависимости: yt-dlp не найден, скачиваю…")
 		}
-		if err := InstallYtDlp(nil); err != nil {
+		if err := InstallYtDlpFor(LocaleEN, nil); err != nil {
 			return DetectDeps(), fmt.Errorf("установка yt-dlp: %w", err)
 		}
 		deps = DetectDeps()
@@ -215,7 +229,7 @@ func EnsureRuntimeDeps(logf DepsLogger) (CheckDepsResult, error) {
 		if logf != nil {
 			logf("Зависимости: ffmpeg не найден, скачиваю…")
 		}
-		if err := InstallFFmpeg(nil); err != nil {
+		if err := InstallFFmpegFor(LocaleEN, nil); err != nil {
 			return DetectDeps(), fmt.Errorf("установка ffmpeg: %w", err)
 		}
 		deps = DetectDeps()

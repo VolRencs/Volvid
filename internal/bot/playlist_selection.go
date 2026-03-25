@@ -12,18 +12,19 @@ import (
 const playlistSelectionPageSize = 5
 
 func kbPlaylistSelection(sess *Session) models.InlineKeyboardMarkup {
+	snap := sess.snapshot()
 	rows := make([][]models.InlineKeyboardButton, 0, playlistSelectionPageSize+4)
-	if sess == nil || sess.PlInfo == nil || len(sess.PlInfo.Entries) == 0 {
+	if snap.PlInfo == nil || len(snap.PlInfo.Entries) == 0 {
 		rows = append(rows, []models.InlineKeyboardButton{
 			kbButton("❌ Отмена", cbCancel),
 		})
 		return models.InlineKeyboardMarkup{InlineKeyboard: rows}
 	}
 
-	page, start, end, pageCount := playlistSelectionPageBounds(sess.PlInfo, sess.PlaylistPage)
-	for _, entry := range sess.PlInfo.Entries[start:end] {
+	page, start, end, pageCount := playlistSelectionPageBounds(snap.PlInfo, snap.PlaylistPage)
+	for _, entry := range snap.PlInfo.Entries[start:end] {
 		mark := "⬜️"
-		if sess.SelectedIndices[entry.Index] {
+		if snap.SelectedIndices[entry.Index] {
 			mark = "✅"
 		}
 		label := fmt.Sprintf("%s %d. %s", mark, entry.Index, truncateButtonLabel(entry.Title, 30))
@@ -54,7 +55,7 @@ func kbPlaylistSelection(sess *Session) models.InlineKeyboardMarkup {
 	})
 
 	doneLabel := "✅ Готово"
-	if selected := len(sess.SelectedIndices); selected > 0 {
+	if selected := len(snap.SelectedIndices); selected > 0 {
 		doneLabel = fmt.Sprintf("✅ Готово (%d)", selected)
 	}
 	rows = append(rows, []models.InlineKeyboardButton{
@@ -68,13 +69,13 @@ func kbPlaylistSelection(sess *Session) models.InlineKeyboardMarkup {
 }
 
 func (b *Bot) playlistSelectionText(sess *Session) string {
-	if sess == nil || sess.PlInfo == nil {
+	snap := sess.snapshot()
+	if snap.PlInfo == nil {
 		return "Пришли ссылку заново."
 	}
 
-	total := len(sess.PlInfo.Entries)
-	page, start, end, pageCount := playlistSelectionPageBounds(sess.PlInfo, sess.PlaylistPage)
-	sess.PlaylistPage = page
+	total := len(snap.PlInfo.Entries)
+	page, start, end, pageCount := playlistSelectionPageBounds(snap.PlInfo, snap.PlaylistPage)
 
 	var scope string
 	if total > 0 {
@@ -83,8 +84,8 @@ func (b *Bot) playlistSelectionText(sess *Session) string {
 
 	return fmt.Sprintf(
 		"🎯 <b>%s</b>\nВыбрано: %d / %d%s\n\nНажми на нужные видео ниже, затем нажми «Готово».",
-		escapeHTML(sess.PlInfo.Title),
-		len(sess.SelectedIndices),
+		escapeHTML(snap.PlInfo.Title),
+		len(snap.SelectedIndices),
 		total,
 		scope,
 	)

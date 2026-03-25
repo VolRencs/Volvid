@@ -1,11 +1,7 @@
 package app
 
 import (
-	"fmt"
 	"io"
-	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -26,6 +22,7 @@ type dlWriter struct {
 	lastTime time.Time
 	nextEmit time.Time
 	speed    string
+	locale   Locale
 	ch       chan<- FileProgress
 }
 
@@ -45,7 +42,11 @@ func (w *dlWriter) emit(fin bool, e error) {
 	}
 	now := time.Now()
 	if elapsed := now.Sub(w.lastTime).Seconds(); elapsed > 0 {
-		w.speed = FmtBytes(int64(float64(w.done-w.lastDone)/elapsed)) + "/с"
+		suffix := "/s"
+		if w.locale == LocaleRU {
+			suffix = "/с"
+		}
+		w.speed = FmtBytesFor(int64(float64(w.done-w.lastDone)/elapsed), w.locale) + suffix
 		w.lastDone, w.lastTime = w.done, now
 	}
 	pct := 0.0
@@ -63,41 +64,4 @@ func (w *dlWriter) emit(fin bool, e error) {
 	}:
 	default:
 	}
-}
-
-func DownloadFile(url, dest string, ch chan<- FileProgress) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return fmt.Errorf("создание директории: %w", err)
-	}
-	resp, err := dlClient.Get(url)
-	if err != nil {
-		return fmt.Errorf("GET %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %s при загрузке %s", resp.Status, url)
-	}
-
-	f, err := os.Create(dest)
-	if err != nil {
-		return fmt.Errorf("создание файла %s: %w", dest, err)
-	}
-	defer f.Close()
-
-	pw := &dlWriter{
-		w:        f,
-		total:    max(resp.ContentLength, 0),
-		ch:       ch,
-		lastTime: time.Now(),
-		nextEmit: time.Now(),
-	}
-	_, cpErr := io.Copy(pw, resp.Body)
-	if cpErr != nil {
-		pw.emit(true, cpErr)
-		_ = os.Remove(dest)
-		return cpErr
-	}
-	pw.emit(true, nil)
-	return nil
 }

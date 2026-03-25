@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -214,6 +213,7 @@ func (q QualityChoice) labelWithoutSize(l Locale) string {
 
 func (q QualityChoice) Config(l Locale) QualityConfig {
 	return QualityConfig{
+		Locale:    l,
 		Label:     q.labelWithoutSize(l),
 		FmtChain:  slices.Clone(q.FmtChain),
 		FmtLabels: slices.Clone(q.FmtLabels),
@@ -270,21 +270,16 @@ func compactQualityURLs(urls []string) []string {
 }
 
 func scanVideoInfo(url string) (videoQualityInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), qualityScanTimeout)
-	defer cancel()
-
-	out, err := exec.CommandContext(
-		ctx,
+	out, err := commandOutput(
+		context.Background(),
+		qualityScanTimeout,
 		YtdlpBin,
 		"--dump-single-json",
 		"--no-playlist",
 		"--no-warnings",
 		url,
-	).Output()
+	)
 	if err != nil {
-		if ctx.Err() != nil {
-			return videoQualityInfo{}, ctx.Err()
-		}
 		return videoQualityInfo{}, err
 	}
 

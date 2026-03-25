@@ -2,6 +2,7 @@ package bot
 
 import (
 	"log"
+	"strings"
 
 	app "YouTubeBuild/internal/app"
 	"github.com/go-telegram/bot/models"
@@ -31,7 +32,7 @@ func (b *Bot) startDepsUpdate(chatID int64) {
 			b.mu.Unlock()
 		}()
 
-		if err := app.InstallAllDeps(nil); err != nil {
+		if err := app.InstallAllDepsFor(app.LocaleRU, nil); err != nil {
 			log.Printf("bot deps update: %v", err)
 			b.send(chatID, "⚠️ Не удалось обновить зависимости:\n<code>"+escapeHTML(err.Error())+"</code>")
 			return
@@ -68,16 +69,5 @@ func (b *Bot) helpText(msg *models.Message) string {
 		lines = append(lines, "/update — обновить зависимости")
 	}
 
-	return stringsJoinLines(lines)
-}
-
-func stringsJoinLines(lines []string) string {
-	if len(lines) == 0 {
-		return ""
-	}
-	out := lines[0]
-	for _, line := range lines[1:] {
-		out += "\n" + line
-	}
-	return out
+	return strings.Join(lines, "\n")
 }

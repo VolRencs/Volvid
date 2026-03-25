@@ -2,11 +2,7 @@ package bot
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -19,8 +15,9 @@ func (b *Bot) handleMessage(msg *models.Message) {
 	chatID := msg.Chat.ID
 	text := strings.TrimSpace(msg.Text)
 	sess := b.sessions.get(chatID)
+	snap := sess.snapshot()
 
-	if !messageIsCommand(msg) && sess != nil && sess.State == StateAwaitingPlaylistSelection && text != "" && !app.YtRE.MatchString(text) {
+	if !messageIsCommand(msg) && snap.State == StateAwaitingPlaylistSelection && text != "" && !app.YtRE.MatchString(text) {
 		b.handlePlaylistSelectionInput(chatID, sess, text)
 		return
 	}
@@ -48,12 +45,12 @@ func (b *Bot) handleCommand(msg *models.Message) {
 		b.send(chatID, b.helpText(msg))
 	case "cancel":
 		sess := b.sessions.get(chatID)
-		if sess == nil || sess.State == StateIdle {
+		if sess == nil || sess.snapshot().State == StateIdle {
 			b.send(chatID, "Нечего отменять.")
 			return
 		}
 		sess.cancel()
-		b.sessions.set(chatID, &Session{State: StateIdle})
+		b.sessions.reset(chatID)
 		b.send(chatID, "❌ Отменено.")
 	case "status":
 		if !b.isAdminMessage(msg) {
@@ -76,7 +73,7 @@ func (b *Bot) handleCommand(msg *models.Message) {
 
 func (b *Bot) handleURL(chatID int64, url string) {
 	sess := b.sessions.get(chatID)
-	if sess != nil && sess.State == StateDownloading {
+	if sess != nil && sess.snapshot().State == StateDownloading {
 		b.send(chatID, "⏳ Уже идёт скачивание. Дождись завершения или отмени /cancel.")
 		return
 	}
@@ -94,11 +91,13 @@ func (b *Bot) handleURL(chatID int64, url string) {
 		return
 	}
 
-	newSess := &Session{State: StateIdle, URL: url, WorkDir: workDir, stopCh: make(chan struct{})}
+	newSess := newSession(url, workDir)
 	b.sessions.set(chatID, newSess)
 
 	if app.VideoInPlaylistRE.MatchString(url) {
-		newSess.State = StateAwaitingPlaylistOp
+		newSess.mutate(func(s *Session) {
+			s.State = StateAwaitingPlaylistOp
+		})
 		b.sendKb(chatID, "⚠️ Ссылка содержит и видео, и плейлист. Что скачать?", kbPlaylistChoice())
 		return
 	}
@@ -112,38 +111,53 @@ func (b *Bot) handleURL(chatID int64, url string) {
 }
 
 func (b *Bot) fetchAndAskQuality(chatID int64, sess *Session) {
-	sess.State = StateFetchingPlaylist
+	sess.mutate(func(s *Session) {
+		s.State = StateFetchingPlaylist
+	})
 	statusMsg, _ := b.send(chatID, "⏳ Загружаю список плейлиста…")
-	sess.StatusMsgID = statusMsg.ID
+	sess.mutate(func(s *Session) {
+		s.StatusMsgID = statusMsg.ID
+	})
 
 	go func() {
-		info, err := app.FetchPlaylistInfo(sess.URL)
+		snap := sess.snapshot()
+		info, err := app.FetchPlaylistInfoFor(nil, snap.URL, app.LocaleRU)
 		if sess.isCancelled() {
 			return
 		}
 		if err != nil || info == nil {
-			sess.ForceSingle = true
-			sess.SelectedEntries = nil
+			sess.mutate(func(s *Session) {
+				s.ForceSingle = true
+				s.SelectedEntries = nil
+			})
 			b.scanAndAskQuality(chatID, sess)
 			return
 		}
-		sess.PlInfo = info
-		sess.SelectedEntries = nil
-		sess.SelectedIndices = nil
-		sess.PlaylistPage = 0
-		sess.QualityChoices = nil
-		sess.State = StateAwaitingPlaylistScope
-		b.editKb(chatID, sess.StatusMsgID, b.playlistScopeText(sess), kbPlaylistScope())
+		sess.mutate(func(s *Session) {
+			s.PlInfo = info
+			s.SelectedEntries = nil
+			s.SelectedIndices = nil
+			s.PlaylistPage = 0
+			s.QualityChoices = nil
+			s.State = StateAwaitingPlaylistScope
+		})
+		state := sess.snapshot()
+		b.editKb(chatID, state.StatusMsgID, b.playlistScopeText(sess), kbPlaylistScope())
 	}()
 }
 
 func (b *Bot) scanAndAskQuality(chatID int64, sess *Session) {
-	sess.State = StateFetchingQuality
-	if sess.StatusMsgID == 0 {
+	sess.mutate(func(s *Session) {
+		s.State = StateFetchingQuality
+	})
+	state := sess.snapshot()
+	if state.StatusMsgID == 0 {
 		statusMsg, _ := b.send(chatID, b.qualityScanText(sess))
-		sess.StatusMsgID = statusMsg.ID
+		sess.mutate(func(s *Session) {
+			s.StatusMsgID = statusMsg.ID
+		})
 	} else {
-		b.edit(chatID, sess.StatusMsgID, b.qualityScanText(sess))
+		b.edit(chatID, state.StatusMsgID, b.qualityScanText(sess))
 	}
 
 	urls := b.qualityScanURLs(sess)
@@ -155,9 +169,12 @@ func (b *Bot) scanAndAskQuality(chatID int64, sess *Session) {
 		if len(choices) == 0 {
 			choices = app.DefaultQualityChoices()
 		}
-		sess.QualityChoices = choices
-		sess.State = StateAwaitingQuality
-		b.editKb(chatID, sess.StatusMsgID, b.qualityPromptText(sess), kbQuality(choices))
+		sess.mutate(func(s *Session) {
+			s.QualityChoices = choices
+			s.State = StateAwaitingQuality
+		})
+		state := sess.snapshot()
+		b.editKb(chatID, state.StatusMsgID, b.qualityPromptText(sess), kbQuality(choices))
 	}()
 }
 
@@ -179,7 +196,7 @@ func (b *Bot) handleCallback(cq *models.CallbackQuery) {
 	if data == cbCancel {
 		b.answer(cq, "")
 		sess.cancel()
-		b.sessions.set(chatID, &Session{State: StateIdle})
+		b.sessions.reset(chatID)
 		b.edit(chatID, msgID, "❌ Отменено.")
 		return
 	}
@@ -189,7 +206,7 @@ func (b *Bot) handleCallback(cq *models.CallbackQuery) {
 	}
 
 	var alert string
-	switch sess.State {
+	switch sess.snapshot().State {
 	case StateAwaitingPlaylistOp:
 		alert = b.handlePlaylistOpCallback(chatID, msgID, sess, data)
 	case StateAwaitingPlaylistScope:
@@ -205,12 +222,16 @@ func (b *Bot) handleCallback(cq *models.CallbackQuery) {
 func (b *Bot) handlePlaylistOpCallback(chatID int64, msgID int, sess *Session, data string) string {
 	switch data {
 	case cbPlVideo:
-		sess.ForceSingle = true
-		sess.StatusMsgID = msgID
+		sess.mutate(func(s *Session) {
+			s.ForceSingle = true
+			s.StatusMsgID = msgID
+		})
 		b.removeKb(chatID, msgID)
 		b.scanAndAskQuality(chatID, sess)
 	case cbPlFull:
-		sess.StatusMsgID = msgID
+		sess.mutate(func(s *Session) {
+			s.StatusMsgID = msgID
+		})
 		b.removeKb(chatID, msgID)
 		b.fetchAndAskQuality(chatID, sess)
 	}
@@ -218,70 +239,90 @@ func (b *Bot) handlePlaylistOpCallback(chatID int64, msgID int, sess *Session, d
 }
 
 func (b *Bot) handlePlaylistScopeCallback(chatID int64, msgID int, sess *Session, data string) string {
+	snap := sess.snapshot()
+	if snap.PlInfo == nil {
+		return "Сессия устарела. Пришли ссылку заново."
+	}
 	switch data {
 	case cbPlAll:
-		sess.SelectedEntries = append([]app.PlaylistEntry(nil), sess.PlInfo.Entries...)
-		sess.SelectedIndices = nil
-		sess.PlaylistPage = 0
-		sess.StatusMsgID = msgID
+		sess.mutate(func(s *Session) {
+			s.SelectedEntries = append([]app.PlaylistEntry(nil), snap.PlInfo.Entries...)
+			s.SelectedIndices = nil
+			s.PlaylistPage = 0
+			s.StatusMsgID = msgID
+		})
 		b.removeKb(chatID, msgID)
 		b.scanAndAskQuality(chatID, sess)
 	case cbPlSelect:
-		sess.State = StateAwaitingPlaylistSelection
-		sess.StatusMsgID = msgID
-		sess.SelectedEntries = nil
-		sess.SelectedIndices = make(map[int]bool)
-		sess.PlaylistPage = 0
+		sess.mutate(func(s *Session) {
+			s.State = StateAwaitingPlaylistSelection
+			s.StatusMsgID = msgID
+			s.SelectedEntries = nil
+			s.SelectedIndices = make(map[int]bool)
+			s.PlaylistPage = 0
+		})
 		b.editKb(chatID, msgID, b.playlistSelectionText(sess), kbPlaylistSelection(sess))
 	}
 	return ""
 }
 
 func (b *Bot) handlePlaylistSelectionInput(chatID int64, sess *Session, raw string) {
-	if sess.PlInfo == nil {
+	snap := sess.snapshot()
+	if snap.PlInfo == nil {
 		b.send(chatID, "⚠️ Сессия устарела. Пришли ссылку заново.")
-		b.sessions.set(chatID, &Session{State: StateIdle})
+		b.sessions.reset(chatID)
 		return
 	}
 
-	indices, err := app.ParseSelection(raw, len(sess.PlInfo.Entries))
+	indices, err := app.ParseSelectionFor(raw, len(snap.PlInfo.Entries), app.LocaleRU)
 	if err != nil {
 		b.send(chatID, "⚠️ "+escapeHTML(err.Error())+"\n\nПример: <code>1-3,7,10</code> или <code>all</code>")
 		return
 	}
 
-	sess.SelectedIndices = make(map[int]bool, len(indices))
+	selected := make(map[int]bool, len(indices))
 	for _, idx := range indices {
-		sess.SelectedIndices[idx] = true
+		selected[idx] = true
 	}
-	sess.SelectedEntries = playlistEntriesFromSelection(sess.PlInfo, sess.SelectedIndices)
-	sess.QualityChoices = nil
+	entries := playlistEntriesFromSelection(snap.PlInfo, selected)
+	sess.mutate(func(s *Session) {
+		s.SelectedIndices = selected
+		s.SelectedEntries = entries
+		s.QualityChoices = nil
+	})
 	b.scanAndAskQuality(chatID, sess)
 }
 
 func (b *Bot) handlePlaylistSelectionCallback(chatID int64, msgID int, sess *Session, data string) string {
-	if sess.PlInfo == nil {
+	snap := sess.snapshot()
+	if snap.PlInfo == nil {
 		return "Сессия устарела. Пришли ссылку заново."
 	}
-	if sess.SelectedIndices == nil {
-		sess.SelectedIndices = make(map[int]bool)
+
+	selected := cloneSelection(snap.SelectedIndices)
+	if selected == nil {
+		selected = make(map[int]bool)
 	}
 
 	switch {
 	case data == cbPlSelectAll:
-		sess.SelectedIndices = make(map[int]bool, len(sess.PlInfo.Entries))
-		for _, entry := range sess.PlInfo.Entries {
-			sess.SelectedIndices[entry.Index] = true
+		selected = make(map[int]bool, len(snap.PlInfo.Entries))
+		for _, entry := range snap.PlInfo.Entries {
+			selected[entry.Index] = true
 		}
 	case data == cbPlSelectNone:
-		sess.SelectedIndices = make(map[int]bool)
+		selected = make(map[int]bool)
 	case data == cbPlSelectDone:
-		sess.SelectedEntries = playlistEntriesFromSelection(sess.PlInfo, sess.SelectedIndices)
-		if len(sess.SelectedEntries) == 0 {
+		entries := playlistEntriesFromSelection(snap.PlInfo, selected)
+		if len(entries) == 0 {
 			return "Выбери хотя бы одно видео."
 		}
-		sess.QualityChoices = nil
-		sess.StatusMsgID = msgID
+		sess.mutate(func(s *Session) {
+			s.SelectedIndices = selected
+			s.SelectedEntries = entries
+			s.QualityChoices = nil
+			s.StatusMsgID = msgID
+		})
 		b.scanAndAskQuality(chatID, sess)
 		return ""
 	case strings.HasPrefix(data, cbPlTogglePref):
@@ -289,22 +330,27 @@ func (b *Bot) handlePlaylistSelectionCallback(chatID int64, msgID int, sess *Ses
 		if err != nil {
 			return ""
 		}
-		if sess.SelectedIndices[idx] {
-			delete(sess.SelectedIndices, idx)
-		} else if idx >= 1 && idx <= len(sess.PlInfo.Entries) {
-			sess.SelectedIndices[idx] = true
+		if selected[idx] {
+			delete(selected, idx)
+		} else if idx >= 1 && idx <= len(snap.PlInfo.Entries) {
+			selected[idx] = true
 		}
 	case strings.HasPrefix(data, cbPlPagePref):
 		page, err := strconv.Atoi(strings.TrimPrefix(data, cbPlPagePref))
 		if err != nil {
 			return ""
 		}
-		sess.PlaylistPage = page
+		sess.mutate(func(s *Session) {
+			s.PlaylistPage = page
+		})
 	default:
 		return ""
 	}
 
-	sess.SelectedEntries = nil
+	sess.mutate(func(s *Session) {
+		s.SelectedIndices = selected
+		s.SelectedEntries = nil
+	})
 	b.editKb(chatID, msgID, b.playlistSelectionText(sess), kbPlaylistSelection(sess))
 	return ""
 }
@@ -313,7 +359,7 @@ func (b *Bot) handleQualityCallback(chatID int64, msgID int, sess *Session, data
 	if !strings.HasPrefix(data, cbQualityPrefix) {
 		return ""
 	}
-	choices := sess.QualityChoices
+	choices := sess.snapshot().QualityChoices
 	if len(choices) == 0 {
 		choices = app.DefaultQualityChoices()
 	}
@@ -323,8 +369,10 @@ func (b *Bot) handleQualityCallback(chatID int64, msgID int, sess *Session, data
 	}
 	cfg := choice.Config(app.LocaleRU)
 
-	sess.State = StateDownloading
-	sess.StatusMsgID = msgID
+	sess.mutate(func(s *Session) {
+		s.State = StateDownloading
+		s.StatusMsgID = msgID
+	})
 
 	b.removeKb(chatID, msgID)
 
@@ -340,9 +388,10 @@ func (b *Bot) handleQualityCallback(chatID int64, msgID int, sess *Session, data
 	}
 
 	var desc string
-	if sess.PlInfo != nil && !sess.ForceSingle {
+	snap := sess.snapshot()
+	if snap.PlInfo != nil && !snap.ForceSingle {
 		desc = fmt.Sprintf("📋 <b>%s</b>\n%d видео%s\n\n⬇️ Начинаю скачивание…",
-			escapeHTML(sess.PlInfo.Title), len(b.playlistEntriesForSession(sess)), sizeNote)
+			escapeHTML(snap.PlInfo.Title), len(b.playlistEntriesForSession(sess)), sizeNote)
 	} else {
 		desc = "🎬 Видео" + sizeNote + "\n\n⬇️ Начинаю скачивание…"
 	}
@@ -353,7 +402,8 @@ func (b *Bot) handleQualityCallback(chatID int64, msgID int, sess *Session, data
 }
 
 func (b *Bot) runDownload(chatID int64, sess *Session, cfg app.QualityConfig) {
-	msgID := sess.StatusMsgID
+	snap := sess.snapshot()
+	msgID := snap.StatusMsgID
 
 	dlCh := make(chan app.DlUpdate, 256)
 	entries := b.playlistEntriesForSession(sess)
@@ -362,14 +412,15 @@ func (b *Bot) runDownload(chatID int64, sess *Session, cfg app.QualityConfig) {
 	defer cancel()
 
 	go func() {
-		if sess.stopCh == nil {
+		stopCh := sess.stopSignal()
+		if stopCh == nil {
 			return
 		}
-		<-sess.stopCh
+		<-stopCh
 		cancel()
 	}()
 
-	app.StartDownloadContextInDir(ctx, sess.WorkDir, cfg, sess.URL, sess.ForceSingle, sess.PlInfo, entries, workers, dlCh)
+	app.StartDownloadContextInDir(ctx, snap.WorkDir, cfg, snap.URL, snap.ForceSingle, snap.PlInfo, entries, workers, dlCh)
 
 	var (
 		lastEdit  time.Time
@@ -430,15 +481,15 @@ func (b *Bot) runDownload(chatID int64, sess *Session, cfg app.QualityConfig) {
 				continue
 			}
 			b.onDownloadFinished(chatID, msgID, sess, dlStem, totalDone, totalFail, total)
-			b.sessions.set(chatID, &Session{State: StateIdle})
+			b.sessions.reset(chatID)
 			return
 		}
 	}
 
 	if cancelled || sess.isCancelled() {
-		cleanupBotWorkDir(sess.WorkDir)
+		cleanupBotWorkDir(snap.WorkDir)
 		b.edit(chatID, msgID, "❌ Скачивание отменено.")
-		b.sessions.set(chatID, &Session{State: StateIdle})
+		b.sessions.reset(chatID)
 	}
 }
 
@@ -447,8 +498,9 @@ func (b *Bot) onDownloadFinished(
 	dlStem string,
 	done, failed, total int,
 ) {
-	newFiles := filesInDir(sess.WorkDir)
-	defer cleanupBotWorkDir(sess.WorkDir)
+	snap := sess.snapshot()
+	newFiles := filesInDir(snap.WorkDir)
+	defer cleanupBotWorkDir(snap.WorkDir)
 
 	if total == 0 {
 		if failed > 0 || done == 0 {
@@ -493,7 +545,8 @@ func (b *Bot) onDownloadFinished(
 }
 
 func (b *Bot) qualityScanText(sess *Session) string {
-	if sess.PlInfo != nil && !sess.ForceSingle {
+	snap := sess.snapshot()
+	if snap.PlInfo != nil && !snap.ForceSingle {
 		count := len(b.playlistEntriesForSession(sess))
 		if !app.ShouldScanQualityChoices(count) {
 			return fmt.Sprintf("⚡ Готовлю быстрый выбор качества для %d видео…", count)
@@ -504,10 +557,11 @@ func (b *Bot) qualityScanText(sess *Session) string {
 }
 
 func (b *Bot) qualityPromptText(sess *Session) string {
-	if sess.PlInfo != nil && !sess.ForceSingle {
+	snap := sess.snapshot()
+	if snap.PlInfo != nil && !snap.ForceSingle {
 		return fmt.Sprintf(
 			"📋 <b>%s</b>\n%d видео\n\nВыбери качество:",
-			escapeHTML(sess.PlInfo.Title),
+			escapeHTML(snap.PlInfo.Title),
 			len(b.playlistEntriesForSession(sess)),
 		)
 	}
@@ -516,8 +570,9 @@ func (b *Bot) qualityPromptText(sess *Session) string {
 
 func (b *Bot) qualityScanURLs(sess *Session) []string {
 	entries := b.playlistEntriesForSession(sess)
-	if sess.PlInfo == nil || sess.ForceSingle || len(entries) == 0 {
-		return []string{sess.URL}
+	snap := sess.snapshot()
+	if snap.PlInfo == nil || snap.ForceSingle || len(entries) == 0 {
+		return []string{snap.URL}
 	}
 
 	urls := make([]string, 0, len(entries))
@@ -528,180 +583,27 @@ func (b *Bot) qualityScanURLs(sess *Session) []string {
 }
 
 func (b *Bot) playlistScopeText(sess *Session) string {
-	if sess.PlInfo == nil {
+	snap := sess.snapshot()
+	if snap.PlInfo == nil {
 		return "📋 Выбери, что скачать:"
 	}
 	return fmt.Sprintf(
 		"📋 <b>%s</b>\n%d видео\n\nЧто скачать?",
-		escapeHTML(sess.PlInfo.Title),
-		len(sess.PlInfo.Entries),
+		escapeHTML(snap.PlInfo.Title),
+		len(snap.PlInfo.Entries),
 	)
 }
 
 func (b *Bot) playlistEntriesForSession(sess *Session) []app.PlaylistEntry {
-	if sess == nil || sess.PlInfo == nil || sess.ForceSingle {
+	snap := sess.snapshot()
+	if snap.PlInfo == nil || snap.ForceSingle {
 		return nil
 	}
-	if len(sess.SelectedEntries) > 0 {
-		return sess.SelectedEntries
+	if len(snap.SelectedEntries) > 0 {
+		return snap.SelectedEntries
 	}
-	if len(sess.SelectedIndices) > 0 {
-		return playlistEntriesFromSelection(sess.PlInfo, sess.SelectedIndices)
+	if len(snap.SelectedIndices) > 0 {
+		return playlistEntriesFromSelection(snap.PlInfo, snap.SelectedIndices)
 	}
-	return sess.PlInfo.Entries
-}
-
-func filesInDir(dir string) []string {
-	var out []string
-	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		out = append(out, path)
-		return nil
-	})
-	sort.Strings(out)
-	return out
-}
-
-func (b *Bot) sendDownloadedFiles(chatID int64, paths []string) (sent, tooLarge, sendErr int) {
-	for _, path := range paths {
-		err := b.sendFile(chatID, path)
-		switch {
-		case err == nil:
-			sent++
-		case errors.Is(err, errTelegramFileTooLarge):
-			tooLarge++
-		default:
-			sendErr++
-		}
-	}
-	return sent, tooLarge, sendErr
-}
-
-func (b *Bot) singleSendSummary(sent, tooLarge, sendErr int) string {
-	switch {
-	case sent > 0 && tooLarge == 0 && sendErr == 0:
-		return "✅ Готово! Файл удалён с сервера."
-	case sent > 0:
-		return fmt.Sprintf(
-			"✅ Скачано!\n\n📤 Отправлено: %d\n📦 Слишком большие для %s: %d\n⚠️ Не удалось отправить: %d\n\n%s\nФайлы удалены с сервера.",
-			sent, b.backendLabel(), tooLarge, sendErr,
-			b.sendLimitNotice(),
-		)
-	case tooLarge > 0:
-		return fmt.Sprintf("✅ Скачано!\n\nФайл слишком большой для %s.\n\n%s\nФайл удалён с сервера.", b.backendLabel(), b.sendLimitNotice())
-	default:
-		return "✅ Скачано!\n\nНе удалось отправить файл в Telegram.\nФайл удалён с сервера."
-	}
-}
-
-func (b *Bot) playlistSendSummary(icon string, done, failed, total, sent, tooLarge, sendErr int) string {
-	var extra string
-	switch {
-	case sent > 0 || tooLarge > 0 || sendErr > 0:
-		extra = fmt.Sprintf(
-			"\n\n📤 Отправлено: %d\n📦 Слишком большие для %s: %d\n⚠️ Не удалось отправить: %d",
-			sent, b.backendLabel(), tooLarge, sendErr,
-		)
-		if tooLarge > 0 {
-			extra += "\n\n" + b.sendLimitNotice()
-		}
-		extra += "\nВсе файлы удалены с сервера."
-	}
-
-	return fmt.Sprintf(
-		"%s <b>Плейлист завершён</b>\n\n✔ Успешно: %d\n✘ Ошибок: %d\nИтого: %d%s",
-		icon, done, failed, total, extra,
-	)
-}
-
-func cleanupBotWorkDir(dir string) {
-	if strings.TrimSpace(dir) == "" {
-		return
-	}
-	if err := os.RemoveAll(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return
-	}
-	parent := filepath.Dir(dir)
-	if parent != "" && parent != "." && parent != app.DlDir {
-		_ = os.Remove(parent)
-	}
-}
-
-func progressBar(done, total int) string {
-	const width = 10
-	if total == 0 {
-		return strings.Repeat("░", width)
-	}
-	filled := done * width / total
-	return strings.Repeat("▓", filled) + strings.Repeat("░", width-filled)
-}
-
-func verLine(name, ver string) string {
-	if ver == "" {
-		return fmt.Sprintf("• %s — <b>не найден</b>", escapeHTML(name))
-	}
-	return fmt.Sprintf("• %s — <code>%s</code>", escapeHTML(name), escapeHTML(ver))
-}
-
-func escapeHTML(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	return s
-}
-
-func messageIsCommand(msg *models.Message) bool {
-	if msg == nil {
-		return false
-	}
-	for _, entity := range msg.Entities {
-		if entity.Type == models.MessageEntityTypeBotCommand && entity.Offset == 0 {
-			return true
-		}
-	}
-	return false
-}
-
-func messageCommand(msg *models.Message) string {
-	if msg == nil {
-		return ""
-	}
-	for _, entity := range msg.Entities {
-		if entity.Type != models.MessageEntityTypeBotCommand || entity.Offset != 0 || entity.Length <= 1 {
-			continue
-		}
-		runes := []rune(msg.Text)
-		if entity.Offset+entity.Length > len(runes) {
-			return ""
-		}
-		cmd := strings.TrimPrefix(string(runes[entity.Offset:entity.Offset+entity.Length]), "/")
-		cmd, _, _ = strings.Cut(cmd, "@")
-		return cmd
-	}
-	return ""
-}
-
-func callbackMessageMeta(cq *models.CallbackQuery) (chatID int64, msgID int, ok bool) {
-	if cq == nil {
-		return 0, 0, false
-	}
-	switch cq.Message.Type {
-	case models.MaybeInaccessibleMessageTypeMessage:
-		if cq.Message.Message == nil {
-			return 0, 0, false
-		}
-		return cq.Message.Message.Chat.ID, cq.Message.Message.ID, true
-	case models.MaybeInaccessibleMessageTypeInaccessibleMessage:
-		if cq.Message.InaccessibleMessage == nil {
-			return 0, 0, false
-		}
-		return cq.Message.InaccessibleMessage.Chat.ID, cq.Message.InaccessibleMessage.MessageID, true
-	default:
-		return 0, 0, false
-	}
+	return snap.PlInfo.Entries
 }

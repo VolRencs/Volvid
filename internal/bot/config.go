@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	app "YouTubeBuild/internal/app"
 	tg "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
@@ -80,7 +81,7 @@ func adminCtx() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), telegramAPITimeout)
 }
 
-var botAPIHTTPClient = &http.Client{Timeout: telegramAPITimeout}
+var botAPIHTTPClient = app.NewHTTPClient(telegramAPITimeout)
 
 type botAPIResponse struct {
 	OK          bool            `json:"ok"`

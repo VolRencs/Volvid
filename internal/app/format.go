@@ -7,11 +7,7 @@ import (
 )
 
 func FmtBytes(n int64) string {
-	l := LocaleEN
-	if Loc == &strRU {
-		l = LocaleRU
-	}
-	return FmtBytesFor(n, l)
+	return FmtBytesFor(n, LoadLocale())
 }
 
 func FmtBytesFor(n int64, l Locale) string {
