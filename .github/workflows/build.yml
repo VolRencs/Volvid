@@ -16,10 +16,13 @@ jobs:
         with:
           go-version: "1.26.1"
       - run: go build -ldflags="-s -w" -o VolRenDownloader.exe .
+      - run: go build -ldflags="-s -w" -o VolRenUpdater.exe ./cmd/winupdater
       - uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          artifacts: VolRenDownloader.exe
+          artifacts: |
+            VolRenDownloader.exe
+            VolRenUpdater.exe
 
   build-linux:
     runs-on: ubuntu-latest

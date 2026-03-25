@@ -87,16 +87,18 @@ func ApplyUpdateFor(l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
 	if err != nil {
 		return fmt.Errorf("абсолютный путь: %w", err)
 	}
-	var tmp string
 	if IsWindows {
-		tmp = strings.TrimSuffix(dest, ".exe") + ".new.exe"
+		if _, err := EnsureWindowsUpdater(l, ch); err != nil {
+			return err
+		}
+		return applyUpdatePlatform(info.DlURL, dest)
 	} else {
-		tmp = dest + ".new"
+		tmp := dest + ".new"
+		if err := DownloadFile(info.DlURL, tmp, l, ch); err != nil {
+			return err
+		}
+		return applyUpdatePlatform(tmp, dest)
 	}
-	if err := DownloadFile(info.DlURL, tmp, l, ch); err != nil {
-		return err
-	}
-	return applyUpdatePlatform(tmp, dest)
 }
 
 func versionGT(a, b string) bool {

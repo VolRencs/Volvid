@@ -212,6 +212,7 @@ func listenDownloadCmd(ch <-chan app.DlUpdate) tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
+	app.PrefetchWindowsUpdater(m.locale)
 	return tea.Batch(
 		spinnerTickCmd(),
 		func() tea.Msg { return msgUpdateChecked{info: app.CheckUpdate()} },

@@ -96,7 +96,7 @@ On first launch:
 
 On startup the app can check GitHub for a newer release and offer to update.
 
-- **Windows** — new `.exe` plus a `.bat` that replaces the file after you quit.  
+- **Windows** — a small `VolRenUpdater.exe` helper is downloaded into `_deps/`, closes the app, downloads the new release, replaces the main `.exe`, then restarts it.  
 - **Linux** — atomic binary replace; restart the app manually.
 
 The `_deps/` and `downloads/` folders are left as-is.
@@ -124,7 +124,7 @@ The `_deps/` and `downloads/` folders are left as-is.
 next to the binary/
 ├── VolRenDownloader / VolRenDownloader.exe
 ├── .volren_locale          ← saved language (en / ru)
-├── _deps/                  ← yt-dlp; on Windows also ffmpeg.exe
+├── _deps/                  ← yt-dlp; on Windows also ffmpeg.exe + VolRenUpdater.exe
 └── downloads/              ← downloaded files and playlist folders
 ```
 
@@ -134,7 +134,7 @@ next to the binary/
 
 | OS | Arch | yt-dlp | ffmpeg | App update |
 |----|------|--------|--------|------------|
-| Windows | x64 | from GitHub | BtbN build | `.bat` after exit |
+| Windows | x64 | from GitHub | BtbN build | `VolRenUpdater.exe` helper |
 | Linux | amd64 / arm64 | from GitHub | system | binary rename |
 
 ---

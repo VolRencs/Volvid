@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
+	"path/filepath"
+	"strconv"
 	"syscall"
 
 	"golang.org/x/sys/windows"
 )
 
 const (
-	windowsUpdateWaitTimeout   = 60
-	windowsReplaceRetrySeconds = 20
+	windowsUpdaterWaitTimeoutSeconds = 90
 )
 
 func init() {
@@ -31,79 +31,24 @@ func detachedProcess() *syscall.SysProcAttr {
 	}
 }
 
-func applyUpdatePlatform(tmp, dest string) error {
-	base := strings.TrimSuffix(dest, ".exe")
-	_ = os.Remove(base + ".update.bat")
-
-	script := base + ".update.ps1"
-	content := windowsUpdateScript(tmp, dest, script)
-	data := append([]byte{0xEF, 0xBB, 0xBF}, []byte(content)...)
-	if err := os.WriteFile(script, data, 0o644); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("создание update-скрипта: %w", err)
+func applyUpdatePlatform(dlURL, dest string) error {
+	updater := WindowsUpdaterPath()
+	if info, err := os.Stat(updater); err != nil || info.Size() == 0 {
+		return fmt.Errorf("updater не найден: %s", updater)
 	}
 
 	cmd := exec.Command(
-		"powershell.exe",
-		"-NoLogo",
-		"-NoProfile",
-		"-NonInteractive",
-		"-ExecutionPolicy", "Bypass",
-		"-WindowStyle", "Hidden",
-		"-File", script,
+		updater,
+		"--wait-pid", strconv.Itoa(os.Getpid()),
+		"--download-url", dlURL,
+		"--target", dest,
+		"--restart", dest,
+		"--timeout", strconv.Itoa(windowsUpdaterWaitTimeoutSeconds),
 	)
+	cmd.Dir = filepath.Dir(dest)
 	cmd.SysProcAttr = detachedProcess()
 	if err := cmd.Start(); err != nil {
-		os.Remove(tmp)
-		os.Remove(script)
-		return fmt.Errorf("запуск update-скрипта: %w", err)
+		return fmt.Errorf("запуск updater-а: %w", err)
 	}
 	return nil
-}
-
-func windowsUpdateScript(tmp, dest, script string) string {
-	return fmt.Sprintf(
-		"$src = '%s'\r\n"+
-			"$dst = '%s'\r\n"+
-			"$self = '%s'\r\n"+
-			"$pidToWait = %d\r\n"+
-			"$waitSeconds = %d\r\n"+
-			"$retrySeconds = %d\r\n"+
-			"$updated = $false\r\n"+
-			"try {\r\n"+
-			"    Wait-Process -Id $pidToWait -Timeout $waitSeconds -ErrorAction Stop\r\n"+
-			"} catch {\r\n"+
-			"}\r\n"+
-			"$deadline = (Get-Date).AddSeconds($retrySeconds)\r\n"+
-			"while ((Get-Date) -lt $deadline) {\r\n"+
-			"    try {\r\n"+
-			"        [System.IO.File]::Copy($src, $dst, $true)\r\n"+
-			"        Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue\r\n"+
-			"        $updated = $true\r\n"+
-			"        break\r\n"+
-			"    } catch {\r\n"+
-			"        Start-Sleep -Milliseconds 500\r\n"+
-			"    }\r\n"+
-			"}\r\n"+
-			"if ($updated) {\r\n"+
-			"    try {\r\n"+
-			"        Start-Process -FilePath $dst | Out-Null\r\n"+
-			"    } catch {\r\n"+
-			"    }\r\n"+
-			"} else {\r\n"+
-			"    Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue\r\n"+
-			"}\r\n"+
-			"Start-Sleep -Milliseconds 200\r\n"+
-			"Remove-Item -LiteralPath $self -Force -ErrorAction SilentlyContinue\r\n",
-		psSingleQuoted(tmp),
-		psSingleQuoted(dest),
-		psSingleQuoted(script),
-		os.Getpid(),
-		windowsUpdateWaitTimeout,
-		windowsReplaceRetrySeconds,
-	)
-}
-
-func psSingleQuoted(s string) string {
-	return strings.ReplaceAll(s, "'", "''")
 }

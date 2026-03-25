@@ -62,7 +62,7 @@ var strEN = UIStrings{
 	PlaylistMixWarn: "  ⚠️ URL has both a video and a playlist",
 
 	DepUpdatingVer: "update ", DepsUpdating: "Updating dependencies…",
-	UpdateAppliedWin:  "  The app will close and restart automatically.",
+	UpdateAppliedWin:  "  The app will close. VolRenUpdater will finish the update and restart it automatically.",
 	UpdateAppliedUnix: "  Binary replaced. Restart the app.",
 	UpdateDonePrefix:  "  ✔  Update applied — ",
 	HelpAnyKey:        "any key", HelpExit: "exit", DepsOK: "  ✔  Dependencies updated", ErrPrefix: "  ✘  Error: ",
@@ -119,7 +119,7 @@ var strRU = UIStrings{
 	PlaylistMixWarn: "  ⚠️ В ссылке и видео, и плейлист",
 
 	DepUpdatingVer: "обновление ", DepsUpdating: "Обновление зависимостей…",
-	UpdateAppliedWin:  "  Приложение сейчас закроется и перезапустится автоматически.",
+	UpdateAppliedWin:  "  Приложение сейчас закроется. VolRenUpdater завершит обновление и запустит новую версию автоматически.",
 	UpdateAppliedUnix: "  Бинарник заменён. Перезапустите программу.",
 	UpdateDonePrefix:  "  ✔  Обновление применено — ",
 	HelpAnyKey:        "любая клавиша", HelpExit: "выйти", DepsOK: "  ✔  Зависимости обновлены", ErrPrefix: "  ✘  Ошибка: ",

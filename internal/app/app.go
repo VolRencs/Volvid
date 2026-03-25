@@ -13,6 +13,8 @@ const (
 
 	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ytdlpBase    = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
+	updaterURL   = "https://github.com/VolRencs/YouTubeDownloader/releases/latest/download/VolRenUpdater.exe"
+	updaterName  = "VolRenUpdater.exe"
 
 	githubAPIURL = "https://api.github.com/repos/VolRencs/YouTubeDownloader/releases/latest"
 
