@@ -79,26 +79,29 @@ func ApplyUpdate(info *UpdateInfo, ch chan<- FileProgress) error {
 }
 
 func ApplyUpdateFor(l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("путь к исполняемому файлу: %w", err)
-	}
-	dest, err := filepath.Abs(exe)
-	if err != nil {
-		return fmt.Errorf("абсолютный путь: %w", err)
-	}
-	if IsWindows {
-		tmp := strings.TrimSuffix(dest, ".exe") + ".new.exe"
-		if err := DownloadFile(info.DlURL, tmp, l, ch); err != nil {
-			return err
-		}
-		return applyUpdatePlatform(tmp, dest)
-	}
-	tmp := dest + ".new"
-	if err := DownloadFile(info.DlURL, tmp, l, ch); err != nil {
-		return err
-	}
-	return applyUpdatePlatform(tmp, dest)
+    exe, err := os.Executable()
+    if err != nil {
+        return fmt.Errorf("путь к исполняемому файлу: %w", err)
+    }
+    dest, err := filepath.Abs(exe)
+    if err != nil {
+        return fmt.Errorf("абсолютный путь: %w", err)
+    }
+    if IsWindows {
+        tmp := strings.TrimSuffix(dest, ".exe") + ".new.exe"
+        if err := DownloadFile(info.DlURL, tmp, l, ch); err != nil {
+            return err
+        }
+        if err := applyUpdatePlatform(tmp, dest); err != nil {
+            return err
+        }
+        os.Exit(0) 
+    }
+    tmp := dest + ".new"
+    if err := DownloadFile(info.DlURL, tmp, l, ch); err != nil {
+        return err
+    }
+    return applyUpdatePlatform(tmp, dest)
 }
 
 func versionGT(a, b string) bool {
