@@ -92,10 +92,7 @@ func ApplyUpdateFor(l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
 		if err := DownloadFile(info.DlURL, tmp, l, ch); err != nil {
 			return err
 		}
-		if err := applyUpdatePlatform(tmp, dest); err != nil {
-			return err
-		}
-		os.Exit(0)
+		return applyUpdatePlatform(tmp, dest)
 	}
 	tmp := dest + ".new"
 	if err := DownloadFile(info.DlURL, tmp, l, ch); err != nil {

@@ -57,10 +57,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.isUpdate {
-			m.screen = scrUpdateDone
 			if app.IsWindows {
-				return m, updateRestartCmd()
+				return m, tea.Quit
 			}
+			m.screen = scrUpdateDone
 			return m, nil
 		}
 		if m.screen == scrDepUpdate {
@@ -90,8 +90,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case msgDlUpdate:
 		return m.handleDlUpdate(msg.update)
 
-	case msgUpdateRestart:
-		return m, tea.Quit
 	}
 
 	switch {

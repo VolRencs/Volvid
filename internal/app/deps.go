@@ -28,70 +28,112 @@ const (
 type DepsLogger func(format string, args ...any)
 
 func DetectDeps() CheckDepsResult {
-	r := CheckDepsResult{YtdlpVer: YtdlpVersion()}
-	if IsWindows {
-		bin := filepath.Join(DepsDir, "ffmpeg.exe")
-		if _, err := os.Stat(bin); err == nil {
-			FFmpegResolved = bin
-			r.FFmpegVer = FFmpegVersion()
-		} else {
-			r.FFmpegMissing = true
-		}
-	} else if path, err := exec.LookPath("ffmpeg"); err == nil {
-		FFmpegResolved = path
-		r.FFmpegVer = FFmpegVersion()
-	}
+	r := CheckDepsResult{}
+	r.YtdlpVer = YtdlpVersion()
+	r.FFmpegVer, r.FFmpegMissing = detectFFmpegVersion()
 	return r
 }
 
 func YtdlpVersion() string {
-	if _, err := os.Stat(YtdlpBin); err != nil {
+	if !pathExists(YtdlpBin) {
 		return ""
 	}
-	return probeCommandVersion(YtdlpBin, "--version")
+	return commandVersionLine(YtdlpBin, "--version")
 }
 
 func FFmpegVersion() string {
-	bin := FFmpegResolved
-	if bin == "" {
-		path, err := exec.LookPath("ffmpeg")
-		if err != nil {
-			return ""
-		}
-		bin = path
-	}
-	out, _ := commandCombinedOutput(context.Background(), versionProbeTimeout, bin, "-version")
-	if len(out) == 0 {
-		return ""
-	}
-	line := strings.SplitN(string(out), "\n", 2)[0]
-	fields := strings.Fields(line)
-	for i, f := range fields {
-		if f == "version" && i+1 < len(fields) {
-			ver := fields[i+1]
-			if idx := strings.IndexAny(ver, "-_"); idx > 0 {
-				ver = ver[:idx]
-			}
-			return ver
-		}
-	}
-	return ""
+	ver, _ := detectFFmpegVersion()
+	return ver
 }
 
-func probeCommandVersion(bin string, args ...string) string {
+func detectFFmpegVersion() (string, bool) {
+	bin, missing := ffmpegBinaryPath()
+	if bin == "" {
+		FFmpegResolved = ""
+		return "", missing
+	}
+	FFmpegResolved = bin
+
+	line := commandVersionLine(bin, "-version")
+	if line == "" {
+		return "", false
+	}
+	return ffmpegVersionFromLine(line), false
+}
+
+func ffmpegBinaryPath() (string, bool) {
+	if IsWindows {
+		bin := filepath.Join(DepsDir, "ffmpeg.exe")
+		if pathExists(bin) {
+			return bin, false
+		}
+		return "", true
+	}
+
+	if pathExists(FFmpegResolved) {
+		return FFmpegResolved, false
+	}
+
+	bin, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		return "", false
+	}
+	return bin, false
+}
+
+func commandVersionLine(bin string, args ...string) string {
 	for attempt := 0; attempt < versionProbeAttempts; attempt++ {
-		out, err := commandOutput(context.Background(), versionProbeTimeout, bin, args...)
-		if err == nil {
-			version := strings.TrimSpace(string(out))
-			if version != "" {
-				return version
-			}
+		out, _ := commandCombinedOutput(context.Background(), versionProbeTimeout, bin, args...)
+		line := firstNonEmptyLine(string(out))
+		if line != "" {
+			return line
 		}
 		if attempt+1 < versionProbeAttempts {
 			time.Sleep(versionProbeDelay)
 		}
 	}
 	return ""
+}
+
+func firstNonEmptyLine(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
+func ffmpegVersionFromLine(line string) string {
+	const prefix = "ffmpeg version "
+
+	lower := strings.ToLower(line)
+	idx := strings.Index(lower, prefix)
+	if idx < 0 {
+		return strings.TrimSpace(line)
+	}
+
+	rest := strings.TrimSpace(line[idx+len(prefix):])
+	if rest == "" {
+		return ""
+	}
+
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return strings.TrimSpace(line)
+	}
+
+	return strings.Trim(fields[0], " \t\r\n,;:()[]{}\"'")
+}
+
+func pathExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func YtdlpURL() string {

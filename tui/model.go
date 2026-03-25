@@ -62,7 +62,6 @@ type (
 		err      error
 		isUpdate bool
 	}
-	msgUpdateRestart   struct{}
 	msgPlaylistFetched struct {
 		info *app.PlaylistInfo
 		err  error
@@ -173,10 +172,6 @@ func spinnerTickCmd() tea.Cmd {
 
 func timerTickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(ts time.Time) tea.Msg { return timerTickMsg(ts) })
-}
-
-func updateRestartCmd() tea.Cmd {
-	return tea.Tick(1200*time.Millisecond, func(time.Time) tea.Msg { return msgUpdateRestart{} })
 }
 
 func streamFileProgressCmd(ch <-chan app.FileProgress, isUpdate bool) tea.Cmd {
