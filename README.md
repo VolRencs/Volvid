@@ -2,11 +2,7 @@
 
 <div align="center">
 
-<p align="center">
-  <div style="width:450px; height:250px; overflow:hidden;">
-    <img src="assets/Downloader.png" style="width:100%;"/>
-  </div>
-</p>
+![downloader](assets/Downloader.png)
 
 **Download video and audio from YouTube through a terminal UI.**
 
