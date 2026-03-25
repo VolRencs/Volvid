@@ -2,7 +2,11 @@
 
 <div align="center">
 
-![youtube downloader screenshot](assets/youtubedownloader.png)
+<p align="center">
+  <div style="width:450px; height:250px; overflow:hidden;">
+    <img src="assets/Downloader.png" style="width:100%;"/>
+  </div>
+</p>
 
 **Download video and audio from YouTube through a terminal UI.**
 
@@ -16,6 +20,8 @@
 ---
 
 ## About
+
+![youtube downloader screenshot](assets/youtubedownloader.png)
 
 **VolRen Downloader** is a compact YouTube downloader with an interactive TUI built on [Bubble Tea v2](https://charm.land/bubbletea/v2). It ships as a single Go binary. On first run it pulls **yt-dlp** into `_deps/` (and **ffmpeg** on Windows when you opt in).
 
