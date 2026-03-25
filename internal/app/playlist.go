@@ -1,9 +1,7 @@
 package app
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -33,33 +31,19 @@ func FetchPlaylistInfo(url string) (*PlaylistInfo, error) {
 }
 
 func FetchPlaylistInfoFor(ctx context.Context, url string, l Locale) (*PlaylistInfo, error) {
-	cmd, stdout, runCtx, cancel, err := startMergedOutputCommand(
-		ctx,
-		playlistFetchTimeout,
-		YtdlpBin,
+	var (
+		entries []PlaylistEntry
+		first   map[string]any
+	)
+
+	err := scanYTDLPJSONLines(ctx, playlistFetchTimeout, []string{
 		"--flat-playlist",
 		"--dump-json",
 		"--quiet",
 		"--ignore-errors",
 		"--no-warnings",
 		url,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("yt-dlp start: %w", err)
-	}
-	defer cancel()
-	defer stdout.Close()
-
-	var entries []PlaylistEntry
-	var first map[string]any
-
-	sc := bufio.NewScanner(stdout)
-	sc.Buffer(make([]byte, 64<<10), 1<<20)
-	for sc.Scan() {
-		var e map[string]any
-		if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
-			continue
-		}
+	}, func(e map[string]any) {
 		if first == nil {
 			first = e
 		}
@@ -68,7 +52,7 @@ func FetchPlaylistInfoFor(ctx context.Context, url string, l Locale) (*PlaylistI
 			if id := strVal(e, "id", ""); id != "" {
 				videoURL = "https://youtu.be/" + id
 			} else {
-				continue
+				return
 			}
 		}
 		n := len(entries) + 1
@@ -80,18 +64,15 @@ func FetchPlaylistInfoFor(ctx context.Context, url string, l Locale) (*PlaylistI
 			URL:      videoURL,
 			Duration: int(dur),
 		})
-	}
-	scanErr := sc.Err()
-	waitErr := waitCommand(cmd, runCtx)
+	})
+
 	if len(entries) == 0 {
 		switch {
-		case scanErr != nil:
-			return nil, fmt.Errorf("yt-dlp output: %w", scanErr)
-		case waitErr != nil:
-			if errors.Is(waitErr, context.DeadlineExceeded) {
+		case err != nil:
+			if errors.Is(err, context.DeadlineExceeded) {
 				return nil, errors.New(StringsFor(l).PlTimeout)
 			}
-			return nil, fmt.Errorf("yt-dlp: %w", waitErr)
+			return nil, err
 		default:
 			return nil, errors.New(StringsFor(l).PlEmptyPlaylist)
 		}

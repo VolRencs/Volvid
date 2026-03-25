@@ -119,8 +119,10 @@ func (b *Bot) Run() {
 	b.mu.Unlock()
 
 	if b.scheduler != nil {
+		b.logf("starting scheduler")
 		b.scheduler.Start(ctx)
 	}
+	b.logf("starting polling loop")
 	b.api.Start(ctx)
 }
 
@@ -131,6 +133,7 @@ func (b *Bot) Stop() {
 	b.mu.Unlock()
 
 	if cancel != nil {
+		b.logf("stop requested")
 		cancel()
 	}
 }
@@ -180,6 +183,7 @@ func (b *Bot) sendFile(chatID int64, path string) error {
 		return fmt.Errorf("stat %s: %w", path, err)
 	}
 	if fi.Size() > b.sendLimitBytes() {
+		b.logf("sendFile rejected chat=%d path=%s size=%d limit=%d", chatID, path, fi.Size(), b.sendLimitBytes())
 		return errTelegramFileTooLarge
 	}
 
@@ -193,7 +197,7 @@ func (b *Bot) sendFile(chatID int64, path string) error {
 		}
 	}
 	if sendErr != nil {
-		log.Printf("sendFile %s: %v", path, sendErr)
+		log.Printf("sendFile chat=%d path=%s: %v", chatID, path, sendErr)
 	}
 	return sendErr
 }

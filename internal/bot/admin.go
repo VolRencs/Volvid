@@ -39,7 +39,9 @@ func (b *Bot) handleBroadcastCommand(msg *models.Message) {
 		return
 	}
 
+	b.logf("broadcast start %s type=%s audience=%d", logChatUser(chatID, senderID(msg)), payload.Type, len(b.users.List()))
 	sent, failed := b.broadcastAll(payload)
+	b.logf("broadcast done %s sent=%d failed=%d", logChatUser(chatID, senderID(msg)), sent, failed)
 	b.send(chatID, fmt.Sprintf("📣 Рассылка завершена.\n\n✔ Отправлено: %d\n✘ Ошибок: %d", sent, failed))
 }
 
@@ -78,9 +80,11 @@ func (b *Bot) handleScheduleCommand(msg *models.Message) {
 		SourceMessageID: payload.SourceMessageID,
 	}
 	if err := b.scheduler.Add(entry); err != nil {
+		b.logError(fmt.Sprintf("schedule add %s id=%s", logChatUser(chatID, senderID(msg)), entry.ID), err)
 		b.send(chatID, "⚠️ Не удалось создать таймер.")
 		return
 	}
+	b.logf("timer created %s id=%s interval=%s type=%s", logChatUser(chatID, senderID(msg)), entry.ID, entry.Interval, entry.Type)
 
 	b.send(chatID, fmt.Sprintf("⏰ Таймер создан.\n\nID: <code>%s</code>\nИнтервал: <code>%s</code>\nСледующий запуск: <code>%s</code>", entry.ID, entry.Interval, entry.NextRun.Format(time.RFC3339)))
 }
@@ -114,9 +118,11 @@ func (b *Bot) handleDelTimerCommand(msg *models.Message) {
 		return
 	}
 	if err := b.scheduler.Remove(id); err != nil {
+		b.logError(fmt.Sprintf("timer delete %s id=%s", logChatUser(msg.Chat.ID, senderID(msg)), id), err)
 		b.send(msg.Chat.ID, "⚠️ Не удалось удалить таймер.")
 		return
 	}
+	b.logf("timer deleted %s id=%s", logChatUser(msg.Chat.ID, senderID(msg)), id)
 	b.send(msg.Chat.ID, "🗑 Таймер удалён.")
 }
 
@@ -139,8 +145,10 @@ func (b *Bot) broadcastAll(payload broadcastPayload) (sent, failed int) {
 	for _, userID := range b.users.List() {
 		if err := b.sendBroadcast(userID, payload); err != nil {
 			failed++
+			b.logError(fmt.Sprintf("broadcast delivery user=%d type=%s", userID, payload.Type), err)
 			if isForbiddenError(err) {
 				_ = b.users.Remove(userID)
+				b.logf("broadcast delivery removed user=%d after forbidden error", userID)
 			}
 			continue
 		}
@@ -172,6 +180,9 @@ func (b *Bot) copyMessage(chatID int64, payload broadcastPayload) error {
 		params.Caption = payload.Caption
 	}
 	_, err := b.api.CopyMessage(ctx, params)
+	if err != nil {
+		b.logError(fmt.Sprintf("copyMessage chat=%d from_chat=%d msg=%d", chatID, payload.SourceChatID, payload.SourceMessageID), err)
+	}
 	return err
 }
 

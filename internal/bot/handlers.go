@@ -19,7 +19,7 @@ func (b *Bot) handlePlaylistOpCallback(chatID int64, msgID int, sess *Session, d
 		})
 		b.removeKb(chatID, msgID)
 		b.askMode(chatID, sess)
-	case cbPlFull:
+	case cbPlChoose:
 		sess.mutate(func(s *Session) {
 			s.StatusMsgID = msgID
 		})
@@ -43,12 +43,10 @@ func (b *Bot) handlePlaylistSelectionInput(chatID int64, sess *Session, raw stri
 		return
 	}
 
-	selected := selectionMapFromIndices(indices)
-	if !b.validatePlaylistSelectionCount(snap.UserID, len(selected)) {
+	if !b.selectPlaylistIndices(sess, indices) {
 		b.notifyPlaylistItemLimitExceeded(chatID, snap.UserID)
 		return
 	}
-	b.applyPlaylistSelection(sess, selected)
 	b.askMode(chatID, sess)
 }
 
@@ -60,12 +58,10 @@ func (b *Bot) handlePlaylistSelectionCallback(chatID int64, msgID int, sess *Ses
 
 	switch {
 	case data == cbPlSelectAll:
-		selected := selectionMapForAll(snap.PlInfo.Entries)
-		if !b.validatePlaylistSelectionCount(snap.UserID, len(selected)) {
+		if !b.selectAllPlaylistEntries(sess) {
 			b.notifyPlaylistItemLimitExceeded(chatID, snap.UserID)
 			return b.playlistItemLimitAlert(snap.UserID)
 		}
-		b.applyPlaylistSelection(sess, selected)
 	case data == cbPlSelectNone:
 		b.applyPlaylistSelection(sess, nil)
 	case data == cbPlSelectDone:
@@ -115,18 +111,10 @@ func (b *Bot) handlePlaylistSelectionCallback(chatID int64, msgID int, sess *Ses
 func (b *Bot) handleModeCallback(chatID int64, msgID int, sess *Session, data string) string {
 	switch data {
 	case cbModeVideo:
-		sess.mutate(func(s *Session) {
-			s.Mode = app.ModeVideo
-			s.Profile = app.OutputProfile{}
-			s.StatusMsgID = msgID
-		})
+		b.setSessionDownloadChoice(sess, StateAwaitingMode, app.ModeVideo, app.OutputProfile{}, msgID)
 		b.scanAndAskQuality(chatID, sess)
 	case cbModeAudio:
-		sess.mutate(func(s *Session) {
-			s.Mode = app.ModeAudio
-			s.Profile = app.OutputProfile{}
-			s.StatusMsgID = msgID
-		})
+		b.setSessionDownloadChoice(sess, StateAwaitingAudioProfile, app.ModeAudio, app.OutputProfile{}, msgID)
 		b.askAudioProfiles(chatID, sess)
 	case cbModeThumb:
 		sess.mutate(func(s *Session) {
@@ -134,12 +122,7 @@ func (b *Bot) handleModeCallback(chatID int64, msgID int, sess *Session, data st
 			s.Profile = app.ThumbnailOutputProfile(app.LocaleRU)
 			s.StatusMsgID = msgID
 		})
-		if err := b.startConfiguredDownload(chatID, sess); err != nil {
-			if err == errDownloadLimitExceeded {
-				return ""
-			}
-			return err.Error()
-		}
+		return b.startConfiguredDownloadAlert(chatID, sess)
 	}
 	return ""
 }
@@ -159,13 +142,7 @@ func (b *Bot) handleAudioProfileCallback(chatID int64, msgID int, sess *Session,
 		s.Profile = profile
 		s.StatusMsgID = msgID
 	})
-	if err := b.startConfiguredDownload(chatID, sess); err != nil {
-		if err == errDownloadLimitExceeded {
-			return ""
-		}
-		return err.Error()
-	}
-	return ""
+	return b.startConfiguredDownloadAlert(chatID, sess)
 }
 
 func (b *Bot) handleQualityCallback(chatID int64, msgID int, sess *Session, data string) string {
@@ -185,11 +162,5 @@ func (b *Bot) handleQualityCallback(chatID int64, msgID int, sess *Session, data
 		s.Profile = choice.Profile(app.LocaleRU)
 		s.StatusMsgID = msgID
 	})
-	if err := b.startConfiguredDownload(chatID, sess); err != nil {
-		if err == errDownloadLimitExceeded {
-			return ""
-		}
-		return err.Error()
-	}
-	return ""
+	return b.startConfiguredDownloadAlert(chatID, sess)
 }

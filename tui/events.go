@@ -362,19 +362,12 @@ func (m Model) handlePlaylistKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			m.plSelected = map[int]bool{}
-			for _, idx := range indices {
-				m.plSelected[idx] = true
-			}
-			m.plInput.Blur()
-			m.plInputMode = false
-			m.plInputErr = ""
+			m.applyPlaylistSelectionIndices(indices)
+			m.closePlaylistInput()
 			return m, nil
 
 		case "esc":
-			m.plInput.Blur()
-			m.plInputMode = false
-			m.plInputErr = ""
+			m.closePlaylistInput()
 			return m, nil
 
 		default:
@@ -382,35 +375,19 @@ func (m Model) handlePlaylistKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	total := len(m.plInfo.Entries)
 	switch k {
 	case "up", "k":
 		m = m.stepPlaylistCursor(-1)
 	case "down", "j":
 		m = m.stepPlaylistCursor(1)
 	case "space":
-		idx := m.plInfo.Entries[m.plCursor].Index
-		if m.plSelected[idx] {
-			delete(m.plSelected, idx)
-		} else {
-			m.plSelected[idx] = true
-		}
+		m.toggleCurrentPlaylistEntry()
 		m.plInputErr = ""
 	case "a", "а":
-		if len(m.plSelected) == total {
-			m.plSelected = map[int]bool{}
-		} else {
-			m.plSelected = make(map[int]bool, total)
-			for _, entry := range m.plInfo.Entries {
-				m.plSelected[entry.Index] = true
-			}
-		}
+		m.toggleAllPlaylistEntries()
 		m.plInputErr = ""
 	case "/":
-		m.plInputMode = true
-		m.plInputErr = ""
-		m.plInput.SetValue("")
-		return m, m.plInput.Focus()
+		return m, m.openPlaylistInput()
 	case "enter":
 		m.dlEntries = m.selectedPlaylistEntries()
 		if len(m.dlEntries) == 0 {

@@ -30,7 +30,7 @@ func EstimateDownloadSizeContext(ctx context.Context, req DownloadRequest) (Size
 		return SizeEstimate{}, err
 	}
 
-	urls := estimateRequestURLs(req)
+	urls := requestSourceURLs(req)
 	if len(urls) == 0 {
 		return SizeEstimate{}, errors.New("download size: empty input")
 	}
@@ -58,20 +58,6 @@ func EstimateDownloadSizeContext(ctx context.Context, req DownloadRequest) (Size
 		estimate.KnownItems++
 	}
 	return estimate, nil
-}
-
-func estimateRequestURLs(req DownloadRequest) []string {
-	if req.PlaylistInfo != nil && !req.ForceSingle && len(req.Entries) > 0 {
-		urls := make([]string, 0, len(req.Entries))
-		for _, entry := range req.Entries {
-			if strings.TrimSpace(entry.URL) == "" {
-				continue
-			}
-			urls = append(urls, entry.URL)
-		}
-		return urls
-	}
-	return []string{req.Target.DownloadURL(req.ForceSingle)}
 }
 
 func estimateTargetSize(ctx context.Context, req DownloadRequest, target ParsedTarget) (int64, bool, error) {

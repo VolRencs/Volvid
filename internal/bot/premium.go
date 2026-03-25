@@ -13,14 +13,11 @@ const premiumCurrency = "XTR"
 
 func (b *Bot) handlePremiumCommand(chatID, userID int64) {
 	if b.hasPremium(userID) {
-		b.send(chatID, "⭐ Премиум уже активен.\n\nТвой лимит загрузки: 2GB.\nЛимит плейлиста: до 30 видео.")
+		b.send(chatID, "⭐ Премиум уже активен.\n\n"+b.accountLimitsText(userID))
 		return
 	}
 
-	b.sendKb(chatID,
-		fmt.Sprintf("⭐ <b>Премиум</b>\n\nЛимит загрузки: 2GB\nЛимит плейлиста: до 30 видео\nЦена: %d XTR\n\nНажми кнопку ниже, чтобы оплатить Telegram Stars.", b.cfg.PremiumStarsPrice),
-		kbPremiumOffer(b.cfg.PremiumStarsPrice),
-	)
+	b.sendKb(chatID, b.premiumOfferText(), kbPremiumOffer(b.cfg.PremiumStarsPrice))
 }
 
 func (b *Bot) handlePremiumPurchaseCallback(chatID, userID int64) string {
@@ -29,8 +26,10 @@ func (b *Bot) handlePremiumPurchaseCallback(chatID, userID int64) string {
 		return ""
 	}
 	if err := b.sendPremiumInvoice(chatID, userID); err != nil {
+		b.logError(fmt.Sprintf("premium invoice %s", logChatUser(chatID, userID)), err)
 		return "Не удалось создать счёт на оплату."
 	}
+	b.logf("premium invoice sent %s price=%d", logChatUser(chatID, userID), b.cfg.PremiumStarsPrice)
 	return ""
 }
 
@@ -76,7 +75,13 @@ func (b *Bot) handlePreCheckout(query *models.PreCheckoutQuery) {
 		OK:                 ok,
 		ErrorMessage:       errText,
 	}); err != nil {
+		b.logError(fmt.Sprintf("pre_checkout answer user=%d", query.From.ID), err)
 		return
+	}
+	if ok {
+		b.logf("pre_checkout approved user=%d amount=%d", query.From.ID, query.TotalAmount)
+	} else {
+		b.logf("pre_checkout rejected user=%d reason=%q", query.From.ID, errText)
 	}
 }
 
@@ -89,16 +94,19 @@ func (b *Bot) handleSuccessfulPayment(msg *models.Message) bool {
 	userID := senderID(msg)
 	payloadUserID, price, valid := parsePremiumPayload(payment.InvoicePayload)
 	if !valid || payloadUserID != userID || payment.Currency != premiumCurrency || payment.TotalAmount != price || price != b.cfg.PremiumStarsPrice {
+		b.logf("premium payment mismatch chat=%d user=%d payload=%q currency=%s amount=%d", msg.Chat.ID, userID, logSnippet(payment.InvoicePayload, 120), payment.Currency, payment.TotalAmount)
 		b.send(msg.Chat.ID, "⚠️ Платёж получен, но параметры премиума не совпали. Напиши администратору.")
 		return true
 	}
 
 	if err := b.premium.AddPremium(userID); err != nil {
+		b.logError(fmt.Sprintf("premium activate user=%d", userID), err)
 		b.send(msg.Chat.ID, "⚠️ Платёж прошёл, но не удалось активировать премиум автоматически. Напиши администратору.")
 		return true
 	}
 
-	b.send(msg.Chat.ID, "⭐ Премиум активирован.\n\nНовый лимит загрузки: 2GB.\nНовый лимит плейлиста: до 30 видео.")
+	b.logf("premium activated chat=%d user=%d amount=%d", msg.Chat.ID, userID, payment.TotalAmount)
+	b.send(msg.Chat.ID, "⭐ Премиум активирован.\n\n"+b.accountLimitsText(userID))
 	return true
 }
 

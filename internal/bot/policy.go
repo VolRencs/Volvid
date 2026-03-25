@@ -40,6 +40,23 @@ func (b *Bot) playlistItemLimitText(userID int64) string {
 	return fmt.Sprintf("%d видео", b.playlistItemLimit(userID))
 }
 
+func (b *Bot) accountLimitsText(userID int64) string {
+	return fmt.Sprintf(
+		"Лимит загрузки: %s.\nЛимит плейлиста: до %d видео.",
+		b.downloadSizeLimitText(userID),
+		b.playlistItemLimit(userID),
+	)
+}
+
+func (b *Bot) premiumOfferText() string {
+	return fmt.Sprintf(
+		"⭐ <b>Премиум</b>\n\nЛимит загрузки: %s\nЛимит плейлиста: до %d видео\nЦена: %d XTR\n\nНажми кнопку ниже, чтобы оплатить Telegram Stars.",
+		app.FmtBytesFor(premiumDownloadSizeLimitBytes, app.LocaleRU),
+		premiumPlaylistItemLimit,
+		b.cfg.PremiumStarsPrice,
+	)
+}
+
 func (b *Bot) validatePlaylistSelectionCount(userID int64, count int) bool {
 	return count >= 0 && count <= b.playlistItemLimit(userID)
 }
@@ -74,13 +91,21 @@ func (b *Bot) notifyPlaylistItemLimitExceeded(chatID int64, userID int64) {
 }
 
 func (b *Bot) notifyEntitlementLimit(chatID int64, msgID int, userID int64, text string) {
+	offerPremium := !b.hasPremium(userID)
+
 	if msgID != 0 {
+		if offerPremium {
+			b.editKb(chatID, msgID, text, kbPremiumOffer(b.cfg.PremiumStarsPrice))
+			return
+		}
 		b.removeKb(chatID, msgID)
 		b.edit(chatID, msgID, text)
+		return
+	}
+
+	if offerPremium {
+		b.sendKb(chatID, text, kbPremiumOffer(b.cfg.PremiumStarsPrice))
 	} else {
 		b.send(chatID, text)
-	}
-	if !b.hasPremium(userID) {
-		b.sendKb(chatID, text, kbPremiumOffer(b.cfg.PremiumStarsPrice))
 	}
 }

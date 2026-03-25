@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 
@@ -41,6 +42,7 @@ func (b *Bot) sendWithKeyboard(chatID int64, text string, kb *models.InlineKeybo
 
 	msg, err := b.api.SendMessage(ctx, params)
 	if err != nil {
+		logTelegramActionError(fmt.Sprintf("sendMessage chat=%d", chatID), err)
 		return models.Message{}, err
 	}
 	return *msg, nil
@@ -70,7 +72,7 @@ func (b *Bot) editWithKeyboard(chatID int64, msgID int, text string, kb *models.
 	}
 
 	if _, err := b.api.EditMessageText(ctx, params); err != nil && !isMessageNotModified(err) {
-		logTelegramActionError("editMessageText", err)
+		logTelegramActionError(fmt.Sprintf("editMessageText chat=%d msg=%d", chatID, msgID), err)
 	}
 }
 
@@ -84,7 +86,7 @@ func (b *Bot) removeKb(chatID int64, msgID int) {
 		ReplyMarkup: emptyInlineKeyboard(),
 	})
 	if err != nil && !isMessageNotModified(err) {
-		logTelegramActionError("editMessageReplyMarkup", err)
+		logTelegramActionError(fmt.Sprintf("editMessageReplyMarkup chat=%d msg=%d", chatID, msgID), err)
 	}
 }
 
@@ -104,7 +106,7 @@ func (b *Bot) answer(cq *models.CallbackQuery, text string) {
 		params.ShowAlert = true
 	}
 	if _, err := b.api.AnswerCallbackQuery(ctx, params); err != nil {
-		logTelegramActionError("answerCallbackQuery", err)
+		logTelegramActionError(fmt.Sprintf("answerCallbackQuery id=%s", cq.ID), err)
 	}
 }
 

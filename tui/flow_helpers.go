@@ -111,11 +111,9 @@ func (m *Model) resetPlaylistState() {
 	m.plInfo = nil
 	m.plCursor = 0
 	m.plTop = 0
-	m.plSelected = map[int]bool{}
-	m.plInputMode = false
-	m.plInputErr = ""
+	m.clearPlaylistSelection()
 	m.plInput.SetValue("")
-	m.plInput.Blur()
+	m.closePlaylistInput()
 }
 
 func (m *Model) resetDownloadState() {
@@ -161,9 +159,8 @@ func (m *Model) resetTargetFlowState() {
 	m.plInfo = nil
 	m.plCursor = 0
 	m.plTop = 0
-	m.plSelected = map[int]bool{}
-	m.plInputMode = false
-	m.plInputErr = ""
+	m.clearPlaylistSelection()
+	m.closePlaylistInput()
 	m.flowErr = ""
 	m.mode = app.DefaultDownloadMode()
 	m.profile = app.DefaultVideoProfile(m.locale)

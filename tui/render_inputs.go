@@ -9,15 +9,10 @@ func (m Model) viewURLScreen() string {
 
 	var b strings.Builder
 	b.WriteString(sBold.Render(u.PasteURL) + "\n\n")
-
-	inputStyle := sInputBox
-	if m.urlInput.Focused() {
-		inputStyle = sInputBoxFocus
-	}
-	b.WriteString(inputStyle.Render(m.urlInput.View()) + "\n")
+	b.WriteString(renderInputField(m.urlInput) + "\n")
 
 	if m.urlErr != "" {
-		b.WriteString("\n" + sErr.Render("  ✘  "+m.urlErr) + "\n")
+		b.WriteString("\n" + renderErrorLine(m.urlErr) + "\n")
 	} else {
 		b.WriteString(sDim.Render(u.URLHints) + "\n")
 	}
@@ -31,14 +26,9 @@ func (m Model) viewSearchInput() string {
 	var b strings.Builder
 	b.WriteString(sBold.Render(u.SearchTitle) + "\n\n")
 	b.WriteString(sDim.Render(u.SearchPrompt) + "\n")
-
-	inputStyle := sInputBox
-	if m.searchInput.Focused() {
-		inputStyle = sInputBoxFocus
-	}
-	b.WriteString("\n" + inputStyle.Render(m.searchInput.View()) + "\n")
+	b.WriteString("\n" + renderInputField(m.searchInput) + "\n")
 	if m.searchErr != "" {
-		b.WriteString("\n" + sErr.Render("  ✘  "+m.searchErr) + "\n")
+		b.WriteString("\n" + renderErrorLine(m.searchErr) + "\n")
 	}
 	b.WriteString(m.hint(m.kbEnter(), m.kbEsc(), m.kbQuit()))
 	return b.String()

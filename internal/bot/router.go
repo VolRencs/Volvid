@@ -27,7 +27,9 @@ func (b *Bot) handleMessage(msg *models.Message) {
 	text = strings.TrimSpace(text)
 
 	if isPrivateChatMessage(msg) && b.users != nil {
-		_ = b.users.Add(userID)
+		if err := b.users.Add(userID); err != nil {
+			b.logError("users add", err)
+		}
 	}
 	if b.handleSuccessfulPayment(msg) {
 		return
@@ -52,8 +54,11 @@ func (b *Bot) handleMessage(msg *models.Message) {
 
 func (b *Bot) handleCommand(msg *models.Message) {
 	chatID := msg.Chat.ID
+	cmd := messageCommand(msg)
 
-	switch messageCommand(msg) {
+	b.logf("command %s %s", cmd, logChatUser(chatID, senderID(msg)))
+
+	switch cmd {
 	case "start", "help":
 		b.send(chatID, b.helpText(msg))
 	case "cancel":
@@ -103,6 +108,7 @@ func (b *Bot) handleCallback(cq *models.CallbackQuery) {
 
 	data := cq.Data
 	userID := cq.From.ID
+	b.logf("callback %s chat=%d user=%d msg=%d", logSnippet(data, 64), chatID, userID, msgID)
 	if data == cbPremiumBuy {
 		b.answer(cq, b.handlePremiumPurchaseCallback(chatID, userID))
 		return

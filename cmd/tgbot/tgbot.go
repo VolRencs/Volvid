@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -29,15 +28,7 @@ var (
 	BotOwnerIDs = ""
 )
 
-type runtimeFlags struct {
-	logoutCloud   bool
-	closeServer   bool
-	deleteWebhook bool
-	dropPending   bool
-}
-
 func main() {
-	flags := parseRuntimeFlags()
 	token := strings.TrimSpace(BotToken)
 	if token == "" {
 		fmt.Fprintln(os.Stderr, "BotToken не задан в cmd/tgbot/tgbot.go")
@@ -47,28 +38,6 @@ func main() {
 	cfg, err := loadBotConfig()
 	if err != nil {
 		log.Fatalf("bot config: %v", err)
-	}
-
-	switch {
-	case flags.logoutCloud:
-		if err := bot.LogoutCloud(token); err != nil {
-			log.Fatalf("logout cloud: %v", err)
-		}
-		log.Println("Cloud Bot API: logout выполнен.")
-		return
-	case flags.closeServer:
-		if err := bot.CloseServer(token, cfg); err != nil {
-			log.Fatalf("close server: %v", err)
-		}
-		log.Println("Экземпляр бота закрыт на выбранном Bot API server.")
-		return
-	}
-
-	if flags.deleteWebhook {
-		if err := bot.DeleteWebhook(token, cfg, flags.dropPending); err != nil {
-			log.Fatalf("delete webhook: %v", err)
-		}
-		log.Println("Webhook удалён на выбранном Bot API server.")
 	}
 
 	b, err := bot.NewWithConfig(token, cfg)
@@ -86,16 +55,6 @@ func main() {
 
 	log.Println("Бот запущен. Ctrl+C для остановки.")
 	b.Run()
-}
-
-func parseRuntimeFlags() runtimeFlags {
-	flags := runtimeFlags{}
-	flag.BoolVar(&flags.logoutCloud, "logout-cloud", false, "one-time logout from cloud Bot API and exit")
-	flag.BoolVar(&flags.closeServer, "close-server", false, "close bot instance on the selected Bot API server and exit")
-	flag.BoolVar(&flags.deleteWebhook, "delete-webhook", false, "delete webhook on the selected Bot API server before start")
-	flag.BoolVar(&flags.dropPending, "drop-pending", false, "drop pending updates when deleting webhook")
-	flag.Parse()
-	return flags
 }
 
 func loadBotConfig() (bot.Config, error) {

@@ -23,6 +23,7 @@ func (b *Bot) startDepsUpdate(chatID int64) {
 	b.depsUpdating = true
 	b.mu.Unlock()
 
+	b.logf("deps update start chat=%d", chatID)
 	b.send(chatID, "⏳ Обновляю зависимости бота…")
 
 	go func() {
@@ -47,6 +48,7 @@ func (b *Bot) startDepsUpdate(chatID int64) {
 		text := "✅ Зависимости обновлены.\n\n" +
 			verLine("yt-dlp", deps.YtdlpVer) + "\n" +
 			verLine("ffmpeg", deps.FFmpegVer)
+		b.logf("deps update done chat=%d yt-dlp=%q ffmpeg=%q", chatID, deps.YtdlpVer, deps.FFmpegVer)
 		b.send(chatID, text)
 	}()
 }

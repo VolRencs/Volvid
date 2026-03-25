@@ -37,7 +37,11 @@ type HTTPClientConfig struct {
 }
 
 func NewHTTPClient(timeout time.Duration) *http.Client {
-	return newHTTPClient(HTTPClientConfig{
+	return newHTTPClient(defaultHTTPClientConfig(timeout))
+}
+
+func defaultHTTPClientConfig(timeout time.Duration) HTTPClientConfig {
+	return HTTPClientConfig{
 		Timeout:               timeout,
 		DialTimeout:           defaultDialTimeout,
 		KeepAlive:             defaultKeepAlive,
@@ -47,11 +51,15 @@ func NewHTTPClient(timeout time.Duration) *http.Client {
 		ExpectContinueTimeout: defaultExpectContinueTimeout,
 		MaxIdleConns:          64,
 		MaxIdleConnsPerHost:   16,
-	})
+	}
 }
 
 func newDownloadHTTPClient() *http.Client {
-	return newHTTPClient(HTTPClientConfig{
+	return newHTTPClient(downloadHTTPClientConfig())
+}
+
+func downloadHTTPClientConfig() HTTPClientConfig {
+	return HTTPClientConfig{
 		DialTimeout:           defaultDialTimeout,
 		KeepAlive:             defaultKeepAlive,
 		IdleConnTimeout:       defaultIdleConnTimeout,
@@ -60,18 +68,18 @@ func newDownloadHTTPClient() *http.Client {
 		ExpectContinueTimeout: defaultExpectContinueTimeout,
 		MaxIdleConns:          16,
 		MaxIdleConnsPerHost:   8,
-	})
+	}
 }
 
 func newHTTPClient(cfg HTTPClientConfig) *http.Client {
-	cfg = normalizedHTTPClientConfig(cfg)
+	cfg = normalizeHTTPClientConfig(cfg)
 	return &http.Client{
 		Timeout:   cfg.Timeout,
 		Transport: buildHTTPTransport(cfg),
 	}
 }
 
-func normalizedHTTPClientConfig(cfg HTTPClientConfig) HTTPClientConfig {
+func normalizeHTTPClientConfig(cfg HTTPClientConfig) HTTPClientConfig {
 	if cfg.DialTimeout <= 0 {
 		cfg.DialTimeout = defaultDialTimeout
 	}
@@ -124,8 +132,8 @@ func cloneDefaultTransport() *http.Transport {
 }
 
 func doSafeRequest(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
-	client = effectiveHTTPClient(client)
-	ctx = effectiveContext(ctx)
+	client = resolveHTTPClient(client)
+	ctx = resolveContext(ctx)
 
 	var lastErr error
 	for attempt := 0; attempt < defaultSafeRetryAttempts; attempt++ {
@@ -161,14 +169,14 @@ func retryBackoffForAttempt(attempt int) time.Duration {
 	return defaultSafeRetryBackoff * time.Duration(attempt+1)
 }
 
-func effectiveHTTPClient(client *http.Client) *http.Client {
+func resolveHTTPClient(client *http.Client) *http.Client {
 	if client != nil {
 		return client
 	}
 	return NewHTTPClient(0)
 }
 
-func effectiveContext(ctx context.Context) context.Context {
+func resolveContext(ctx context.Context) context.Context {
 	if ctx != nil {
 		return ctx
 	}
@@ -188,8 +196,8 @@ func DownloadFileContext(
 	l Locale,
 	ch chan<- FileProgress,
 ) error {
-	ctx = effectiveContext(ctx)
-	client = effectiveDownloadClient(client)
+	ctx = resolveContext(ctx)
+	client = resolveDownloadHTTPClient(client)
 
 	if err := ensureDownloadDir(dest); err != nil {
 		return err
@@ -234,7 +242,7 @@ func DownloadFileContext(
 	return nil
 }
 
-func effectiveDownloadClient(client *http.Client) *http.Client {
+func resolveDownloadHTTPClient(client *http.Client) *http.Client {
 	if client != nil {
 		return client
 	}

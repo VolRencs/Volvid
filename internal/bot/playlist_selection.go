@@ -119,6 +119,27 @@ func (b *Bot) applyPlaylistSelection(sess *Session, selected map[int]bool) {
 	})
 }
 
+func (b *Bot) setPlaylistSelection(sess *Session, selected map[int]bool) bool {
+	snap := sess.snapshot()
+	if !b.validatePlaylistSelectionCount(snap.UserID, len(selected)) {
+		return false
+	}
+	b.applyPlaylistSelection(sess, selected)
+	return true
+}
+
+func (b *Bot) selectPlaylistIndices(sess *Session, indices []int) bool {
+	return b.setPlaylistSelection(sess, selectionMapFromIndices(indices))
+}
+
+func (b *Bot) selectAllPlaylistEntries(sess *Session) bool {
+	snap := sess.snapshot()
+	if snap.PlInfo == nil {
+		return false
+	}
+	return b.setPlaylistSelection(sess, selectionMapForAll(snap.PlInfo.Entries))
+}
+
 func (b *Bot) togglePlaylistSelection(sess *Session, idx int) (map[int]bool, bool, bool) {
 	snap := sess.snapshot()
 	selected := cloneSelection(snap.SelectedIndices)
@@ -145,6 +166,19 @@ func (b *Bot) playlistSelectionEntries(sess *Session) []app.PlaylistEntry {
 		return nil
 	}
 	return playlistEntriesFromSelection(snap.PlInfo, snap.SelectedIndices)
+}
+
+func (b *Bot) selectedPlaylistCount(sess *Session) int {
+	return len(sess.snapshot().SelectedIndices)
+}
+
+func (b *Bot) playlistSelectionURLs(sess *Session) []string {
+	entries := b.playlistSelectionEntries(sess)
+	urls := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		urls = append(urls, entry.URL)
+	}
+	return urls
 }
 
 func selectionMapFromIndices(indices []int) map[int]bool {

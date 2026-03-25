@@ -16,10 +16,9 @@ func (b *Bot) handleSearch(chatID, userID int64, query string) {
 		b.send(chatID, "⚠️ Введи название видео для поиска.")
 		return
 	}
+	b.logf("search request %s query=%q", logChatUser(chatID, userID), logSnippet(query, 120))
 
-	sess := b.sessions.get(chatID)
-	if sess != nil && sess.snapshot().State == StateDownloading {
-		b.send(chatID, "⏳ Уже идёт скачивание. Дождись завершения или отмени /cancel.")
+	if b.rejectWhileDownloading(chatID) {
 		return
 	}
 
@@ -37,10 +36,16 @@ func (b *Bot) handleSearch(chatID, userID int64, query string) {
 	go func() {
 		results, err := app.SearchYouTubeContext(context.Background(), query)
 		if err != nil || len(results) == 0 {
+			if err != nil {
+				b.logError(fmt.Sprintf("search %s query=%q", logChatUser(chatID, userID), logSnippet(query, 120)), err)
+			} else {
+				b.logf("search no results %s query=%q", logChatUser(chatID, userID), logSnippet(query, 120))
+			}
 			b.edit(chatID, statusMsg.ID, "⚠️ Не удалось найти видео по запросу.\n\nПопробуй уточнить название.")
 			b.sessions.reset(chatID)
 			return
 		}
+		b.logf("search results %s query=%q count=%d", logChatUser(chatID, userID), logSnippet(query, 120), len(results))
 
 		searchSess.mutate(func(s *Session) {
 			s.State = StateAwaitingSearchSelection
@@ -65,6 +70,7 @@ func (b *Bot) handleSearchCallback(chatID int64, sess *Session, data string, use
 	if idx < 0 || idx >= len(results) {
 		return "Результат поиска устарел. Выполни поиск заново."
 	}
+	b.logf("search result selected %s idx=%d url=%q", logChatUser(chatID, userID), idx, logSnippet(results[idx].URL, 200))
 
 	go b.handleURL(chatID, userID, results[idx].URL)
 	return ""

@@ -12,16 +12,17 @@ import (
 func (b *Bot) handleURL(chatID, userID int64, rawURL string) {
 	target, err := app.ParseTarget(rawURL)
 	if err != nil {
+		b.logf("bad url %s url=%q", logChatUser(chatID, userID), logSnippet(rawURL, 200))
 		b.send(chatID, "⚠️ Не удалось распознать YouTube-ссылку.")
 		return
 	}
+	b.logf("url accepted %s kind=%s url=%q", logChatUser(chatID, userID), target.Kind.String(), logSnippet(target.CanonicalURL, 200))
 
-	sess := b.sessions.get(chatID)
-	if sess != nil && sess.snapshot().State == StateDownloading {
-		b.send(chatID, "⏳ Уже идёт скачивание. Дождись завершения или отмени /cancel.")
+	if b.rejectWhileDownloading(chatID) {
 		return
 	}
 	if app.YtdlpVersion() == "" {
+		b.logf("dependencies unavailable %s yt-dlp missing", logChatUser(chatID, userID))
 		b.send(chatID,
 			"⚠️ <b>yt-dlp недоступен.</b>\n\n"+
 				"Бот не смог автоматически подготовить зависимости на сервере.")
@@ -30,6 +31,7 @@ func (b *Bot) handleURL(chatID, userID int64, rawURL string) {
 
 	workDir, err := createBotWorkDir(userID)
 	if err != nil {
+		b.logError("create bot workdir", err)
 		b.send(chatID, "⚠️ Не удалось подготовить временную папку для загрузки.")
 		return
 	}
@@ -58,6 +60,8 @@ func (b *Bot) fetchAndAskPlaylist(chatID int64, sess *Session) {
 		s.State = StateFetchingPlaylist
 		s.ForceSingle = false
 	})
+	snap := sess.snapshot()
+	b.logf("fetch playlist %s url=%q", logChatUser(chatID, snap.UserID), logSnippet(snap.URL, 200))
 	statusMsg, _ := b.send(chatID, "⏳ Загружаю список плейлиста…")
 	sess.mutate(func(s *Session) {
 		s.StatusMsgID = statusMsg.ID
@@ -67,12 +71,15 @@ func (b *Bot) fetchAndAskPlaylist(chatID int64, sess *Session) {
 		snap := sess.snapshot()
 		info, err := app.FetchPlaylistInfoFor(nil, snap.URL, app.LocaleRU)
 		if sess.isCancelled() {
+			b.logf("playlist fetch cancelled %s", logChatUser(chatID, snap.UserID))
 			return
 		}
 		if err != nil || info == nil || len(info.Entries) == 0 {
+			b.logError(fmt.Sprintf("playlist fetch %s", logChatUser(chatID, snap.UserID)), err)
 			b.failPlaylistSelection(chatID, sess)
 			return
 		}
+		b.logf("playlist loaded %s title=%q entries=%d", logChatUser(chatID, snap.UserID), logSnippet(info.Title, 80), len(info.Entries))
 		sess.mutate(func(s *Session) {
 			s.PlInfo = info
 			s.SelectedIndices = nil
@@ -114,15 +121,24 @@ func (b *Bot) scanAndAskQuality(chatID int64, sess *Session) {
 	urls := b.qualityScanURLs(sess)
 	go func() {
 		var choices []app.QualityChoice
+		var err error
 		if len(urls) > 0 {
-			choices, _ = app.ResolveQualityChoices(urls)
+			choices, err = app.ResolveQualityChoices(urls)
 		}
 		if sess.isCancelled() {
+			snap := sess.snapshot()
+			b.logf("quality scan cancelled %s", logChatUser(chatID, snap.UserID))
 			return
+		}
+		if err != nil {
+			snap := sess.snapshot()
+			b.logError(fmt.Sprintf("quality scan %s", logChatUser(chatID, snap.UserID)), err)
 		}
 		if len(choices) == 0 {
 			choices = app.DefaultQualityChoices()
 		}
+		snap := sess.snapshot()
+		b.logf("quality choices ready %s count=%d", logChatUser(chatID, snap.UserID), len(choices))
 		sess.mutate(func(s *Session) {
 			s.QualityChoices = choices
 			s.State = StateAwaitingQuality
@@ -168,7 +184,11 @@ func (b *Bot) startConfiguredDownload(chatID int64, sess *Session) error {
 
 	snap := sess.snapshot()
 	estimate, err := app.EstimateDownloadSize(req)
+	if err != nil {
+		b.logError(fmt.Sprintf("download size estimate %s", logChatUser(chatID, snap.UserID)), err)
+	}
 	if err == nil && estimate.TotalBytes > b.downloadSizeLimit(snap.UserID) {
+		b.logf("download limit exceeded before start %s estimated=%d limit=%d", logChatUser(chatID, snap.UserID), estimate.TotalBytes, b.downloadSizeLimit(snap.UserID))
 		b.notifyDownloadSizeLimitExceeded(chatID, snap.StatusMsgID, snap.UserID)
 		return errDownloadLimitExceeded
 	}
@@ -178,6 +198,15 @@ func (b *Bot) startConfiguredDownload(chatID int64, sess *Session) error {
 	})
 
 	snap = sess.snapshot()
+	b.logf(
+		"download start %s mode=%d single=%t playlist=%t entries=%d workdir=%q",
+		logChatUser(chatID, snap.UserID),
+		req.Profile.Mode,
+		req.ForceSingle,
+		req.PlaylistInfo != nil && !req.ForceSingle,
+		len(req.Entries),
+		snap.WorkDir,
+	)
 	b.removeKb(chatID, snap.StatusMsgID)
 	b.edit(chatID, snap.StatusMsgID, b.downloadStartText(sess))
 	go b.runDownload(chatID, sess, req)
@@ -252,6 +281,7 @@ func (b *Bot) runDownload(chatID int64, sess *Session, req app.DownloadRequest) 
 	}
 
 	if cancelled || sess.isCancelled() {
+		b.logf("download cancelled %s", logChatUser(chatID, snap.UserID))
 		cleanupBotWorkDir(snap.WorkDir)
 		b.edit(chatID, msgID, "❌ Скачивание отменено.")
 		b.sessions.reset(chatID)
@@ -270,11 +300,16 @@ func (b *Bot) onDownloadFinished(chatID int64, msgID int, sess *Session, summary
 	actualSize, sizeErr := app.DirSize(snap.WorkDir)
 	newFiles := filesInDir(snap.WorkDir)
 	defer cleanupBotWorkDir(snap.WorkDir)
+	if sizeErr != nil {
+		b.logError(fmt.Sprintf("download dir size %s", logChatUser(chatID, snap.UserID)), sizeErr)
+	}
 
 	if sizeErr == nil && actualSize > b.downloadSizeLimit(snap.UserID) {
+		b.logf("download limit exceeded after finish %s size=%d limit=%d files=%d", logChatUser(chatID, snap.UserID), actualSize, b.downloadSizeLimit(snap.UserID), len(newFiles))
 		b.notifyDownloadSizeLimitExceeded(chatID, msgID, snap.UserID)
 		return
 	}
+	b.logf("download finished %s ok=%d failed=%d total=%d files=%d size=%d", logChatUser(chatID, snap.UserID), summary.OK, summary.Failed, summary.Total, len(newFiles), actualSize)
 
 	if summary.Total == 0 {
 		b.finishSingleDownload(chatID, msgID, newFiles, summary.Failed > 0 || summary.OK == 0)
@@ -299,6 +334,7 @@ func (b *Bot) finishSingleDownload(chatID int64, msgID int, newFiles []string, f
 
 	b.edit(chatID, msgID, "✅ Готово! Отправляю файл…")
 	sent, tooLarge, sendErr := b.sendDownloadedFiles(chatID, newFiles)
+	b.logf("single send summary chat=%d sent=%d too_large=%d send_err=%d", chatID, sent, tooLarge, sendErr)
 	b.edit(chatID, msgID, b.singleSendSummary(sent, tooLarge, sendErr))
 }
 
@@ -317,6 +353,7 @@ func (b *Bot) finishPlaylistDownload(chatID int64, msgID int, newFiles []string,
 		icon, summary.OK, summary.Failed, summary.Total,
 	))
 	sent, tooLarge, sendErr := b.sendDownloadedFiles(chatID, newFiles)
+	b.logf("playlist send summary chat=%d sent=%d too_large=%d send_err=%d", chatID, sent, tooLarge, sendErr)
 	b.edit(chatID, msgID, b.playlistSendSummary(icon, summary.OK, summary.Failed, summary.Total, sent, tooLarge, sendErr))
 }
 
@@ -383,7 +420,7 @@ func (b *Bot) downloadProgressText(done, failed, total int, dlStem string, updat
 func (b *Bot) qualityScanText(sess *Session) string {
 	snap := sess.snapshot()
 	if snap.PlInfo != nil && !snap.ForceSingle {
-		count := len(b.playlistSelectionEntries(sess))
+		count := b.selectedPlaylistCount(sess)
 		if count == 0 {
 			return "🔍 Сканирую качества и размер…"
 		}
@@ -398,36 +435,31 @@ func (b *Bot) qualityScanText(sess *Session) string {
 func (b *Bot) qualityPromptText(sess *Session) string {
 	snap := sess.snapshot()
 	if snap.PlInfo != nil && !snap.ForceSingle {
+		count := b.selectedPlaylistCount(sess)
 		return fmt.Sprintf(
 			"📋 <b>%s</b>\n%d видео\n\nВыбери качество видео:",
 			escapeHTML(snap.PlInfo.Title),
-			len(b.playlistSelectionEntries(sess)),
+			count,
 		)
 	}
 	return "🎬 Выбери качество видео:"
 }
 
 func (b *Bot) qualityScanURLs(sess *Session) []string {
-	entries := b.playlistSelectionEntries(sess)
 	snap := sess.snapshot()
-	if snap.PlInfo != nil && !snap.ForceSingle && len(entries) == 0 {
+	if snap.PlInfo != nil && !snap.ForceSingle && b.selectedPlaylistCount(sess) == 0 {
 		return nil
 	}
 	if snap.PlInfo == nil || snap.ForceSingle {
 		return []string{snap.Target.DownloadURL(snap.ForceSingle)}
 	}
-
-	urls := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		urls = append(urls, entry.URL)
-	}
-	return urls
+	return b.playlistSelectionURLs(sess)
 }
 
 func (b *Bot) modePromptText(sess *Session) string {
 	snap := sess.snapshot()
 	if snap.PlInfo != nil && !snap.ForceSingle {
-		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nЧто скачать?", escapeHTML(snap.PlInfo.Title), len(b.playlistSelectionEntries(sess)))
+		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nЧто скачать?", escapeHTML(snap.PlInfo.Title), b.selectedPlaylistCount(sess))
 	}
 	return "🎛 <b>Выбери режим</b>\n\nЧто скачать?"
 }
@@ -435,7 +467,7 @@ func (b *Bot) modePromptText(sess *Session) string {
 func (b *Bot) audioPromptText(sess *Session) string {
 	snap := sess.snapshot()
 	if snap.PlInfo != nil && !snap.ForceSingle {
-		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nВыбери аудио:", escapeHTML(snap.PlInfo.Title), len(b.playlistSelectionEntries(sess)))
+		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nВыбери аудио:", escapeHTML(snap.PlInfo.Title), b.selectedPlaylistCount(sess))
 	}
 	return "🎵 Выбери аудио:"
 }
@@ -460,10 +492,11 @@ func (b *Bot) downloadStartText(sess *Session) string {
 	}
 
 	if snap.PlInfo != nil && !snap.ForceSingle {
+		count := b.selectedPlaylistCount(sess)
 		return fmt.Sprintf(
 			"📋 <b>%s</b>\n%d видео\n🎛 Режим: %s\n\n⬇️ Начинаю скачивание…",
 			escapeHTML(snap.PlInfo.Title),
-			len(b.playlistSelectionEntries(sess)),
+			count,
 			escapeHTML(modeLabel),
 		)
 	}

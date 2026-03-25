@@ -195,10 +195,28 @@ func streamFileProgressCmd(ch <-chan app.FileProgress, isUpdate bool) tea.Cmd {
 func launchProgress(fn func(chan<- app.FileProgress) error, isUpdate bool) (<-chan app.FileProgress, tea.Cmd) {
 	ch := make(chan app.FileProgress, 16)
 	go func() {
-		if err := fn(ch); err != nil {
-			ch <- app.FileProgress{Done: true, Err: err}
+		defer close(ch)
+
+		progressCh := make(chan app.FileProgress, 16)
+		doneCh := make(chan error, 1)
+
+		go func() {
+			defer close(progressCh)
+			doneCh <- fn(progressCh)
+		}()
+
+		for progress := range progressCh {
+			progress.Done = false
+			progress.Err = nil
+			ch <- progress
 		}
-		close(ch)
+
+		if err := <-doneCh; err != nil {
+			ch <- app.FileProgress{Done: true, Err: err}
+			return
+		}
+
+		ch <- app.FileProgress{Done: true}
 	}()
 	return ch, streamFileProgressCmd(ch, isUpdate)
 }

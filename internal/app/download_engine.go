@@ -293,7 +293,7 @@ func StartDownloadRequestContext(ctx context.Context, req DownloadRequest, ch ch
 			return
 		}
 
-		if req.PlaylistInfo == nil || req.ForceSingle || len(req.Entries) == 0 {
+		if !requestUsesPlaylist(req) {
 			ok := runDownloadRequest(ctx, 0, req, req.Target.DownloadURL(req.ForceSingle),
 				filepath.Join(req.OutputDir, "%(title)s.%(ext)s"),
 				[]string{"--no-playlist"}, ch,
@@ -308,11 +308,12 @@ func StartDownloadRequestContext(ctx context.Context, req DownloadRequest, ch ch
 			_ = os.MkdirAll(plDir, 0o755)
 		}
 
-		workerCount := normalizeWorkerCount(req.Workers, len(req.Entries))
+		entries := requestEntries(req)
+		workerCount := normalizeWorkerCount(req.Workers, len(entries))
 		jobs := make(chan PlaylistEntry)
 		go func() {
 			defer close(jobs)
-			for _, e := range req.Entries {
+			for _, e := range entries {
 				select {
 				case <-ctx.Done():
 					return

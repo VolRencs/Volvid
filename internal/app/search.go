@@ -1,9 +1,7 @@
 package app
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -28,30 +26,17 @@ func SearchYouTubeContext(ctx context.Context, query string) ([]SearchResult, er
 		return nil, errors.New("search query is empty")
 	}
 
-	cmd, stdout, runCtx, cancel, err := startMergedOutputCommand(
-		ctx,
-		searchTimeout,
-		YtdlpBin,
+	results := make([]SearchResult, 0, 5)
+	err := scanYTDLPJSONLines(ctx, searchTimeout, []string{
 		"--flat-playlist",
 		"--dump-json",
 		"--quiet",
 		"--ignore-errors",
 		"--no-warnings",
-		"ytsearch5:"+query,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("yt-dlp start: %w", err)
-	}
-	defer cancel()
-	defer stdout.Close()
-
-	results := make([]SearchResult, 0, 5)
-	sc := bufio.NewScanner(stdout)
-	sc.Buffer(make([]byte, 64<<10), 1<<20)
-	for sc.Scan() {
-		var entry map[string]any
-		if err := json.Unmarshal(sc.Bytes(), &entry); err != nil {
-			continue
+		"ytsearch5:" + query,
+	}, func(entry map[string]any) {
+		if len(results) == cap(results) {
+			return
 		}
 		url := strVal(entry, "url", strVal(entry, "webpage_url", ""))
 		if url == "" {
@@ -60,7 +45,7 @@ func SearchYouTubeContext(ctx context.Context, query string) ([]SearchResult, er
 			}
 		}
 		if url == "" {
-			continue
+			return
 		}
 		result := SearchResult{
 			Title:    strings.TrimSpace(strVal(entry, "title", fmt.Sprintf("Video %d", len(results)+1))),
@@ -68,22 +53,15 @@ func SearchYouTubeContext(ctx context.Context, query string) ([]SearchResult, er
 			Duration: int(floatVal(entry, "duration")),
 		}
 		results = append(results, result)
-		if len(results) == 5 {
-			break
-		}
-	}
+	})
 
-	scanErr := sc.Err()
-	waitErr := waitCommand(cmd, runCtx)
 	if len(results) == 0 {
 		switch {
-		case scanErr != nil:
-			return nil, fmt.Errorf("yt-dlp output: %w", scanErr)
-		case waitErr != nil:
-			if errors.Is(waitErr, context.DeadlineExceeded) {
+		case err != nil:
+			if errors.Is(err, context.DeadlineExceeded) {
 				return nil, errors.New("yt-dlp: search timeout")
 			}
-			return nil, fmt.Errorf("yt-dlp: %w", waitErr)
+			return nil, err
 		default:
 			return nil, errors.New("search returned no results")
 		}

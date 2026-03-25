@@ -60,7 +60,22 @@ func (m Model) menuAndNavWithError() string {
 	if m.flowErr == "" {
 		return body
 	}
-	return body + "\n" + sErr.Render("  ✘  "+m.flowErr)
+	return body + "\n" + renderErrorLine(m.flowErr)
+}
+
+func (m Model) renderSpinnerScreen(text string) string {
+	return "  " + sTitle.Render(m.spinnerView()) + sDim.Render(text)
+}
+
+func (m Model) renderMenuScreen(title, subtitle string) string {
+	var b strings.Builder
+	b.WriteString(sBold.Render(title))
+	if subtitle != "" {
+		b.WriteString(sDim.Render(subtitle))
+	}
+	b.WriteString("\n\n")
+	b.WriteString(m.menuAndNavWithError())
+	return b.String()
 }
 
 func (m Model) renderBody() string {
@@ -86,18 +101,16 @@ func (m Model) renderBody() string {
 		} else if m.screen == scrSearchFetch {
 			msg = u.SpinnerSearch
 		}
-		b.WriteString("  " + sTitle.Render(m.spinnerView()) + sDim.Render(msg))
+		b.WriteString(m.renderSpinnerScreen(msg))
 
 	case scrUpdateReady, scrFFmpegAsk, scrPlaylistAsk:
 		b.WriteString(m.renderPromptMenu())
 
 	case scrMode:
-		b.WriteString(sBold.Render(u.ModeTitle) + "\n\n")
-		b.WriteString(m.menuAndNavWithError())
+		b.WriteString(m.renderMenuScreen(u.ModeTitle, ""))
 
 	case scrAudio:
-		b.WriteString(sBold.Render(u.AudioTitle) + "\n\n")
-		b.WriteString(m.menuAndNavWithError())
+		b.WriteString(m.renderMenuScreen(u.AudioTitle, ""))
 
 	case scrUpdateDl, scrDepDl:
 		label := m.depLabel
@@ -148,15 +161,10 @@ func (m Model) renderBody() string {
 
 	case scrWorkers, scrQuality:
 		if m.screen == scrWorkers {
-			b.WriteString(
-				sBold.Render(u.ParallelFmt) +
-					sDim.Render(fmt.Sprintf(u.WorkersQueuedFmt, len(m.dlEntries))) +
-					"\n\n",
-			)
+			b.WriteString(m.renderMenuScreen(u.ParallelFmt, fmt.Sprintf(u.WorkersQueuedFmt, len(m.dlEntries))))
 		} else {
-			b.WriteString(sBold.Render(u.QualityTitle) + "\n\n")
+			b.WriteString(m.renderMenuScreen(u.QualityTitle, ""))
 		}
-		b.WriteString(m.menuAndNavWithError())
 
 	case scrDownload:
 		b.WriteString(m.viewDownload())
@@ -273,14 +281,14 @@ func (m Model) viewPlaylist() string {
 
 	if m.plInputMode {
 		b.WriteString(sTitle.Render(u.PlEnterNums) + "\n")
-		b.WriteString(sInputBoxFocus.Render(m.plInput.View()) + "\n")
+		b.WriteString(renderInputField(m.plInput) + "\n")
 		if m.plInputErr != "" {
-			b.WriteString(sErr.Render("  ✘  " + m.plInputErr))
+			b.WriteString(renderErrorLine(m.plInputErr))
 		}
 		return b.String()
 	}
 
-	b.WriteString(sDim.Render(fmt.Sprintf(u.PlSelectedFmt, len(m.plSelected), total)))
+	b.WriteString(sDim.Render(fmt.Sprintf(u.PlSelectedFmt, m.selectedPlaylistCount(), total)))
 	if total > m.playlistViewportHeight() {
 		start := m.plTop + 1
 		end := min(total, m.plTop+m.playlistViewportHeight())
@@ -288,7 +296,7 @@ func (m Model) viewPlaylist() string {
 	}
 	b.WriteString("\n")
 	if m.plInputErr != "" {
-		b.WriteString(sErr.Render("  ✘  "+m.plInputErr) + "\n")
+		b.WriteString(renderErrorLine(m.plInputErr) + "\n")
 	}
 	b.WriteString(m.hint(m.kbUp(), m.kbDown(), m.kbSpace(), m.kbAll(), m.kbSlash(), m.kbEnter()))
 	return b.String()

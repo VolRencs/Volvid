@@ -8,7 +8,7 @@ import (
 const (
 	cbSearchPrefix  = "search:"
 	cbPlVideo       = "pl:video"
-	cbPlFull        = "pl:full"
+	cbPlChoose      = "pl:full"
 	cbPlTogglePref  = "pl:toggle:"
 	cbPlPagePref    = "pl:page:"
 	cbPlSelectAll   = "pl:sel:all"
@@ -29,7 +29,7 @@ func kbPlaylistChoice() models.InlineKeyboardMarkup {
 		InlineKeyboard: [][]models.InlineKeyboardButton{
 			{
 				kbButton("🎬 Только это видео", cbPlVideo),
-				kbButton("🎯 Выбрать видео", cbPlFull),
+				kbButton("🎯 Выбрать видео", cbPlChoose),
 			},
 			{
 				kbButton("❌ Отмена", cbCancel),

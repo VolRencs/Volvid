@@ -190,17 +190,6 @@ func (s *SessionStore) reset(id int64) *Session {
 	return sess
 }
 
-func (s *SessionStore) getOrNew(id int64) *Session {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if sess, ok := s.data[id]; ok {
-		return sess
-	}
-	sess := &Session{}
-	s.data[id] = sess
-	return sess
-}
-
 func (s *SessionStore) hasBusy() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -115,13 +115,6 @@ go build -tags bot -trimpath -buildvcs=false -ldflags="-s -w" -o tgbot ./cmd/tgb
 ./tgbot
 ```
 
-Optional runtime flags:
-
-- `-delete-webhook`
-- `-drop-pending`
-- `-logout-cloud`
-- `-close-server`
-
 ---
 
 ## TUI Flow
@@ -168,6 +161,8 @@ Notes:
 - Regular users are limited to **500 MB** per download job.
 - Premium users are limited to **2 GB** per download job.
 - For playlists, the bot checks the **whole user job folder** size.
+- `premium_users.json` and `bot_users.json` are reloaded automatically on the next access.
+- `bot_timers.json` is synchronized in the background, usually within about **1 second**.
 - Telegram delivery still depends on the selected Bot API backend:
   - cloud Bot API: up to **50 MB**
   - local Bot API server: up to **2000 MB**
@@ -203,9 +198,9 @@ next to the binary/
 ├── downloads/              ← downloaded TUI files
 │   └── .bot/
 │       └── users/          ← temporary bot job folders
-├── premium_users.json      ← premium Telegram user IDs
-├── bot_users.json          ← known private bot users
-└── bot_timers.json         ← persistent scheduled broadcasts
+├── premium_users.json      ← premium Telegram user IDs, hot-reloaded
+├── bot_users.json          ← known private bot users, hot-reloaded
+└── bot_timers.json         ← scheduled broadcasts, live-synced
 ```
 
 Bot temporary files are created under `downloads/.bot/users/<chat_id>/job-*` and are cleaned up after completion.
@@ -266,8 +261,11 @@ Check both limits:
 - app-side download limit: `500 MB` or `2 GB` for premium
 - Telegram delivery backend limit: `50 MB` cloud or `2000 MB` local Bot API server
 
-**Scheduled messages do not survive manual file edits**  
-`bot_timers.json` is the source of truth. Keep it valid JSON if you edit it by hand.
+**Manual JSON edits do not seem to apply**  
+`premium_users.json`, `bot_users.json` and `bot_timers.json` are supported as live runtime state. Keep them valid JSON if you edit them by hand:
+
+- premium and known users are reloaded on the next store access
+- timers are synchronized in the background, usually within about `1s`
 
 ---
 
