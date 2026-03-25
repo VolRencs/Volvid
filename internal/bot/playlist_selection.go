@@ -11,7 +11,7 @@ import (
 
 const playlistSelectionPageSize = 5
 
-func kbPlaylistSelection(sess *Session) models.InlineKeyboardMarkup {
+func (b *Bot) kbPlaylistSelection(sess *Session) models.InlineKeyboardMarkup {
 	snap := sess.snapshot()
 	rows := make([][]models.InlineKeyboardButton, 0, playlistSelectionPageSize+4)
 	if snap.PlInfo == nil || len(snap.PlInfo.Entries) == 0 {
@@ -56,7 +56,7 @@ func kbPlaylistSelection(sess *Session) models.InlineKeyboardMarkup {
 
 	doneLabel := "✅ Готово"
 	if selected := len(snap.SelectedIndices); selected > 0 {
-		doneLabel = fmt.Sprintf("✅ Готово (%d)", selected)
+		doneLabel = fmt.Sprintf("✅ Готово (%d/%d)", selected, b.playlistItemLimit(snap.UserID))
 	}
 	rows = append(rows, []models.InlineKeyboardButton{
 		kbButton(doneLabel, cbPlSelectDone),
@@ -75,20 +75,98 @@ func (b *Bot) playlistSelectionText(sess *Session) string {
 	}
 
 	total := len(snap.PlInfo.Entries)
+	limit := b.playlistItemLimit(snap.UserID)
 	page, start, end, pageCount := playlistSelectionPageBounds(snap.PlInfo, snap.PlaylistPage)
 
 	var scope string
 	if total > 0 {
-		scope = fmt.Sprintf("\nСтраница: %d/%d · %d-%d из %d", page+1, pageCount, start+1, end, total)
+		scope = fmt.Sprintf(
+			"\nВсего в плейлисте: %d\nЛимит аккаунта: %s\nСтраница: %d/%d · %d-%d из %d",
+			total,
+			b.playlistItemLimitText(snap.UserID),
+			page+1,
+			pageCount,
+			start+1,
+			end,
+			total,
+		)
 	}
 
 	return fmt.Sprintf(
 		"🎯 <b>%s</b>\nВыбрано: %d / %d%s\n\nНажми на нужные видео ниже, затем нажми «Готово».",
 		escapeHTML(snap.PlInfo.Title),
 		len(snap.SelectedIndices),
-		total,
+		limit,
 		scope,
 	)
+}
+
+func (b *Bot) openPlaylistSelection(chatID int64, msgID int, sess *Session) {
+	sess.mutate(func(s *Session) {
+		s.State = StateAwaitingPlaylistSelection
+		s.StatusMsgID = msgID
+		s.SelectedIndices = nil
+		s.PlaylistPage = 0
+		s.QualityChoices = nil
+		s.Profile = app.OutputProfile{}
+	})
+	b.editKb(chatID, msgID, b.playlistSelectionText(sess), b.kbPlaylistSelection(sess))
+}
+
+func (b *Bot) applyPlaylistSelection(sess *Session, selected map[int]bool) {
+	sess.mutate(func(s *Session) {
+		s.SelectedIndices = cloneSelection(selected)
+	})
+}
+
+func (b *Bot) togglePlaylistSelection(sess *Session, idx int) (map[int]bool, bool, bool) {
+	snap := sess.snapshot()
+	selected := cloneSelection(snap.SelectedIndices)
+	if selected == nil {
+		selected = make(map[int]bool)
+	}
+	if selected[idx] {
+		delete(selected, idx)
+		return selected, true, false
+	}
+	if idx < 1 || idx > len(snap.PlInfo.Entries) {
+		return selected, false, false
+	}
+	if !b.validatePlaylistSelectionCount(snap.UserID, len(selected)+1) {
+		return selected, false, true
+	}
+	selected[idx] = true
+	return selected, true, false
+}
+
+func (b *Bot) playlistSelectionEntries(sess *Session) []app.PlaylistEntry {
+	snap := sess.snapshot()
+	if snap.PlInfo == nil || snap.ForceSingle || len(snap.SelectedIndices) == 0 {
+		return nil
+	}
+	return playlistEntriesFromSelection(snap.PlInfo, snap.SelectedIndices)
+}
+
+func selectionMapFromIndices(indices []int) map[int]bool {
+	if len(indices) == 0 {
+		return nil
+	}
+	selected := make(map[int]bool, len(indices))
+	for _, idx := range indices {
+		selected[idx] = true
+	}
+	return selected
+}
+
+func selectionMapForAll(entries []app.PlaylistEntry) map[int]bool {
+	if len(entries) == 0 {
+		return nil
+	}
+	selected := make(map[int]bool, len(entries))
+	for _, entry := range entries {
+		selected[entry.Index] = true
+	}
+	return selected
 }
 
 func playlistSelectionPageBounds(info *app.PlaylistInfo, page int) (normalized, start, end, pageCount int) {

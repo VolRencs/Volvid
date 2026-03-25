@@ -17,15 +17,20 @@ import (
 )
 
 var errTelegramFileTooLarge = errors.New("telegram file too large")
+var errDownloadLimitExceeded = errors.New("download limit exceeded")
 
 var botWorkRoot = filepath.Join(app.DlDir, ".bot")
 
 type Bot struct {
-	api      *tg.Bot
-	cfg      Config
-	sessions *SessionStore
-	maxSend  int64
-	deps     app.CheckDepsResult
+	api       *tg.Bot
+	cfg       Config
+	sessions  *SessionStore
+	maxSend   int64
+	deps      app.CheckDepsResult
+	premium   *PremiumStore
+	users     *UserStore
+	timers    *TimerStore
+	scheduler *Scheduler
 
 	mu           sync.Mutex
 	runCancel    context.CancelFunc
@@ -51,10 +56,26 @@ func NewWithConfig(token string, cfg Config) (*Bot, error) {
 		deps:     deps,
 	}
 
+	b.premium, err = newPremiumStore(cfg.PremiumUsersPath)
+	if err != nil {
+		return nil, fmt.Errorf("premium storage: %w", err)
+	}
+	b.users, err = newUserStore(cfg.KnownUsersPath)
+	if err != nil {
+		return nil, fmt.Errorf("users storage: %w", err)
+	}
+	b.timers, err = newTimerStore(cfg.TimersPath)
+	if err != nil {
+		return nil, fmt.Errorf("timers storage: %w", err)
+	}
+	b.scheduler = newScheduler(b.timers)
+	b.scheduler.bind(b)
+
 	opts := []tg.Option{
 		tg.WithAllowedUpdates(tg.AllowedUpdates{
 			models.AllowedUpdateMessage,
 			models.AllowedUpdateCallbackQuery,
+			"pre_checkout_query",
 		}),
 		tg.WithNotAsyncHandlers(),
 		tg.WithDefaultHandler(func(_ context.Context, _ *tg.Bot, update *models.Update) {
@@ -97,6 +118,9 @@ func (b *Bot) Run() {
 	b.runCancel = cancel
 	b.mu.Unlock()
 
+	if b.scheduler != nil {
+		b.scheduler.Start(ctx)
+	}
 	b.api.Start(ctx)
 }
 
@@ -109,25 +133,6 @@ func (b *Bot) Stop() {
 	if cancel != nil {
 		cancel()
 	}
-}
-
-func (b *Bot) handleUpdate(update *models.Update) {
-	switch {
-	case update == nil:
-		return
-	case update.Message != nil:
-		b.handleMessage(update.Message)
-	case update.CallbackQuery != nil:
-		b.handleCallback(update.CallbackQuery)
-	}
-}
-
-func (b *Bot) apiCtx() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), telegramAPITimeout)
-}
-
-func (b *Bot) fileSendCtx() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), telegramFileSendTimeout)
 }
 
 func (b *Bot) sendLimitBytes() int64 {
@@ -169,140 +174,34 @@ func disabledPreview() *models.LinkPreviewOptions {
 	return &models.LinkPreviewOptions{IsDisabled: tg.True()}
 }
 
-func (b *Bot) send(chatID int64, text string) (models.Message, error) {
-	ctx, cancel := b.apiCtx()
-	defer cancel()
-
-	msg, err := b.api.SendMessage(ctx, &tg.SendMessageParams{
-		ChatID:             chatID,
-		Text:               text,
-		ParseMode:          models.ParseModeHTML,
-		LinkPreviewOptions: disabledPreview(),
-	})
-	if err != nil {
-		return models.Message{}, err
-	}
-	return *msg, nil
-}
-
-func (b *Bot) sendKb(chatID int64, text string, kb models.InlineKeyboardMarkup) (models.Message, error) {
-	ctx, cancel := b.apiCtx()
-	defer cancel()
-
-	msg, err := b.api.SendMessage(ctx, &tg.SendMessageParams{
-		ChatID:             chatID,
-		Text:               text,
-		ParseMode:          models.ParseModeHTML,
-		LinkPreviewOptions: disabledPreview(),
-		ReplyMarkup:        kb,
-	})
-	if err != nil {
-		return models.Message{}, err
-	}
-	return *msg, nil
-}
-
-func (b *Bot) edit(chatID int64, msgID int, text string) {
-	ctx, cancel := b.apiCtx()
-	defer cancel()
-
-	_, err := b.api.EditMessageText(ctx, &tg.EditMessageTextParams{
-		ChatID:             chatID,
-		MessageID:          msgID,
-		Text:               text,
-		ParseMode:          models.ParseModeHTML,
-		LinkPreviewOptions: disabledPreview(),
-	})
-	if err != nil && !isMessageNotModified(err) {
-		log.Printf("edit: %v", err)
-	}
-}
-
-func (b *Bot) editKb(chatID int64, msgID int, text string, kb models.InlineKeyboardMarkup) {
-	ctx, cancel := b.apiCtx()
-	defer cancel()
-
-	_, err := b.api.EditMessageText(ctx, &tg.EditMessageTextParams{
-		ChatID:             chatID,
-		MessageID:          msgID,
-		Text:               text,
-		ParseMode:          models.ParseModeHTML,
-		LinkPreviewOptions: disabledPreview(),
-		ReplyMarkup:        kb,
-	})
-	if err != nil && !isMessageNotModified(err) {
-		log.Printf("editKb: %v", err)
-	}
-}
-
-func (b *Bot) removeKb(chatID int64, msgID int) {
-	ctx, cancel := b.apiCtx()
-	defer cancel()
-
-	_, err := b.api.EditMessageReplyMarkup(ctx, &tg.EditMessageReplyMarkupParams{
-		ChatID:      chatID,
-		MessageID:   msgID,
-		ReplyMarkup: emptyInlineKeyboard(),
-	})
-	if err != nil && !isMessageNotModified(err) {
-		log.Printf("removeKb: %v", err)
-	}
-}
-
-func (b *Bot) answer(cq *models.CallbackQuery, text string) {
-	if cq == nil {
-		return
-	}
-
-	ctx, cancel := b.apiCtx()
-	defer cancel()
-
-	params := &tg.AnswerCallbackQueryParams{
-		CallbackQueryID: cq.ID,
-		Text:            text,
-	}
-	if text != "" {
-		params.ShowAlert = true
-	}
-	if _, err := b.api.AnswerCallbackQuery(ctx, params); err != nil {
-		log.Printf("answerCallback: %v", err)
-	}
-}
-
 func (b *Bot) sendFile(chatID int64, path string) error {
 	fi, err := os.Stat(path)
 	if err != nil {
-		log.Printf("sendFile stat %s: %v", path, err)
-		return err
+		return fmt.Errorf("stat %s: %w", path, err)
 	}
 	if fi.Size() > b.sendLimitBytes() {
 		return errTelegramFileTooLarge
 	}
 
+	var sendErr error
 	if b.cfg.LocalServer {
-		err := b.sendFileByLocalPath(chatID, path)
-		if err != nil {
-			log.Printf("sendFile send %s: %v", path, err)
-		}
-		return err
-	}
-
-	err = b.sendFileByUpload(chatID, path)
-	if err != nil {
-		if isTelegramTooLarge(err) {
+		sendErr = b.sendFileByLocalPath(chatID, path)
+	} else {
+		sendErr = b.sendFileByUpload(chatID, path)
+		if isTelegramTooLarge(sendErr) {
 			return errTelegramFileTooLarge
 		}
-		log.Printf("sendFile send %s: %v", path, err)
-		return err
 	}
-	return nil
+	if sendErr != nil {
+		log.Printf("sendFile %s: %v", path, sendErr)
+	}
+	return sendErr
 }
 
 func (b *Bot) sendFileByLocalPath(chatID int64, path string) error {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		log.Printf("sendFile abs %s: %v", path, err)
-		return err
+		return fmt.Errorf("abs %s: %w", path, err)
 	}
 
 	ctx, cancel := b.fileSendCtx()
@@ -315,14 +214,16 @@ func (b *Bot) sendFileByLocalPath(chatID int64, path string) error {
 	if err != nil && isTelegramTooLarge(err) {
 		return errTelegramFileTooLarge
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("send local file %s: %w", absPath, err)
+	}
+	return nil
 }
 
 func (b *Bot) sendFileByUpload(chatID int64, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
-		log.Printf("sendFile open %s: %v", path, err)
-		return err
+		return fmt.Errorf("open %s: %w", path, err)
 	}
 	defer f.Close()
 
@@ -336,7 +237,10 @@ func (b *Bot) sendFileByUpload(chatID int64, path string) error {
 			Data:     f,
 		},
 	})
-	return err
+	if err != nil {
+		return fmt.Errorf("upload file %s: %w", path, err)
+	}
+	return nil
 }
 
 func localFileURI(path string) string {
@@ -347,116 +251,6 @@ func localFileURI(path string) string {
 	return (&url.URL{Scheme: "file", Path: path}).String()
 }
 
-const (
-	cbPlVideo       = "pl:video"
-	cbPlFull        = "pl:full"
-	cbPlAll         = "pl:all"
-	cbPlSelect      = "pl:select"
-	cbPlTogglePref  = "pl:toggle:"
-	cbPlPagePref    = "pl:page:"
-	cbPlSelectAll   = "pl:sel:all"
-	cbPlSelectNone  = "pl:sel:none"
-	cbPlSelectDone  = "pl:sel:done"
-	cbModeVideo     = "mode:video"
-	cbModeAudio     = "mode:audio"
-	cbModeThumb     = "mode:thumb"
-	cbAudioPrefix   = "audio:"
-	cbQualityPrefix = "q:"
-	cbNoop          = "action:noop"
-	cbCancel        = "action:cancel"
-)
-
-func kbPlaylistChoice() models.InlineKeyboardMarkup {
-	return models.InlineKeyboardMarkup{
-		InlineKeyboard: [][]models.InlineKeyboardButton{
-			{
-				kbButton("🎬 Только это видео", cbPlVideo),
-				kbButton("📋 Плейлист", cbPlFull),
-			},
-			{
-				kbButton("❌ Отмена", cbCancel),
-			},
-		},
-	}
-}
-
-func kbPlaylistScope() models.InlineKeyboardMarkup {
-	return models.InlineKeyboardMarkup{
-		InlineKeyboard: [][]models.InlineKeyboardButton{
-			{
-				kbButton("⬇️ Весь плейлист", cbPlAll),
-			},
-			{
-				kbButton("🎯 Выбрать видео", cbPlSelect),
-			},
-			{
-				kbButton("❌ Отмена", cbCancel),
-			},
-		},
-	}
-}
-
-func kbQuality(choices []app.QualityChoice) models.InlineKeyboardMarkup {
-	rows := make([][]models.InlineKeyboardButton, 0, len(choices)+1)
-	for _, choice := range choices {
-		rows = append(rows, []models.InlineKeyboardButton{
-			kbButton(choice.Label(app.LocaleRU), cbQualityPrefix+choice.Key),
-		})
-	}
-	rows = append(rows, []models.InlineKeyboardButton{
-		kbButton("❌ Отмена", cbCancel),
-	})
-	return models.InlineKeyboardMarkup{InlineKeyboard: rows}
-}
-
-func kbMode() models.InlineKeyboardMarkup {
-	return models.InlineKeyboardMarkup{
-		InlineKeyboard: [][]models.InlineKeyboardButton{
-			{
-				kbButton("🎬 Видео", cbModeVideo),
-				kbButton("🎵 Аудио", cbModeAudio),
-			},
-			{
-				kbButton("🖼 Превью", cbModeThumb),
-			},
-			{
-				kbButton("❌ Отмена", cbCancel),
-			},
-		},
-	}
-}
-
-func kbAudioProfiles(profiles []app.OutputProfile) models.InlineKeyboardMarkup {
-	rows := make([][]models.InlineKeyboardButton, 0, len(profiles)+1)
-	for _, profile := range profiles {
-		rows = append(rows, []models.InlineKeyboardButton{
-			kbButton(profile.Label, cbAudioPrefix+profile.Key),
-		})
-	}
-	rows = append(rows, []models.InlineKeyboardButton{
-		kbButton("❌ Отмена", cbCancel),
-	})
-	return models.InlineKeyboardMarkup{InlineKeyboard: rows}
-}
-
-func emptyInlineKeyboard() models.InlineKeyboardMarkup {
-	return models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{}}
-}
-
-func kbButton(text, data string) models.InlineKeyboardButton {
-	return models.InlineKeyboardButton{
-		Text:         text,
-		CallbackData: data,
-	}
-}
-
-func isMessageNotModified(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(strings.ToLower(err.Error()), "message is not modified")
-}
-
 func isTelegramTooLarge(err error) bool {
 	if err == nil {
 		return false
@@ -465,9 +259,10 @@ func isTelegramTooLarge(err error) bool {
 	return strings.Contains(msg, "413") || strings.Contains(msg, "request entity too large")
 }
 
-func createBotWorkDir(chatID int64) (string, error) {
-	if err := os.MkdirAll(botWorkRoot, 0o755); err != nil {
+func createBotWorkDir(userID int64) (string, error) {
+	userRoot := filepath.Join(botWorkRoot, "users", fmt.Sprintf("%d", userID))
+	if err := os.MkdirAll(userRoot, 0o755); err != nil {
 		return "", err
 	}
-	return os.MkdirTemp(botWorkRoot, fmt.Sprintf("%d-", chatID))
+	return os.MkdirTemp(userRoot, "job-")
 }

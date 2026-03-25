@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,10 +26,14 @@ const (
 )
 
 type Config struct {
-	ServerURL   string
-	LocalServer bool
-	AdminIDs    idSet
-	OwnerIDs    idSet
+	ServerURL         string
+	LocalServer       bool
+	AdminIDs          idSet
+	OwnerIDs          idSet
+	PremiumUsersPath  string
+	KnownUsersPath    string
+	TimersPath        string
+	PremiumStarsPrice int
 }
 
 func (c Config) normalized() Config {
@@ -39,6 +44,18 @@ func (c Config) normalized() Config {
 		} else {
 			c.ServerURL = defaultTelegramServerURL
 		}
+	}
+	if strings.TrimSpace(c.PremiumUsersPath) == "" {
+		c.PremiumUsersPath = filepath.Join(app.AppDir, "premium_users.json")
+	}
+	if strings.TrimSpace(c.KnownUsersPath) == "" {
+		c.KnownUsersPath = filepath.Join(app.AppDir, "bot_users.json")
+	}
+	if strings.TrimSpace(c.TimersPath) == "" {
+		c.TimersPath = filepath.Join(app.AppDir, "bot_timers.json")
+	}
+	if c.PremiumStarsPrice <= 0 {
+		c.PremiumStarsPrice = 250
 	}
 	return c
 }
@@ -96,11 +113,10 @@ func callNoParamMethod(token string, cfg Config, method string, dest any) error 
 	ctx, cancel := adminCtx()
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.ServerURL+"/bot"+token+"/"+method, http.NoBody)
+	req, err := newBotAPIRequest(ctx, cfg, token, method)
 	if err != nil {
-		return fmt.Errorf("создание запроса %s: %w", method, err)
+		return err
 	}
-	req.Header.Set("Accept", "application/json")
 
 	resp, err := botAPIHTTPClient.Do(req)
 	if err != nil {
@@ -108,14 +124,40 @@ func callNoParamMethod(token string, cfg Config, method string, dest any) error 
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readBotAPIBody(resp, method)
 	if err != nil {
-		return fmt.Errorf("чтение ответа %s: %w", method, err)
-	}
-	if len(bytes.TrimSpace(body)) == 0 {
-		return fmt.Errorf("Bot API вернул пустой ответ для %s", method)
+		return err
 	}
 
+	return decodeBotAPIResponse(method, body, dest)
+}
+
+func newBotAPIRequest(ctx context.Context, cfg Config, token, method string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, botAPIMethodURL(cfg, token, method), http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("создание запроса %s: %w", method, err)
+	}
+	req.Header.Set("Accept", "application/json")
+	return req, nil
+}
+
+func botAPIMethodURL(cfg Config, token, method string) string {
+	cfg = cfg.normalized()
+	return cfg.ServerURL + "/bot" + token + "/" + method
+}
+
+func readBotAPIBody(resp *http.Response, method string) ([]byte, error) {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("чтение ответа %s: %w", method, err)
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil, fmt.Errorf("Bot API вернул пустой ответ для %s", method)
+	}
+	return body, nil
+}
+
+func decodeBotAPIResponse(method string, body []byte, dest any) error {
 	var apiResp botAPIResponse
 	if err := json.Unmarshal(body, &apiResp); err != nil {
 		return fmt.Errorf("разбор ответа %s: %w", method, err)

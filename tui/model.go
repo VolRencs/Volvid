@@ -20,6 +20,9 @@ const (
 	scrDepDl
 	scrDepUpdate
 	scrURL
+	scrSearchInput
+	scrSearchFetch
+	scrSearchResults
 	scrPlaylistAsk
 	scrPlaylistFetch
 	scrPlaylist
@@ -36,6 +39,7 @@ type inputTarget uint8
 
 const (
 	inputURL inputTarget = iota
+	inputSearch
 	inputPlaylist
 )
 
@@ -62,6 +66,10 @@ type (
 	msgPlaylistFetched struct {
 		info *app.PlaylistInfo
 		err  error
+	}
+	msgSearchResults struct {
+		results []app.SearchResult
+		err     error
 	}
 	msgQualityScanned struct {
 		choices []app.QualityChoice
@@ -96,9 +104,13 @@ type Model struct {
 	depErr      string
 	depCh       <-chan app.FileProgress
 
-	urlInput inputField
-	urlErr   string
-	target   app.ParsedTarget
+	urlInput      inputField
+	urlErr        string
+	target        app.ParsedTarget
+	searchInput   inputField
+	searchQuery   string
+	searchErr     string
+	searchResults []app.SearchResult
 
 	plInfo      *app.PlaylistInfo
 	plCursor    int
@@ -143,14 +155,15 @@ func newModel() Model {
 	app.SyncLoc(loc)
 
 	return Model{
-		screen:     scrUpdateCheck,
-		locale:     loc,
-		urlInput:   newInput(inputURL, "https://youtu.be/...", inputW, 300),
-		plInput:    newInput(inputPlaylist, app.StringsFor(loc).PlInputPlaceholder, 38, 100),
-		mode:       app.DefaultDownloadMode(),
-		profile:    app.DefaultVideoProfile(loc),
-		numWorkers: 1,
-		plSelected: map[int]bool{},
+		screen:      scrUpdateCheck,
+		locale:      loc,
+		urlInput:    newInput(inputURL, "https://youtu.be/...", inputW, 300),
+		searchInput: newInput(inputSearch, app.StringsFor(loc).SearchPlaceholder, inputW, 120),
+		plInput:     newInput(inputPlaylist, app.StringsFor(loc).PlInputPlaceholder, 38, 100),
+		mode:        app.DefaultDownloadMode(),
+		profile:     app.DefaultVideoProfile(loc),
+		numWorkers:  1,
+		plSelected:  map[int]bool{},
 	}
 }
 
@@ -194,6 +207,13 @@ func fetchPlaylistCmd(url string, l app.Locale) tea.Cmd {
 	return func() tea.Msg {
 		info, err := app.FetchPlaylistInfoFor(nil, url, l)
 		return msgPlaylistFetched{info: info, err: err}
+	}
+}
+
+func searchYouTubeCmd(query string) tea.Cmd {
+	return func() tea.Msg {
+		results, err := app.SearchYouTube(query)
+		return msgSearchResults{results: results, err: err}
 	}
 }
 
@@ -258,6 +278,13 @@ func (m Model) modeAt(idx int) app.DownloadMode {
 	}
 }
 
+func (m Model) searchResultAt(idx int) app.SearchResult {
+	if idx < 0 || idx >= len(m.searchResults) {
+		return app.SearchResult{}
+	}
+	return m.searchResults[idx]
+}
+
 func (m Model) shouldAskWorkers() bool {
 	return len(m.dlEntries) > 1
 }
@@ -273,7 +300,7 @@ func (m Model) sessionPlaylistSuffix(n int) string {
 
 func (m Model) uiBusy() bool {
 	switch m.screen {
-	case scrUpdateDl, scrDepDl, scrDepUpdate, scrDownload, scrPlaylistFetch, scrQualityFetch:
+	case scrUpdateDl, scrDepDl, scrDepUpdate, scrDownload, scrPlaylistFetch, scrQualityFetch, scrSearchFetch:
 		return true
 	}
 	return false
@@ -302,6 +329,8 @@ func (m Model) syncMenu() Model {
 		m.menu.SetItems(m.modeOptions())
 	case scrAudio:
 		m.menu.SetItems(m.audioOptions())
+	case scrSearchResults:
+		m.menu.SetItems(m.searchResultOptions())
 	case scrSummary:
 		m.menu.SetItems([]string{u.MenuAgainY, u.MenuAgainN})
 	case scrQuality:
@@ -315,5 +344,18 @@ func (m Model) syncMenu() Model {
 }
 
 func (m *Model) syncLocalizedInputs() {
+	m.searchInput.SetPlaceholder(m.u().SearchPlaceholder)
 	m.plInput.SetPlaceholder(m.u().PlInputPlaceholder)
+}
+
+func (m Model) searchResultOptions() []string {
+	options := make([]string, 0, len(m.searchResults))
+	for _, result := range m.searchResults {
+		label := trunc(result.Title, 42)
+		if result.Duration > 0 {
+			label += "  " + app.FmtDuration(result.Duration)
+		}
+		options = append(options, label)
+	}
+	return options
 }

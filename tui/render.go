@@ -38,6 +38,8 @@ func (m Model) kbUpdDeps() binding  { return binding{key: "ctrl+u", help: m.u().
 func (m Model) kbSpace() binding    { return binding{key: "space", help: m.u().HelpSpace} }
 func (m Model) kbAll() binding      { return binding{key: "a", help: m.u().HelpAll} }
 func (m Model) kbSlash() binding    { return binding{key: "/", help: m.u().HelpSlash} }
+func (m Model) kbSearch() binding   { return binding{key: "?", help: m.u().HelpSearch} }
+func (m Model) kbEsc() binding      { return binding{key: "esc", help: m.u().HelpBack} }
 func (m Model) kbAny() binding      { return binding{key: m.u().HelpAnyKey, help: m.u().HelpExit} }
 func (m Model) spinnerView() string { return spinnerFrames[m.spinnerFrame%len(spinnerFrames)] }
 
@@ -75,12 +77,14 @@ func (m Model) renderBody() string {
 	b.WriteString("\n\n")
 
 	switch m.screen {
-	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch:
+	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch, scrSearchFetch:
 		msg := u.SpinnerUpdate
 		if m.screen == scrPlaylistFetch {
 			msg = u.SpinnerPlaylist
 		} else if m.screen == scrQualityFetch {
 			msg = u.SpinnerQuality
+		} else if m.screen == scrSearchFetch {
+			msg = u.SpinnerSearch
 		}
 		b.WriteString("  " + sTitle.Render(m.spinnerView()) + sDim.Render(msg))
 
@@ -131,18 +135,13 @@ func (m Model) renderBody() string {
 		}
 
 	case scrURL:
-		b.WriteString(sBold.Render(u.PasteURL) + "\n\n")
-		inputStyle := sInputBox
-		if m.urlInput.Focused() {
-			inputStyle = sInputBoxFocus
-		}
-		b.WriteString(inputStyle.Render(m.urlInput.View()) + "\n")
-		if m.urlErr != "" {
-			b.WriteString("\n" + sErr.Render("  ✘  "+m.urlErr) + "\n")
-		} else {
-			b.WriteString(sDim.Render(u.URLHints) + "\n")
-		}
-		b.WriteString(m.hint(m.kbEnter(), m.kbQuit(), m.kbUpdDeps()))
+		b.WriteString(m.viewURLScreen())
+
+	case scrSearchInput:
+		b.WriteString(m.viewSearchInput())
+
+	case scrSearchResults:
+		b.WriteString(m.viewSearchResults())
 
 	case scrPlaylist:
 		b.WriteString(m.viewPlaylist())

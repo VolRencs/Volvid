@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"strings"
 	"time"
 
 	app "YouTubeBuild/internal/app"
@@ -73,17 +72,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.gotoURL()
 
 	case msgPlaylistFetched:
-		if msg.err != nil || msg.info == nil {
-			m.forceSingle = true
-			return m.startModeSelection()
-		}
-		m.plInfo = msg.info
-		m.plCursor = 0
-		m.plTop = 0
-		m.plSelected = map[int]bool{}
-		m.plInputErr = ""
-		m.screen = scrPlaylist
-		return m, nil
+		return m.handlePlaylistFetched(msg)
+
+	case msgSearchResults:
+		return m.handleSearchResultsMsg(msg)
 
 	case msgQualityScanned:
 		if len(msg.choices) == 0 {
@@ -105,6 +97,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch {
 	case m.screen == scrURL:
 		if cmd := m.urlInput.Update(msg); cmd != nil {
+			return m, cmd
+		}
+	case m.screen == scrSearchInput:
+		if cmd := m.searchInput.Update(msg); cmd != nil {
 			return m, cmd
 		}
 	case m.screen == scrPlaylist && m.plInputMode:
@@ -257,6 +253,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.startDepUpdate()
 	}
 
+	if k == "esc" {
+		switch m.screen {
+		case scrSearchInput, scrSearchResults:
+			return m.exitSearch()
+		}
+	}
+
 	if m.isMenuScreen() {
 		switch k {
 		case "up", "k":
@@ -291,51 +294,21 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case scrURL:
+		if k == "?" {
+			return m.openSearchInput()
+		}
 		if k != "enter" {
 			m.urlErr = ""
 			return m, m.urlInput.Update(msg)
 		}
+		return m.submitURLInput()
 
-		rawURL := strings.TrimSpace(m.urlInput.Value())
-		if rawURL == "" {
-			m.urlErr = m.u().URLErrEmpty
-			return m, nil
+	case scrSearchInput:
+		if k != "enter" {
+			m.searchErr = ""
+			return m, m.searchInput.Update(msg)
 		}
-		target, err := app.ParseTarget(rawURL)
-		if err != nil {
-			m.urlErr = m.u().URLErrBad
-			return m, nil
-		}
-
-		m.urlErr = ""
-		m.url = rawURL
-		m.target = target
-		m.plInfo = nil
-		m.plCursor = 0
-		m.plTop = 0
-		m.plSelected = map[int]bool{}
-		m.plInputMode = false
-		m.plInputErr = ""
-		m.flowErr = ""
-		m.mode = app.DefaultDownloadMode()
-		m.profile = app.DefaultVideoProfile(m.locale)
-		m.dlEntries = nil
-		m.qualityChoices = nil
-		m.audioProfiles = nil
-		m.forceSingle = false
-		m.numWorkers = 1
-
-		if target.IsPlaylist() {
-			if target.Kind == app.TargetMixed {
-				m.screen = scrPlaylistAsk
-				m = m.syncMenu()
-				return m, nil
-			}
-			m.screen = scrPlaylistFetch
-			return m, fetchPlaylistCmd(rawURL, m.locale)
-		}
-
-		return m.startModeSelection()
+		return m.submitSearchInput()
 	}
 
 	return m, nil
@@ -350,6 +323,15 @@ func (m Model) handleTerminalPaste(content string) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.urlInput.Focus())
 		}
 		cmds = append(cmds, m.urlInput.insertRunes([]rune(content)))
+		return m, tea.Batch(cmds...)
+
+	case m.screen == scrSearchInput:
+		m.searchErr = ""
+		var cmds []tea.Cmd
+		if !m.searchInput.Focused() {
+			cmds = append(cmds, m.searchInput.Focus())
+		}
+		cmds = append(cmds, m.searchInput.insertRunes([]rune(content)))
 		return m, tea.Batch(cmds...)
 
 	case m.screen == scrPlaylist && m.plInputMode:
@@ -491,6 +473,9 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 
+	case scrSearchResults:
+		return m.activateSearchResult(idx)
+
 	case scrMode:
 		m.mode = m.modeAt(idx)
 		m.profile = app.OutputProfile{}
@@ -546,7 +531,7 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 
 func (m Model) isMenuScreen() bool {
 	switch m.screen {
-	case scrUpdateReady, scrFFmpegAsk, scrPlaylistAsk, scrMode, scrAudio, scrSummary, scrWorkers, scrQuality:
+	case scrUpdateReady, scrFFmpegAsk, scrPlaylistAsk, scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrSearchResults:
 		return true
 	}
 	return false
@@ -640,42 +625,6 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	req.Workers = workers
 	app.StartDownloadRequest(req, ch)
 	return m, tea.Batch(listenDownloadCmd(ch), timerTickCmd())
-}
-
-func (m Model) resetForNext() (tea.Model, tea.Cmd) {
-	m.screen = scrURL
-	m.url = ""
-	m.urlErr = ""
-	m.urlInput.SetValue("")
-	m.target = app.ParsedTarget{}
-
-	m.plInfo = nil
-	m.plCursor = 0
-	m.plTop = 0
-	m.plSelected = map[int]bool{}
-	m.plInputMode = false
-	m.plInputErr = ""
-	m.plInput.SetValue("")
-	m.plInput.Blur()
-
-	m.forceSingle = false
-	m.numWorkers = 1
-	m.mode = app.DefaultDownloadMode()
-	m.profile = app.DefaultVideoProfile(m.locale)
-	m.flowErr = ""
-	m.dlEntries = nil
-	m.qualityChoices = nil
-	m.audioProfiles = nil
-	m.slots = nil
-	m.dlDone = 0
-	m.dlFailed = 0
-	m.dlTotal = 0
-	m.singleOK = false
-	m.dlStartedAt = time.Time{}
-	m.dlElapsed = 0
-	m.timerActive = false
-
-	return m, m.urlInput.Focus()
 }
 
 func (m Model) selectedPlaylistEntries() []app.PlaylistEntry {

@@ -5,11 +5,11 @@ import "fmt"
 type UIStrings struct {
 	HeaderPowered string
 
-	HelpUp, HelpDown, HelpEnter, HelpQuit, HelpDeps, HelpSpace, HelpAll, HelpSlash string
+	HelpUp, HelpDown, HelpEnter, HelpQuit, HelpDeps, HelpSpace, HelpAll, HelpSlash, HelpSearch, HelpBack string
 
 	QBest, QEcon string
 
-	SpinnerUpdate, SpinnerPlaylist, SpinnerQuality string
+	SpinnerUpdate, SpinnerPlaylist, SpinnerQuality, SpinnerSearch string
 
 	UpdateAvail, CurrentVerShort string
 	FFmpegWarn, FFmpegHint       string
@@ -21,7 +21,8 @@ type UIStrings struct {
 
 	AppSubtitle, TopBarDeps, TopBarDepsBusy string
 
-	PasteURL, URLErrEmpty, URLErrBad, URLHints string
+	PasteURL, URLErrEmpty, URLErrBad, URLHints                                                     string
+	SearchTitle, SearchPrompt, SearchPlaceholder, SearchErrEmpty, SearchErrFailed, SearchNoResults string
 
 	PlVideosFmt, PlEnterNums, PlSelectedFmt string
 	ErrPickOne                              string
@@ -55,10 +56,11 @@ var strEN = UIStrings{
 
 	HelpUp: "up", HelpDown: "down", HelpEnter: "enter", HelpQuit: "quit",
 	HelpDeps: "update deps", HelpSpace: "space", HelpAll: "all", HelpSlash: "numbers",
+	HelpSearch: "search", HelpBack: "back",
 
 	QBest: "▲ Best (HD·4K)", QEcon: "▼ Economy (360p)",
 
-	SpinnerUpdate: "  Checking for updates…", SpinnerPlaylist: "  Loading playlist…", SpinnerQuality: "  Scanning qualities…",
+	SpinnerUpdate: "  Checking for updates…", SpinnerPlaylist: "  Loading playlist…", SpinnerQuality: "  Scanning qualities…", SpinnerSearch: "  Searching YouTube…",
 
 	UpdateAvail: "  ✔  New version ", CurrentVerShort: "  (current %s)",
 	FFmpegWarn: "  ⚠️ ffmpeg not found", FFmpegHint: "     Required for HD, 4K and MP3",
@@ -75,6 +77,9 @@ var strEN = UIStrings{
 
 	PasteURL: "  Paste a video or playlist URL", URLErrEmpty: "URL cannot be empty",
 	URLErrBad: "Does not look like a YouTube URL", URLHints: "\nyoutube.com/watch   youtube.com/playlist   youtu.be/",
+	SearchTitle: "  Search YouTube", SearchPrompt: "  Enter a video title or keywords",
+	SearchPlaceholder: "lofi hip hop mix", SearchErrEmpty: "Search query cannot be empty",
+	SearchErrFailed: "Search failed", SearchNoResults: "Nothing found",
 
 	PlVideosFmt: "  %d videos", PlEnterNums: "  Enter indices:", PlSelectedFmt: "  Selected: %d / %d",
 	ErrPickOne: "Select at least one video",
@@ -117,10 +122,11 @@ var strRU = UIStrings{
 
 	HelpUp: "вверх", HelpDown: "вниз", HelpEnter: "выбрать", HelpQuit: "выход",
 	HelpDeps: "обновить зависимости", HelpSpace: "пробел", HelpAll: "все", HelpSlash: "номера",
+	HelpSearch: "поиск", HelpBack: "назад",
 
 	QBest: "▲ Лучшее качество (HD·4K)", QEcon: "▼ Экономичное (360p)",
 
-	SpinnerUpdate: "  Проверяю обновления…", SpinnerPlaylist: "  Загружаю плейлист…", SpinnerQuality: "  Сканирую доступные качества…",
+	SpinnerUpdate: "  Проверяю обновления…", SpinnerPlaylist: "  Загружаю плейлист…", SpinnerQuality: "  Сканирую доступные качества…", SpinnerSearch: "  Ищу на YouTube…",
 
 	UpdateAvail: "  ✔  Доступна версия ", CurrentVerShort: "  (сейчас %s)",
 	FFmpegWarn: "  ⚠️ ffmpeg не найден", FFmpegHint: "     Нужен для HD, 4K и MP3",
@@ -137,6 +143,9 @@ var strRU = UIStrings{
 
 	PasteURL: "  Вставь ссылку на видео или плейлист", URLErrEmpty: "Ссылка не может быть пустой",
 	URLErrBad: "Не похоже на YouTube-ссылку", URLHints: "\nyoutube.com/watch   youtube.com/playlist   youtu.be/",
+	SearchTitle: "  Поиск на YouTube", SearchPrompt: "  Введи название видео или ключевые слова",
+	SearchPlaceholder: "lofi hip hop mix", SearchErrEmpty: "Поисковый запрос не может быть пустым",
+	SearchErrFailed: "Не удалось выполнить поиск", SearchNoResults: "Ничего не найдено",
 
 	PlVideosFmt: "  %d видео", PlEnterNums: "  Введи номера:", PlSelectedFmt: "  Выбрано: %d / %d",
 	ErrPickOne: "Выбери хотя бы одно видео",

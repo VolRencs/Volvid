@@ -120,7 +120,8 @@ func messageIsCommand(msg *models.Message) bool {
 	if msg == nil {
 		return false
 	}
-	for _, entity := range msg.Entities {
+	_, entities := commandTextAndEntities(msg)
+	for _, entity := range entities {
 		if entity.Type == models.MessageEntityTypeBotCommand && entity.Offset == 0 {
 			return true
 		}
@@ -132,11 +133,12 @@ func messageCommand(msg *models.Message) string {
 	if msg == nil {
 		return ""
 	}
-	for _, entity := range msg.Entities {
+	text, entities := commandTextAndEntities(msg)
+	runes := []rune(text)
+	for _, entity := range entities {
 		if entity.Type != models.MessageEntityTypeBotCommand || entity.Offset != 0 || entity.Length <= 1 {
 			continue
 		}
-		runes := []rune(msg.Text)
 		if entity.Offset+entity.Length > len(runes) {
 			return ""
 		}
@@ -145,6 +147,38 @@ func messageCommand(msg *models.Message) string {
 		return cmd
 	}
 	return ""
+}
+
+func messageCommandArgs(msg *models.Message) string {
+	if msg == nil {
+		return ""
+	}
+	text, entities := commandTextAndEntities(msg)
+	cmdLen := 0
+	for _, entity := range entities {
+		if entity.Type == models.MessageEntityTypeBotCommand && entity.Offset == 0 {
+			cmdLen = entity.Length
+			break
+		}
+	}
+	if cmdLen <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if cmdLen >= len(runes) {
+		return ""
+	}
+	return strings.TrimSpace(string(runes[cmdLen:]))
+}
+
+func commandTextAndEntities(msg *models.Message) (string, []models.MessageEntity) {
+	if msg == nil {
+		return "", nil
+	}
+	if strings.TrimSpace(msg.Text) != "" || len(msg.Entities) > 0 {
+		return msg.Text, msg.Entities
+	}
+	return msg.Caption, msg.CaptionEntities
 }
 
 func callbackMessageMeta(cq *models.CallbackQuery) (chatID int64, msgID int, ok bool) {
@@ -165,4 +199,16 @@ func callbackMessageMeta(cq *models.CallbackQuery) (chatID int64, msgID int, ok 
 	default:
 		return 0, 0, false
 	}
+}
+
+func isPrivateChatMessage(msg *models.Message) bool {
+	return msg != nil && strings.EqualFold(string(msg.Chat.Type), "private")
+}
+
+func isForbiddenError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "403") || strings.Contains(msg, "bot was blocked") || strings.Contains(msg, "user is deactivated") || strings.Contains(msg, "chat not found")
 }

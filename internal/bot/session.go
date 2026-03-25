@@ -10,9 +10,9 @@ type UserState int
 
 const (
 	StateIdle UserState = iota
+	StateAwaitingSearchSelection
 	StateAwaitingPlaylistOp
 	StateFetchingPlaylist
-	StateAwaitingPlaylistScope
 	StateAwaitingPlaylistSelection
 	StateAwaitingMode
 	StateAwaitingAudioProfile
@@ -23,12 +23,14 @@ const (
 
 type Session struct {
 	mu              sync.RWMutex
+	UserID          int64
 	State           UserState
 	URL             string
 	Target          app.ParsedTarget
 	WorkDir         string
+	SearchQuery     string
+	SearchResults   []app.SearchResult
 	PlInfo          *app.PlaylistInfo
-	SelectedEntries []app.PlaylistEntry
 	SelectedIndices map[int]bool
 	PlaylistPage    int
 	QualityChoices  []app.QualityChoice
@@ -41,12 +43,14 @@ type Session struct {
 }
 
 type SessionSnapshot struct {
+	UserID          int64
 	State           UserState
 	URL             string
 	Target          app.ParsedTarget
 	WorkDir         string
+	SearchQuery     string
+	SearchResults   []app.SearchResult
 	PlInfo          *app.PlaylistInfo
-	SelectedEntries []app.PlaylistEntry
 	SelectedIndices map[int]bool
 	PlaylistPage    int
 	QualityChoices  []app.QualityChoice
@@ -92,12 +96,14 @@ func (s *Session) snapshot() SessionSnapshot {
 	defer s.mu.RUnlock()
 
 	return SessionSnapshot{
+		UserID:          s.UserID,
 		State:           s.State,
 		URL:             s.URL,
 		Target:          s.Target,
 		WorkDir:         s.WorkDir,
+		SearchQuery:     s.SearchQuery,
+		SearchResults:   append([]app.SearchResult(nil), s.SearchResults...),
 		PlInfo:          clonePlaylistInfo(s.PlInfo),
-		SelectedEntries: append([]app.PlaylistEntry(nil), s.SelectedEntries...),
 		SelectedIndices: cloneSelection(s.SelectedIndices),
 		PlaylistPage:    s.PlaylistPage,
 		QualityChoices:  append([]app.QualityChoice(nil), s.QualityChoices...),
@@ -117,9 +123,10 @@ func (s *Session) mutate(fn func(*Session)) {
 	fn(s)
 }
 
-func newSession(url, workDir string) *Session {
+func newSession(userID int64, url, workDir string) *Session {
 	target, _ := app.ParseTarget(url)
 	return &Session{
+		UserID:  userID,
 		State:   StateIdle,
 		URL:     url,
 		Target:  target,
