@@ -101,6 +101,16 @@ tool_path_arg() {
 	echo "$path"
 }
 
+run_tool() {
+	local tool="$1"
+	shift
+	if is_windows_binary "$tool"; then
+		MSYS2_ARG_CONV_EXCL='*' "$tool" "$@"
+		return 0
+	fi
+	"$tool" "$@"
+}
+
 machine_for_arch() {
 	case "$1" in
 	amd64)
@@ -137,11 +147,8 @@ fi
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 
-(
-	cd "$PKG_DIR"
-	"$RC_TOOL" /fo "$(tool_path_arg "$RC_TOOL" "$RES_FILE")" "$(basename "$RC_FILE")"
-)
+run_tool "$RC_TOOL" "/fo$(tool_path_arg "$RC_TOOL" "$RES_FILE")" "$(tool_path_arg "$RC_TOOL" "$RC_FILE")"
 
-"$CVTRES_TOOL" "/MACHINE:$(machine_for_arch "$ARCH")" "/OUT:$(tool_path_arg "$CVTRES_TOOL" "$SYSO_FILE")" "$(tool_path_arg "$CVTRES_TOOL" "$RES_FILE")"
+run_tool "$CVTRES_TOOL" "/MACHINE:$(machine_for_arch "$ARCH")" "/OUT:$(tool_path_arg "$CVTRES_TOOL" "$SYSO_FILE")" "$(tool_path_arg "$CVTRES_TOOL" "$RES_FILE")"
 
 GOOS=windows GOARCH="$ARCH" go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$OUTPUT_PATH" ./cmd/downloader
