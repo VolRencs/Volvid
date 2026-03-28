@@ -16,6 +16,7 @@ jobs:
         include:
           - os: windows-latest
             artifact: VolRenDownloader.exe
+            build_cmd: go install github.com/akavel/rsrc@latest && ./scripts/build-windows-downloader.sh VolRenDownloader.exe
           - os: ubuntu-latest
             artifact: VolRenDownloader_linux_amd64
             build_cmd: GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader_linux_amd64 ./cmd/downloader
@@ -27,13 +28,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.26.1"
-      - if: runner.os == 'Windows'
-        shell: bash
-        run: go install github.com/akavel/rsrc@latest
-      - if: runner.os == 'Windows'
-        shell: bash
-        run: ./scripts/build-windows-downloader.sh VolRenDownloader.exe
-      - if: runner.os != 'Windows'
+      - shell: bash
         run: ${{ matrix.build_cmd }}
       - uses: ncipollo/release-action@v1
         with:
