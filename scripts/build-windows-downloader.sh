@@ -20,6 +20,42 @@ require_tool() {
 	fi
 }
 
+resolve_tool() {
+	local tool="$1"
+	local -a candidates=()
+	local path_tool
+
+	if path_tool="$(command -v "$tool" 2>/dev/null)"; then
+		echo "$path_tool"
+		return 0
+	fi
+
+	if [[ -n "${LLVM_BIN:-}" ]]; then
+		candidates+=("$LLVM_BIN/$tool" "$LLVM_BIN/$tool.exe")
+	fi
+
+	candidates+=(
+		"/c/Program Files/LLVM/bin/$tool"
+		"/c/Program Files/LLVM/bin/$tool.exe"
+		"/mnt/c/Program Files/LLVM/bin/$tool"
+		"/mnt/c/Program Files/LLVM/bin/$tool.exe"
+		"/c/ProgramData/chocolatey/lib/llvm/tools/llvm/bin/$tool"
+		"/c/ProgramData/chocolatey/lib/llvm/tools/llvm/bin/$tool.exe"
+		"/mnt/c/ProgramData/chocolatey/lib/llvm/tools/llvm/bin/$tool"
+		"/mnt/c/ProgramData/chocolatey/lib/llvm/tools/llvm/bin/$tool.exe"
+	)
+
+	for path_tool in "${candidates[@]}"; do
+		if [[ -x "$path_tool" ]]; then
+			echo "$path_tool"
+			return 0
+		fi
+	done
+
+	echo "missing required tool: $tool" >&2
+	exit 1
+}
+
 machine_for_arch() {
 	case "$1" in
 	amd64)
@@ -42,8 +78,8 @@ cleanup() {
 trap cleanup EXIT
 
 require_tool go
-require_tool llvm-rc
-require_tool llvm-cvtres
+LLVM_RC="$(resolve_tool llvm-rc)"
+LLVM_CVTRES="$(resolve_tool llvm-cvtres)"
 
 if [[ ! -f "$RC_FILE" ]]; then
 	echo "missing resource file: $RC_FILE" >&2
@@ -58,9 +94,9 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 
 (
 	cd "$PKG_DIR"
-	llvm-rc /fo "$RES_FILE" "$(basename "$RC_FILE")"
+	"$LLVM_RC" /fo "$RES_FILE" "$(basename "$RC_FILE")"
 )
 
-llvm-cvtres "/MACHINE:$(machine_for_arch "$ARCH")" "/OUT:$SYSO_FILE" "$RES_FILE"
+"$LLVM_CVTRES" "/MACHINE:$(machine_for_arch "$ARCH")" "/OUT:$SYSO_FILE" "$RES_FILE"
 
 GOOS=windows GOARCH="$ARCH" go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$OUTPUT_PATH" ./cmd/downloader
