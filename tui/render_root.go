@@ -34,16 +34,8 @@ func (m Model) renderBody() string {
 	b.WriteString("\n\n")
 
 	switch m.screen {
-	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch, scrSearchFetch:
-		msg := u.SpinnerUpdate
-		if m.screen == scrPlaylistFetch {
-			msg = u.SpinnerPlaylist
-		} else if m.screen == scrQualityFetch {
-			msg = u.SpinnerQuality
-		} else if m.screen == scrSearchFetch {
-			msg = u.SpinnerSearch
-		}
-		b.WriteString(m.renderSpinnerScreen(msg))
+	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch, scrSearchFetch, scrFragmentProbe:
+		b.WriteString(m.renderSpinnerScreen(m.spinnerScreenText()))
 
 	case scrUpdateReady, scrFFmpegAsk, scrPlaylistAsk:
 		b.WriteString(m.renderPromptMenu())
@@ -55,11 +47,7 @@ func (m Model) renderBody() string {
 		b.WriteString(m.renderMenuScreen(u.AudioTitle, ""))
 
 	case scrFragmentChoice:
-		subtitle := u.FragmentHint
-		if m.target.HasURLStart && m.target.URLStartAt > 0 {
-			subtitle += "\n" + fmt.Sprintf(u.FragmentFromURLFmt, app.FormatClockTimestamp(m.target.URLStartAt))
-		}
-		b.WriteString(m.renderMenuScreen(u.FragmentTitle, subtitle))
+		b.WriteString(m.renderMenuScreen(u.FragmentTitle, m.fragmentChoiceSubtitle()))
 
 	case scrUpdateDl, scrDepDl:
 		label := m.depLabel
@@ -104,4 +92,32 @@ func (m Model) renderBody() string {
 	}
 
 	return b.String()
+}
+
+func (m Model) spinnerScreenText() string {
+	u := m.u()
+	switch m.screen {
+	case scrPlaylistFetch:
+		return u.SpinnerPlaylist
+	case scrQualityFetch:
+		return u.SpinnerQuality
+	case scrSearchFetch:
+		return u.SpinnerSearch
+	case scrFragmentProbe:
+		return u.SpinnerFragment
+	default:
+		return u.SpinnerUpdate
+	}
+}
+
+func (m Model) fragmentChoiceSubtitle() string {
+	u := m.u()
+	lines := []string{u.FragmentHint}
+	if durationText := app.FragmentDurationText(m.locale, m.mediaDuration); durationText != "" {
+		lines = append(lines, durationText)
+	}
+	if m.canUseURLStartFragment() {
+		lines = append(lines, fmt.Sprintf(u.FragmentFromURLFmt, app.FormatClockTimestamp(m.target.URLStartAt)))
+	}
+	return strings.Join(lines, "\n")
 }

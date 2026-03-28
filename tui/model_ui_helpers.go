@@ -61,7 +61,7 @@ func (m Model) sessionPlaylistSuffix(n int) string {
 
 func (m Model) uiBusy() bool {
 	switch m.screen {
-	case scrUpdateDl, scrDepDl, scrDepUpdate, scrDownload, scrPlaylistFetch, scrQualityFetch, scrSearchFetch:
+	case scrUpdateDl, scrDepDl, scrDepUpdate, scrDownload, scrPlaylistFetch, scrFragmentProbe, scrQualityFetch, scrSearchFetch:
 		return true
 	}
 	return false
@@ -78,32 +78,36 @@ func (m Model) workerMenuOptions(n int) []string {
 }
 
 func (m Model) syncMenu() Model {
+	m.menu.SetItems(m.menuItems())
+	return m
+}
+
+func (m Model) menuItems() []string {
 	u := m.u()
 	switch m.screen {
 	case scrUpdateReady:
-		m.menu.SetItems([]string{u.MenuUpdateY, u.MenuUpdateN})
+		return []string{u.MenuUpdateY, u.MenuUpdateN}
 	case scrFFmpegAsk:
-		m.menu.SetItems([]string{u.MenuFFmpegY, u.MenuFFmpegN})
+		return []string{u.MenuFFmpegY, u.MenuFFmpegN}
 	case scrPlaylistAsk:
-		m.menu.SetItems([]string{u.MenuVidOnly, u.MenuOpenPl})
+		return []string{u.MenuVidOnly, u.MenuOpenPl}
 	case scrMode:
-		m.menu.SetItems(m.modeOptions())
+		return m.modeOptions()
 	case scrFragmentChoice:
-		m.menu.SetItems(m.fragmentChoiceOptions())
+		return m.fragmentChoiceOptions()
 	case scrAudio:
-		m.menu.SetItems(m.audioOptions())
+		return m.audioOptions()
 	case scrSearchResults:
-		m.menu.SetItems(m.searchResultOptions())
+		return m.searchResultOptions()
 	case scrSummary:
-		m.menu.SetItems([]string{u.MenuAgainY, u.MenuAgainN})
+		return []string{u.MenuAgainY, u.MenuAgainN}
 	case scrQuality:
-		m.menu.SetItems(m.qualityOptions())
+		return m.qualityOptions()
 	case scrWorkers:
-		m.menu.SetItems(m.workerMenuOptions(min(len(m.dlEntries), 5)))
+		return m.workerMenuOptions(min(len(m.dlEntries), 5))
 	default:
-		m.menu.SetItems(nil)
+		return nil
 	}
-	return m
 }
 
 func (m *Model) syncLocalizedInputs() {
@@ -114,10 +118,14 @@ func (m *Model) syncLocalizedInputs() {
 func (m Model) fragmentChoiceOptions() []string {
 	u := m.u()
 	options := []string{u.MenuFullVideo}
-	if m.target.HasURLStart && m.target.URLStartAt > 0 {
+	if m.canUseURLStartFragment() {
 		options = append(options, fmt.Sprintf("%s (%s)", u.MenuFromURLStart, app.FormatClockTimestamp(m.target.URLStartAt)))
 	}
 	return append(options, u.MenuManualRange)
+}
+
+func (m Model) canUseURLStartFragment() bool {
+	return m.target.HasURLStart && m.target.URLStartAt > 0 && m.mediaDuration > 0 && m.target.URLStartAt < m.mediaDuration
 }
 
 func (m Model) searchResultOptions() []string {

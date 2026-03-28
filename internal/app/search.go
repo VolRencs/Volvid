@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -38,19 +37,9 @@ func SearchYouTubeContext(ctx context.Context, query string) ([]SearchResult, er
 		if len(results) == cap(results) {
 			return
 		}
-		url := strVal(entry, "url", strVal(entry, "webpage_url", ""))
-		if url == "" {
-			if id := strVal(entry, "id", ""); id != "" {
-				url = "https://youtu.be/" + id
-			}
-		}
-		if url == "" {
+		result, ok := searchResultFromMap(entry, len(results)+1)
+		if !ok {
 			return
-		}
-		result := SearchResult{
-			Title:    strings.TrimSpace(strVal(entry, "title", fmt.Sprintf("Video %d", len(results)+1))),
-			URL:      url,
-			Duration: int(floatVal(entry, "duration")),
 		}
 		results = append(results, result)
 	})
@@ -67,13 +56,4 @@ func SearchYouTubeContext(ctx context.Context, query string) ([]SearchResult, er
 		}
 	}
 	return results, nil
-}
-
-func floatVal(m map[string]any, key string) float64 {
-	if v, ok := m[key]; ok {
-		if n, ok := v.(float64); ok {
-			return n
-		}
-	}
-	return 0
 }

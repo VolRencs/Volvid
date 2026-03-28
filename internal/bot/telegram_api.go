@@ -11,11 +11,11 @@ import (
 )
 
 func (b *Bot) apiCtx() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), telegramAPITimeout)
+	return timeoutCtx(telegramAPITimeout)
 }
 
 func (b *Bot) fileSendCtx() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), telegramFileSendTimeout)
+	return timeoutCtx(telegramFileSendTimeout)
 }
 
 func (b *Bot) send(chatID int64, text string) (models.Message, error) {

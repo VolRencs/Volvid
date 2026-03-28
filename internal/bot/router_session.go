@@ -92,3 +92,13 @@ func (b *Bot) cancelSession(chatID int64, sess *Session) {
 	}
 	b.sessions.reset(chatID)
 }
+
+func (b *Bot) resetStaleSession(chatID int64, msgID int) {
+	text := "⚠️ " + staleSessionAlert
+	if msgID != 0 {
+		b.edit(chatID, msgID, text)
+	} else {
+		b.send(chatID, text)
+	}
+	b.sessions.reset(chatID)
+}

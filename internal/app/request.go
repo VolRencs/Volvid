@@ -23,15 +23,16 @@ type OutputProfile struct {
 }
 
 type DownloadRequest struct {
-	Target       ParsedTarget
-	Profile      OutputProfile
-	Fragment     *DownloadFragment
-	ForceSingle  bool
-	PlaylistInfo *PlaylistInfo
-	Entries      []PlaylistEntry
-	Workers      int
-	OutputDir    string
-	Locale       Locale
+	Target        ParsedTarget
+	Profile       OutputProfile
+	Fragment      *DownloadFragment
+	MediaDuration int
+	ForceSingle   bool
+	PlaylistInfo  *PlaylistInfo
+	Entries       []PlaylistEntry
+	Workers       int
+	OutputDir     string
+	Locale        Locale
 }
 
 type CommandSpec struct {

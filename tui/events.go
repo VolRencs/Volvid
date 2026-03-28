@@ -29,10 +29,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.timerActive {
 			return m, nil
 		}
-		m.dlElapsed = time.Since(m.dlStartedAt).Round(time.Second)
-		if m.dlElapsed < 0 {
-			m.dlElapsed = 0
-		}
+		m.updateElapsed()
 		return m, timerTickCmd()
 
 	case tea.KeyPressMsg:
@@ -52,24 +49,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, streamFileProgressCmd(m.depCh, m.screen == scrUpdateDl)
 
 	case msgDepDone:
-		if msg.err != nil {
-			m.depErr = msg.err.Error()
-			return m, nil
-		}
-		if msg.isUpdate {
-			if app.IsWindows {
-				return m, tea.Quit
-			}
-			m.screen = scrUpdateDone
-			return m, nil
-		}
-		if m.screen == scrDepUpdate {
-			deps := app.DetectDeps()
-			m.ytdlpVer, m.ffmpegVer = deps.YtdlpVer, deps.FFmpegVer
-			m.depUpdateDone = true
-			return m, nil
-		}
-		return m.gotoURL()
+		return m.handleDepDone(msg)
 
 	case msgPlaylistFetched:
 		return m.handlePlaylistFetched(msg)
@@ -78,18 +58,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSearchResultsMsg(msg)
 
 	case msgQualityScanned:
-		if len(msg.choices) == 0 {
-			m.qualityChoices = app.DefaultQualityChoices()
-		} else {
-			m.qualityChoices = msg.choices
-		}
-		m.screen = scrQuality
-		m = m.syncMenu()
-		return m, nil
+		return m.handleQualityScanned(msg)
+
+	case msgFragmentDuration:
+		return m.handleFragmentDurationMsg(msg)
 
 	case msgDlUpdate:
 		return m.handleDlUpdate(msg.update)
 	}
 
 	return m.routeFocusedInputMessage(msg)
+}
+
+func (m *Model) updateElapsed() {
+	m.dlElapsed = time.Since(m.dlStartedAt).Round(time.Second)
+	if m.dlElapsed < 0 {
+		m.dlElapsed = 0
+	}
+}
+
+func (m Model) handleDepDone(msg msgDepDone) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.depErr = msg.err.Error()
+		return m, nil
+	}
+	if msg.isUpdate {
+		if app.IsWindows {
+			return m, tea.Quit
+		}
+		m.screen = scrUpdateDone
+		return m, nil
+	}
+	if m.screen == scrDepUpdate {
+		deps := app.DetectDeps()
+		m.ytdlpVer, m.ffmpegVer = deps.YtdlpVer, deps.FFmpegVer
+		m.depUpdateDone = true
+		return m, nil
+	}
+	return m.gotoURL()
+}
+
+func (m Model) handleQualityScanned(msg msgQualityScanned) (tea.Model, tea.Cmd) {
+	m.qualityChoices = msg.choices
+	if len(m.qualityChoices) == 0 {
+		m.qualityChoices = app.DefaultQualityChoices()
+	}
+	m.screen = scrQuality
+	m = m.syncMenu()
+	return m, nil
 }

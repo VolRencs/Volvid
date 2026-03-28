@@ -25,7 +25,7 @@ func (m *Model) resetPlaylistState() {
 	m.closePlaylistInput()
 }
 
-func (m *Model) resetDownloadState() {
+func (m *Model) resetProfileState() {
 	m.forceSingle = false
 	m.numWorkers = 1
 	m.mode = app.DefaultDownloadMode()
@@ -34,10 +34,17 @@ func (m *Model) resetDownloadState() {
 	m.dlEntries = nil
 	m.qualityChoices = nil
 	m.audioProfiles = nil
+}
+
+func (m *Model) resetFragmentState() {
+	m.mediaDuration = 0
 	m.fragment = nil
 	m.fragmentErr = ""
 	m.fragmentIn.SetValue("")
 	m.fragmentIn.Blur()
+}
+
+func (m *Model) resetDownloadProgressState() {
 	m.slots = nil
 	m.dlDone = 0
 	m.dlFailed = 0
@@ -48,24 +55,16 @@ func (m *Model) resetDownloadState() {
 	m.timerActive = false
 }
 
+func (m *Model) resetDownloadState() {
+	m.resetProfileState()
+	m.resetFragmentState()
+	m.resetDownloadProgressState()
+}
+
 func (m *Model) resetTargetFlowState() {
-	m.plInfo = nil
-	m.plCursor = 0
-	m.plTop = 0
-	m.clearPlaylistSelection()
-	m.closePlaylistInput()
-	m.flowErr = ""
-	m.mode = app.DefaultDownloadMode()
-	m.profile = app.DefaultVideoProfile(m.locale)
-	m.dlEntries = nil
-	m.qualityChoices = nil
-	m.audioProfiles = nil
-	m.fragment = nil
-	m.fragmentErr = ""
-	m.fragmentIn.SetValue("")
-	m.fragmentIn.Blur()
-	m.forceSingle = false
-	m.numWorkers = 1
+	m.resetPlaylistState()
+	m.resetProfileState()
+	m.resetFragmentState()
 	m.searchResults = nil
 	m.searchErr = ""
 }

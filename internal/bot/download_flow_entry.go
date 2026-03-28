@@ -57,6 +57,7 @@ func (b *Bot) createDownloadSession(chatID, userID int64, rawURL string, target 
 	sess := newSession(userID, rawURL, workDir)
 	sess.mutate(func(s *Session) {
 		s.Target = target
+		s.MediaDuration = 0
 		s.Fragment = nil
 	})
 	b.sessions.set(chatID, sess)
@@ -73,6 +74,6 @@ func (b *Bot) openDownloadTargetFlow(chatID int64, sess *Session, target app.Par
 	case target.IsPlaylist():
 		b.fetchAndAskPlaylist(chatID, sess)
 	default:
-		b.askFragmentChoice(chatID, sess)
+		b.probeAndAskFragment(chatID, sess)
 	}
 }

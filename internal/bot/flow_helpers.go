@@ -6,7 +6,7 @@ const activeDownloadText = "⏳ Уже идёт скачивание. Дожди
 
 func (b *Bot) rejectWhileDownloading(chatID int64) bool {
 	sess := b.sessions.get(chatID)
-	if sess == nil || sess.snapshot().State != StateDownloading {
+	if sessionState(sess) != StateDownloading {
 		return false
 	}
 	snap := sess.snapshot()

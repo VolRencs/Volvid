@@ -25,13 +25,33 @@ func formatFragmentLabel(fragment *app.DownloadFragment) string {
 func (b *Bot) fragmentPromptText(sess *Session) string {
 	snap := sess.snapshot()
 	lines := []string{"✂️ <b>Фрагмент</b>", "", "Выбери вариант загрузки:"}
-	if snap.Target.HasURLStart && snap.Target.URLStartAt > 0 {
+	if durationText := app.FragmentDurationText(app.LocaleRU, snap.MediaDuration); durationText != "" {
+		lines = append(lines, "", escapeHTML(durationText))
+	}
+	if b.allowURLStartFragment(snap) {
 		lines = append(lines, "", fmt.Sprintf("URL таймкод: <code>%s</code>", app.FormatClockTimestamp(snap.Target.URLStartAt)))
 	}
 	return strings.Join(lines, "\n")
 }
 
-const fragmentInputHint = "Введи диапазон: <code>1:00-2:30</code>\nПоддерживается <code>mm:ss</code> и <code>hh:mm:ss</code>."
+func (b *Bot) fragmentInputHint(mediaDuration int) string {
+	return escapeHTML(app.FragmentInputHintFor(app.LocaleRU, mediaDuration))
+}
+
+func (b *Bot) fragmentInputText(mediaDuration int) string {
+	return escapeHTML(strings.TrimSpace(app.StringsFor(app.LocaleRU).FragmentInputPrompt)) + "\n\n" + b.fragmentInputHint(mediaDuration)
+}
+
+func (b *Bot) fragmentModeNoticeText(notice string, sess *Session) string {
+	if strings.TrimSpace(notice) == "" {
+		return b.modePromptText(sess)
+	}
+	return "⚠️ " + escapeHTML(notice) + "\n\n" + b.modePromptText(sess)
+}
+
+func (b *Bot) allowURLStartFragment(snap SessionSnapshot) bool {
+	return snap.Target.HasURLStart && snap.Target.URLStartAt > 0 && snap.MediaDuration > 0 && snap.Target.URLStartAt < snap.MediaDuration
+}
 
 func (b *Bot) downloadProgressText(done, failed, total int, dlStem string, update app.DlUpdate) string {
 	if total > 0 {
@@ -53,7 +73,7 @@ func (b *Bot) downloadProgressText(done, failed, total int, dlStem string, updat
 func (b *Bot) qualityScanText(sess *Session) string {
 	snap := sess.snapshot()
 	if snap.PlInfo != nil && !snap.ForceSingle {
-		count := b.selectedPlaylistCount(sess)
+		count := playlistSelectionCount(snap)
 		if count == 0 {
 			return "🔍 Сканирую качества и размер…"
 		}
@@ -68,7 +88,7 @@ func (b *Bot) qualityScanText(sess *Session) string {
 func (b *Bot) qualityPromptText(sess *Session) string {
 	snap := sess.snapshot()
 	if snap.PlInfo != nil && !snap.ForceSingle {
-		count := b.selectedPlaylistCount(sess)
+		count := playlistSelectionCount(snap)
 		return fmt.Sprintf(
 			"📋 <b>%s</b>\n%d видео\n\nВыбери качество видео:",
 			escapeHTML(snap.PlInfo.Title),
@@ -80,7 +100,7 @@ func (b *Bot) qualityPromptText(sess *Session) string {
 
 func (b *Bot) qualityScanURLs(sess *Session) []string {
 	snap := sess.snapshot()
-	if snap.PlInfo != nil && !snap.ForceSingle && b.selectedPlaylistCount(sess) == 0 {
+	if snap.PlInfo != nil && !snap.ForceSingle && playlistSelectionCount(snap) == 0 {
 		return nil
 	}
 	if snap.PlInfo == nil || snap.ForceSingle {
@@ -92,7 +112,7 @@ func (b *Bot) qualityScanURLs(sess *Session) []string {
 func (b *Bot) modePromptText(sess *Session) string {
 	snap := sess.snapshot()
 	if snap.PlInfo != nil && !snap.ForceSingle {
-		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nЧто скачать?", escapeHTML(snap.PlInfo.Title), b.selectedPlaylistCount(sess))
+		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nЧто скачать?", escapeHTML(snap.PlInfo.Title), playlistSelectionCount(snap))
 	}
 	return "🎛 <b>Выбери режим</b>\n\nЧто скачать?"
 }
@@ -100,7 +120,7 @@ func (b *Bot) modePromptText(sess *Session) string {
 func (b *Bot) audioPromptText(sess *Session) string {
 	snap := sess.snapshot()
 	if snap.PlInfo != nil && !snap.ForceSingle {
-		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nВыбери аудио:", escapeHTML(snap.PlInfo.Title), b.selectedPlaylistCount(sess))
+		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nВыбери аудио:", escapeHTML(snap.PlInfo.Title), playlistSelectionCount(snap))
 	}
 	return "🎵 Выбери аудио:"
 }
@@ -115,7 +135,7 @@ func (b *Bot) downloadStartText(sess *Session) string {
 	modeIcon, modeLabel := downloadModeDisplay(profile)
 
 	if snap.PlInfo != nil && !snap.ForceSingle {
-		count := b.selectedPlaylistCount(sess)
+		count := playlistSelectionCount(snap)
 		return fmt.Sprintf(
 			"📋 <b>%s</b>\n%d видео\n🎛 Режим: %s\n\n⬇️ Начинаю скачивание…",
 			escapeHTML(snap.PlInfo.Title),

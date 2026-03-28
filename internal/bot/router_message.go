@@ -58,8 +58,7 @@ func (b *Bot) handleCommand(msg *models.Message) {
 		}
 		b.send(chatID, "❌ Отменено.")
 	case "status":
-		if !b.isAdminMessage(msg) {
-			b.send(chatID, "Команда недоступна.")
+		if !b.ensureAdminCommand(msg) {
 			return
 		}
 		deps := app.DetectDeps()
@@ -68,8 +67,7 @@ func (b *Bot) handleCommand(msg *models.Message) {
 			verLine("ffmpeg", deps.FFmpegVer)+"\n"+
 			verLine("bot api", b.backendLabel()+" | "+b.cfg.ServerURL))
 	case "update":
-		if !b.isOwnerMessage(msg) {
-			b.send(chatID, "Команда недоступна.")
+		if !b.ensureOwnerCommand(msg) {
 			return
 		}
 		b.startDepsUpdate(chatID)

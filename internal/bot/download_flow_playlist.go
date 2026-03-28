@@ -20,6 +20,8 @@ func (b *Bot) startPlaylistFetch(sess *Session) {
 	sess.mutate(func(s *Session) {
 		s.State = StateFetchingPlaylist
 		s.ForceSingle = false
+		s.MediaDuration = 0
+		s.Fragment = nil
 	})
 }
 
@@ -50,6 +52,7 @@ func (b *Bot) storeFetchedPlaylist(sess *Session, info *app.PlaylistInfo) {
 		s.PlaylistPage = 0
 		s.QualityChoices = nil
 		s.Profile = app.OutputProfile{}
+		s.MediaDuration = 0
 		s.Fragment = nil
 	})
 }

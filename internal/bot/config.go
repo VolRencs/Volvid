@@ -23,6 +23,8 @@ const (
 	telegramLocalMaxSendBytes = int64(2000 * 1024 * 1024)
 	telegramAPITimeout        = 20 * time.Second
 	telegramFileSendTimeout   = 10 * time.Minute
+	telegramPollTimeout       = time.Minute
+	telegramHTTPClientTimeout = telegramFileSendTimeout + time.Minute
 )
 
 type Config struct {
@@ -94,8 +96,12 @@ func (c Config) sendLimitNotice() string {
 	return "Telegram Bot API принимает файлы до 50 МБ."
 }
 
+func timeoutCtx(timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), timeout)
+}
+
 func adminCtx() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), telegramAPITimeout)
+	return timeoutCtx(telegramAPITimeout)
 }
 
 var botAPIHTTPClient = app.NewHTTPClient(telegramAPITimeout)

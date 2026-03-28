@@ -197,7 +197,6 @@ func (i *inputField) deleteWordBackward() {
 	for start > 0 && !unicode.IsSpace(i.value[start-1]) {
 		start--
 	}
-
 	i.value = append(i.value[:start], i.value[i.cursor:]...)
 	i.cursor = start
 }
@@ -214,7 +213,6 @@ func (i *inputField) deleteWordForward() {
 	for end < len(i.value) && !unicode.IsSpace(i.value[end]) {
 		end++
 	}
-
 	i.value = append(i.value[:i.cursor], i.value[end:]...)
 }
 

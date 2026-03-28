@@ -40,6 +40,8 @@ type probePayload struct {
 
 var probeCache sync.Map
 
+var ErrMediaDurationUnavailable = errors.New("media duration unavailable")
+
 func ProbeMedia(target ParsedTarget) (*MediaProbe, error) {
 	return ProbeMediaContext(context.Background(), target)
 }
@@ -50,6 +52,21 @@ func ProbeMediaURL(raw string) (*MediaProbe, error) {
 		return nil, err
 	}
 	return ProbeMediaContext(context.Background(), target)
+}
+
+func ProbeMediaDuration(target ParsedTarget) (int, error) {
+	return ProbeMediaDurationContext(context.Background(), target)
+}
+
+func ProbeMediaDurationContext(ctx context.Context, target ParsedTarget) (int, error) {
+	probe, err := ProbeMediaContext(ctx, target)
+	if err != nil {
+		return 0, err
+	}
+	if probe == nil || probe.Duration <= 0 {
+		return 0, ErrMediaDurationUnavailable
+	}
+	return probe.Duration, nil
 }
 
 func ProbeMediaContext(ctx context.Context, target ParsedTarget) (*MediaProbe, error) {

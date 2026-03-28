@@ -227,6 +227,17 @@ func (b *Bot) ensureAdminCommand(msg *models.Message) bool {
 	if b.isAdminMessage(msg) {
 		return true
 	}
+	return b.rejectRestrictedCommand(msg)
+}
+
+func (b *Bot) ensureOwnerCommand(msg *models.Message) bool {
+	if b.isOwnerMessage(msg) {
+		return true
+	}
+	return b.rejectRestrictedCommand(msg)
+}
+
+func (b *Bot) rejectRestrictedCommand(msg *models.Message) bool {
 	if msg != nil {
 		b.send(msg.Chat.ID, commandUnavailableText)
 	}

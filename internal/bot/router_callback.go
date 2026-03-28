@@ -39,7 +39,7 @@ func (b *Bot) handleCallback(cq *models.CallbackQuery) {
 	sess, ok := b.callbackSession(meta)
 	if !ok {
 		b.answer(cq, staleSessionAlert)
-		b.edit(meta.chatID, meta.msgID, "⚠️ "+staleSessionAlert)
+		b.resetStaleSession(meta.chatID, meta.msgID)
 		return
 	}
 

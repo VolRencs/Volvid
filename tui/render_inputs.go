@@ -2,6 +2,8 @@ package tui
 
 import (
 	"strings"
+
+	app "YouTubeBuild/internal/app"
 )
 
 func (m Model) renderTextInputScreen(title, prompt string, field inputField, errText, hintText string, bindings ...binding) string {
@@ -46,5 +48,5 @@ func (m Model) viewSearchResults() string {
 
 func (m Model) viewFragmentInput() string {
 	u := m.u()
-	return m.renderTextInputScreen(u.FragmentInputTitle, u.FragmentInputPrompt, m.fragmentIn, m.fragmentErr, u.FragmentInputHint, m.kbEnter(), m.kbEsc(), m.kbQuit())
+	return m.renderTextInputScreen(u.FragmentInputTitle, u.FragmentInputPrompt, m.fragmentIn, m.fragmentErr, app.FragmentInputHintFor(m.locale, m.mediaDuration), m.kbEnter(), m.kbEsc(), m.kbQuit())
 }

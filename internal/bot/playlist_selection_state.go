@@ -58,7 +58,7 @@ func (b *Bot) playlistSelectionEntries(sess *Session) []app.PlaylistEntry {
 }
 
 func (b *Bot) selectedPlaylistCount(sess *Session) int {
-	return len(sess.snapshot().SelectedIndices)
+	return playlistSelectionCount(sess.snapshot())
 }
 
 func (b *Bot) playlistSelectionURLs(sess *Session) []string {
@@ -104,4 +104,8 @@ func playlistEntriesFromSelection(info *app.PlaylistInfo, selected map[int]bool)
 		}
 	}
 	return entries
+}
+
+func playlistSelectionCount(snap SessionSnapshot) int {
+	return len(snap.SelectedIndices)
 }

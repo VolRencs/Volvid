@@ -14,7 +14,7 @@ func buildQualityChoices(heights []int, counts map[int]int, videos []videoQualit
 			Height:    height,
 			Available: counts[height],
 			Total:     total,
-			SizeBytes: estimateChoiceSize(heights[i:], videos, false),
+			SizeBytes: estimateChoiceSize(heights[i:], videos),
 			FmtChain:  chain,
 			FmtLabels: labels,
 		})
@@ -35,11 +35,11 @@ func buildHeightChain(heights []int) ([]string, []string) {
 	return chain, labels
 }
 
-func estimateChoiceSize(heights []int, videos []videoQualityInfo, audioOnly bool) int64 {
+func estimateChoiceSize(heights []int, videos []videoQualityInfo) int64 {
 	total := int64(0)
 	found := false
 	for _, video := range videos {
-		size, ok := estimateVideoSize(video, heights, audioOnly)
+		size, ok := estimateVideoSize(video, heights)
 		if !ok {
 			continue
 		}
@@ -52,13 +52,7 @@ func estimateChoiceSize(heights []int, videos []videoQualityInfo, audioOnly bool
 	return total
 }
 
-func estimateVideoSize(video videoQualityInfo, heights []int, audioOnly bool) (int64, bool) {
-	if audioOnly {
-		if video.audioSize <= 0 {
-			return 0, false
-		}
-		return video.audioSize, true
-	}
+func estimateVideoSize(video videoQualityInfo, heights []int) (int64, bool) {
 	for _, height := range heights {
 		if !video.hasHeight[height] {
 			continue

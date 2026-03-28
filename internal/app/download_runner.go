@@ -10,36 +10,22 @@ import (
 )
 
 func runDownloadRequest(ctx context.Context, slot int, req DownloadRequest, url, tmpl string, extra []string, ch chan<- DlUpdate) bool {
-	req = NormalizeDownloadRequest(req)
 	strs := StringsFor(req.Locale)
-
-	formats := []string{""}
-	labels := []string{""}
-	if req.Profile.Mode == ModeVideo {
-		formats = req.Profile.VideoFmtChain
-		labels = req.Profile.VideoFmtLabels
-		if len(formats) == 0 {
-			formats = []string{"bestvideo+bestaudio/best"}
-		}
-	}
+	formats, labels := downloadFormats(req)
 
 	for i, format := range formats {
 		if ctx != nil && ctx.Err() != nil {
 			return false
 		}
 		if req.Profile.Mode == ModeVideo && i > 0 {
-			label := format
-			if i < len(labels) && labels[i] != "" {
-				label = labels[i]
-			}
 			ch <- DlUpdate{
 				Type: EvFallback,
 				Slot: slot,
-				Text: fmt.Sprintf(strs.FallbackFmt, i, label),
+				Text: fmt.Sprintf(strs.FallbackFmt, i, formatLabel(format, labels, i)),
 			}
 		}
 
-		spec, err := BuildCommandSpec(req, url, tmpl, format, extra)
+		spec, err := buildPreparedCommandSpec(req, url, tmpl, format, extra)
 		if err != nil {
 			return false
 		}
@@ -48,6 +34,25 @@ func runDownloadRequest(ctx context.Context, slot int, req DownloadRequest, url,
 		}
 	}
 	return false
+}
+
+func downloadFormats(req DownloadRequest) ([]string, []string) {
+	if req.Profile.Mode != ModeVideo {
+		return []string{""}, []string{""}
+	}
+
+	formats := req.Profile.VideoFmtChain
+	if len(formats) == 0 {
+		formats = []string{"bestvideo+bestaudio/best"}
+	}
+	return formats, req.Profile.VideoFmtLabels
+}
+
+func formatLabel(format string, labels []string, idx int) string {
+	if idx >= 0 && idx < len(labels) && labels[idx] != "" {
+		return labels[idx]
+	}
+	return format
 }
 
 func normalizeWorkerCount(workers, jobs int) int {
@@ -78,54 +83,98 @@ func StartDownloadRequestContext(ctx context.Context, req DownloadRequest, ch ch
 		req = preparedReq
 
 		if !requestUsesPlaylist(req) {
-			ok := runDownloadRequest(ctx, 0, req, req.Target.DownloadURL(req.ForceSingle),
-				filepath.Join(req.OutputDir, "%(title)s.%(ext)s"),
-				[]string{"--no-playlist"}, ch,
-			)
+			ok := runSingleDownload(ctx, req, ch)
 			ch <- DlUpdate{Type: EvDone, OK: ok}
 			return
 		}
 
-		plDir := filepath.Join(req.OutputDir, SanitizeDirname(req.PlaylistInfo.Title))
-		if err := os.MkdirAll(plDir, 0o755); err != nil {
-			plDir = filepath.Join(req.OutputDir, "playlist")
-			_ = os.MkdirAll(plDir, 0o755)
-		}
-
 		entries := requestEntries(req)
-		workerCount := normalizeWorkerCount(req.Workers, len(entries))
-		jobs := make(chan PlaylistEntry)
-		go func() {
-			defer close(jobs)
-			for _, e := range entries {
-				select {
-				case <-ctx.Done():
-					return
-				case jobs <- e:
-				}
-			}
-		}()
+		runPlaylistDownloads(ctx, req, entries, ch, &wg)
+	}()
+}
 
-		for slot := 0; slot < workerCount; slot++ {
-			wg.Add(1)
-			go func(slot int) {
-				defer wg.Done()
-				for e := range jobs {
-					if ctx.Err() != nil {
-						return
-					}
-					func() {
-						defer func() {
-							time.Sleep(slotResetDelay)
-							ch <- DlUpdate{Type: EvReset, Slot: slot}
-						}()
-						ch <- DlUpdate{Type: EvStart, Slot: slot, Text: e.Title}
-						tmpl := filepath.Join(plDir, fmt.Sprintf("%03d - %%(title)s.%%(ext)s", e.Index))
-						ok := runDownloadRequest(ctx, slot, req, e.URL, tmpl, []string{"--no-playlist"}, ch)
-						ch <- DlUpdate{Type: EvDone, Slot: slot, OK: ok}
-					}()
-				}
-			}(slot)
+func runSingleDownload(ctx context.Context, req DownloadRequest, ch chan<- DlUpdate) bool {
+	return runDownloadRequest(
+		ctx,
+		0,
+		req,
+		req.Target.DownloadURL(req.ForceSingle),
+		filepath.Join(req.OutputDir, "%(title)s.%(ext)s"),
+		[]string{"--no-playlist"},
+		ch,
+	)
+}
+
+func runPlaylistDownloads(ctx context.Context, req DownloadRequest, entries []PlaylistEntry, ch chan<- DlUpdate, wg *sync.WaitGroup) {
+	if len(entries) == 0 {
+		return
+	}
+
+	workerCount := normalizeWorkerCount(req.Workers, len(entries))
+	jobs := enqueuePlaylistJobs(ctx, entries)
+	outputDir := playlistOutputDir(req)
+	for slot := 0; slot < workerCount; slot++ {
+		wg.Add(1)
+		go playlistWorker(ctx, slot, req, outputDir, jobs, ch, wg)
+	}
+}
+
+func enqueuePlaylistJobs(ctx context.Context, entries []PlaylistEntry) <-chan PlaylistEntry {
+	jobs := make(chan PlaylistEntry)
+	go func() {
+		defer close(jobs)
+		for _, entry := range entries {
+			select {
+			case <-ctx.Done():
+				return
+			case jobs <- entry:
+			}
 		}
 	}()
+	return jobs
+}
+
+func playlistWorker(
+	ctx context.Context,
+	slot int,
+	req DownloadRequest,
+	outputDir string,
+	jobs <-chan PlaylistEntry,
+	ch chan<- DlUpdate,
+	wg *sync.WaitGroup,
+) {
+	defer wg.Done()
+	for entry := range jobs {
+		if ctx.Err() != nil {
+			return
+		}
+		runPlaylistEntry(ctx, slot, req, outputDir, entry, ch)
+	}
+}
+
+func runPlaylistEntry(ctx context.Context, slot int, req DownloadRequest, outputDir string, entry PlaylistEntry, ch chan<- DlUpdate) {
+	defer resetDownloadSlot(slot, ch)
+	ch <- DlUpdate{Type: EvStart, Slot: slot, Text: entry.Title}
+	ok := runDownloadRequest(ctx, slot, req, entry.URL, playlistOutputTemplate(outputDir, entry), []string{"--no-playlist"}, ch)
+	ch <- DlUpdate{Type: EvDone, Slot: slot, OK: ok}
+}
+
+func resetDownloadSlot(slot int, ch chan<- DlUpdate) {
+	time.Sleep(slotResetDelay)
+	ch <- DlUpdate{Type: EvReset, Slot: slot}
+}
+
+func playlistOutputDir(req DownloadRequest) string {
+	dir := filepath.Join(req.OutputDir, SanitizeDirname(req.PlaylistInfo.Title))
+	if err := os.MkdirAll(dir, 0o755); err == nil {
+		return dir
+	}
+
+	dir = filepath.Join(req.OutputDir, "playlist")
+	_ = os.MkdirAll(dir, 0o755)
+	return dir
+}
+
+func playlistOutputTemplate(outputDir string, entry PlaylistEntry) string {
+	return filepath.Join(outputDir, fmt.Sprintf("%03d - %%(title)s.%%(ext)s", entry.Index))
 }

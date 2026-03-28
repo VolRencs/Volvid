@@ -12,31 +12,18 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 	switch m.screen {
 	case scrUpdateReady:
 		if idx == 0 {
-			m.screen = scrUpdateDl
-			m.depProgress = app.FileProgress{}
-			m.depErr = ""
-
-			var cmd tea.Cmd
 			info := m.updateInfo
-			m.depCh, cmd = launchProgress(func(ch chan<- app.FileProgress) error {
+			return m.startDependencyDownload(scrUpdateDl, "", true, func(ch chan<- app.FileProgress) error {
 				return app.ApplyUpdateFor(m.locale, info, ch)
-			}, true)
-			return m, cmd
+			})
 		}
 		return m.gotoChecks()
 
 	case scrFFmpegAsk:
 		if idx == 0 {
-			m.depLabel = "ffmpeg"
-			m.depProgress = app.FileProgress{}
-			m.depErr = ""
-			m.screen = scrDepDl
-
-			var cmd tea.Cmd
-			m.depCh, cmd = launchProgress(func(ch chan<- app.FileProgress) error {
+			return m.startDependencyDownload(scrDepDl, "ffmpeg", false, func(ch chan<- app.FileProgress) error {
 				return app.InstallFFmpegFor(m.locale, ch)
-			}, false)
-			return m, cmd
+			})
 		}
 		return m.gotoURL()
 
@@ -58,23 +45,7 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		return m.activateSearchResult(idx)
 
 	case scrFragmentChoice:
-		options := m.fragmentChoiceOptions()
-		if idx < 0 || idx >= len(options) {
-			return m, nil
-		}
-		switch {
-		case idx == 0:
-			m.fragment = nil
-			return m.startModeSelection()
-		case m.target.HasURLStart && m.target.URLStartAt > 0 && idx == 1:
-			fragment := app.DownloadFragment{StartAt: m.target.URLStartAt}
-			m.fragment = &fragment
-			return m.startModeSelection()
-		default:
-			m.fragmentErr = ""
-			m.screen = scrFragmentInput
-			return m, m.fragmentIn.Focus()
-		}
+		return m.activateFragmentChoice(idx)
 
 	case scrMode:
 		m.mode = m.modeAt(idx)
@@ -86,12 +57,7 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		switch m.mode {
 		case app.ModeThumbnail:
 			m.profile = app.ThumbnailOutputProfile(m.locale)
-			if m.shouldAskWorkers() {
-				m.screen = scrWorkers
-				m = m.syncMenu()
-				return m, nil
-			}
-			return m.startDownload()
+			return m.continueAfterProfileSelection()
 		case app.ModeAudio:
 			m.audioProfiles = app.AudioOutputProfiles(m.locale)
 			m.screen = scrAudio
@@ -104,22 +70,12 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 	case scrAudio:
 		m.profile = m.audioProfileAt(idx)
 		m.flowErr = ""
-		if m.shouldAskWorkers() {
-			m.screen = scrWorkers
-			m = m.syncMenu()
-			return m, nil
-		}
-		return m.startDownload()
+		return m.continueAfterProfileSelection()
 
 	case scrQuality:
 		m.profile = m.qualityProfileAt(idx)
 		m.flowErr = ""
-		if m.shouldAskWorkers() {
-			m.screen = scrWorkers
-			m = m.syncMenu()
-			return m, nil
-		}
-		return m.startDownload()
+		return m.continueAfterProfileSelection()
 
 	case scrWorkers:
 		m.numWorkers = idx + 1
@@ -127,4 +83,39 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m Model) continueAfterProfileSelection() (tea.Model, tea.Cmd) {
+	if m.shouldAskWorkers() {
+		m.screen = scrWorkers
+		m = m.syncMenu()
+		return m, nil
+	}
+	return m.startDownload()
+}
+
+func (m Model) activateFragmentChoice(idx int) (tea.Model, tea.Cmd) {
+	options := m.fragmentChoiceOptions()
+	if idx < 0 || idx >= len(options) {
+		return m, nil
+	}
+
+	switch {
+	case idx == 0:
+		m.fragment = nil
+		return m.startModeSelection()
+	case m.canUseURLStartFragment() && idx == 1:
+		fragment := app.DownloadFragment{StartAt: m.target.URLStartAt}
+		if err := app.ValidateFragmentDuration(fragment, m.mediaDuration); err != nil {
+			m.flowErr = app.FragmentURLStartOutOfBoundsText(m.locale, m.mediaDuration)
+			m = m.syncMenu()
+			return m, nil
+		}
+		m.fragment = &fragment
+		return m.startModeSelection()
+	default:
+		m.fragmentErr = ""
+		m.screen = scrFragmentInput
+		return m, m.fragmentIn.Focus()
+	}
 }

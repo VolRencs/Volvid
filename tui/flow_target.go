@@ -59,9 +59,19 @@ func (m Model) startTargetFlow(rawURL string, target app.ParsedTarget) (tea.Mode
 }
 
 func (m Model) startFragmentFlow() (tea.Model, tea.Cmd) {
-	m.fragment = nil
-	m.fragmentErr = ""
-	m.fragmentIn.SetValue("")
+	m.resetFragmentState()
+	m.screen = scrFragmentProbe
+	return m, probeFragmentDurationCmd(m.target)
+}
+
+func (m Model) handleFragmentDurationMsg(msg msgFragmentDuration) (tea.Model, tea.Cmd) {
+	if msg.err != nil || msg.duration <= 0 {
+		m.mediaDuration = 0
+		m.fragment = nil
+		return m.startModeSelectionWithNotice(app.FragmentUnavailableText(m.locale))
+	}
+
+	m.mediaDuration = msg.duration
 	m.screen = scrFragmentChoice
 	m = m.syncMenu()
 	return m, nil

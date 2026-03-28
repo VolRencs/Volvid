@@ -3,12 +3,14 @@ package app
 import "fmt"
 
 func BuildCommandSpec(req DownloadRequest, sourceURL, outputTemplate, format string, extra []string) (CommandSpec, error) {
-	preparedReq, err := PrepareDownloadRequest(req)
+	req, err := PrepareDownloadRequest(req)
 	if err != nil {
 		return CommandSpec{}, err
 	}
-	req = preparedReq
+	return buildPreparedCommandSpec(req, sourceURL, outputTemplate, format, extra)
+}
 
+func buildPreparedCommandSpec(req DownloadRequest, sourceURL, outputTemplate, format string, extra []string) (CommandSpec, error) {
 	args := make([]string, 0, 16+len(extra))
 	args = append(args, ffmpegArgs()...)
 

@@ -7,7 +7,6 @@ func requestUsesPlaylist(req DownloadRequest) bool {
 }
 
 func requestEntries(req DownloadRequest) []PlaylistEntry {
-	req = NormalizeDownloadRequest(req)
 	if !requestUsesPlaylist(req) {
 		return nil
 	}
@@ -15,18 +14,21 @@ func requestEntries(req DownloadRequest) []PlaylistEntry {
 }
 
 func requestSourceURLs(req DownloadRequest) []string {
-	req = NormalizeDownloadRequest(req)
-
 	if entries := requestEntries(req); len(entries) > 0 {
-		urls := make([]string, 0, len(entries))
-		for _, entry := range entries {
-			if strings.TrimSpace(entry.URL) == "" {
-				continue
-			}
-			urls = append(urls, entry.URL)
-		}
-		return urls
+		return entryURLs(entries)
 	}
 
 	return []string{req.Target.DownloadURL(req.ForceSingle)}
+}
+
+func entryURLs(entries []PlaylistEntry) []string {
+	urls := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		url := strings.TrimSpace(entry.URL)
+		if url == "" {
+			continue
+		}
+		urls = append(urls, url)
+	}
+	return urls
 }

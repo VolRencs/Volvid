@@ -53,7 +53,7 @@ func CheckUpdateContext(ctx context.Context) *UpdateInfo {
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return nil
 	}
-	latest := strings.TrimPrefix(strVal(data, "tag_name", ""), "v")
+	latest := strings.TrimPrefix(mapString(data, "tag_name", ""), "v")
 	if latest == "" || !versionGT(latest, Version) {
 		return nil
 	}
@@ -64,10 +64,10 @@ func CheckUpdateContext(ctx context.Context) *UpdateInfo {
 		if !ok {
 			continue
 		}
-		if strVal(asset, "name", "") == want {
+		if mapString(asset, "name", "") == want {
 			return &UpdateInfo{
 				Latest: latest,
-				DlURL:  strVal(asset, "browser_download_url", ""),
+				DlURL:  mapString(asset, "browser_download_url", ""),
 			}
 		}
 	}

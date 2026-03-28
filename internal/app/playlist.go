@@ -34,6 +34,7 @@ func FetchPlaylistInfoFor(ctx context.Context, url string, l Locale) (*PlaylistI
 	var (
 		entries []PlaylistEntry
 		first   map[string]any
+		strs    = StringsFor(l)
 	)
 
 	err := scanYTDLPJSONLines(ctx, playlistFetchTimeout, []string{
@@ -47,50 +48,87 @@ func FetchPlaylistInfoFor(ctx context.Context, url string, l Locale) (*PlaylistI
 		if first == nil {
 			first = e
 		}
-		videoURL := strVal(e, "url", strVal(e, "webpage_url", ""))
-		if videoURL == "" {
-			if id := strVal(e, "id", ""); id != "" {
-				videoURL = "https://youtu.be/" + id
-			} else {
-				return
-			}
-		}
+
 		n := len(entries) + 1
-		dur, _ := e["duration"].(float64)
-		defTitle := fmt.Sprintf(StringsFor(l).VideoTitleFmt, n)
-		entries = append(entries, PlaylistEntry{
-			Index:    n,
-			Title:    strVal(e, "title", strVal(e, "id", defTitle)),
-			URL:      videoURL,
-			Duration: int(dur),
-		})
+		entry, ok := playlistEntryFromMap(e, n, strs.VideoTitleFmt)
+		if !ok {
+			return
+		}
+		entries = append(entries, entry)
 	})
 
 	if len(entries) == 0 {
 		switch {
 		case err != nil:
 			if errors.Is(err, context.DeadlineExceeded) {
-				return nil, errors.New(StringsFor(l).PlTimeout)
+				return nil, errors.New(strs.PlTimeout)
 			}
 			return nil, err
 		default:
-			return nil, errors.New(StringsFor(l).PlEmptyPlaylist)
+			return nil, errors.New(strs.PlEmptyPlaylist)
 		}
 	}
 	title := "playlist"
 	if first != nil {
-		title = strVal(first, "playlist_title", strVal(first, "playlist", "playlist"))
+		title = mapString(first, "playlist_title", mapString(first, "playlist", "playlist"))
 	}
 	return &PlaylistInfo{Title: title, Entries: entries}, nil
 }
 
-func strVal(m map[string]any, key, def string) string {
+func mapString(m map[string]any, key, def string) string {
 	if v, ok := m[key]; ok {
 		if s, ok := v.(string); ok && s != "" {
 			return s
 		}
 	}
 	return def
+}
+
+func mapFloat(m map[string]any, key string) float64 {
+	if v, ok := m[key]; ok {
+		if n, ok := v.(float64); ok {
+			return n
+		}
+	}
+	return 0
+}
+
+func mediaEntryURL(entry map[string]any) string {
+	if url := mapString(entry, "url", mapString(entry, "webpage_url", "")); url != "" {
+		return url
+	}
+	if id := mapString(entry, "id", ""); id != "" {
+		return "https://youtu.be/" + id
+	}
+	return ""
+}
+
+func playlistEntryFromMap(entry map[string]any, index int, titleFmt string) (PlaylistEntry, bool) {
+	url := mediaEntryURL(entry)
+	if url == "" {
+		return PlaylistEntry{}, false
+	}
+
+	defaultTitle := fmt.Sprintf(titleFmt, index)
+	return PlaylistEntry{
+		Index:    index,
+		Title:    mapString(entry, "title", mapString(entry, "id", defaultTitle)),
+		URL:      url,
+		Duration: int(mapFloat(entry, "duration")),
+	}, true
+}
+
+func searchResultFromMap(entry map[string]any, index int) (SearchResult, bool) {
+	url := mediaEntryURL(entry)
+	if url == "" {
+		return SearchResult{}, false
+	}
+
+	return SearchResult{
+		Title:    strings.TrimSpace(mapString(entry, "title", fmt.Sprintf("Video %d", index))),
+		URL:      url,
+		Duration: int(mapFloat(entry, "duration")),
+	}, true
 }
 
 var (

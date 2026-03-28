@@ -1,8 +1,10 @@
 package bot
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"log"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -12,6 +14,12 @@ import (
 	tg "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
+
+type documentInput struct {
+	file        models.InputFile
+	displayPath string
+	close       func()
+}
 
 func (b *Bot) sendLimitBytes() int64 {
 	if b == nil || b.maxSend <= 0 {
@@ -33,69 +41,62 @@ func (b *Bot) sendFile(chatID int64, path string) error {
 	if err != nil {
 		return fmt.Errorf("stat %s: %w", path, err)
 	}
-	if fi.Size() > b.sendLimitBytes() {
-		b.logf("sendFile rejected chat=%d path=%s size=%d limit=%d", chatID, path, fi.Size(), b.sendLimitBytes())
+	limit := b.sendLimitBytes()
+	if fi.Size() > limit {
+		b.logf("sendFile rejected chat=%d path=%s size=%d limit=%d", chatID, path, fi.Size(), limit)
 		return errTelegramFileTooLarge
 	}
 
-	var sendErr error
+	input, err := b.documentInput(path)
+	if err != nil {
+		return err
+	}
+	defer input.closeFile()
+
+	err = normalizeSendFileError(input.displayPath, b.sendDocument(chatID, input.file))
+	if err != nil {
+		b.logError(fmt.Sprintf("sendFile chat=%d path=%s", chatID, input.displayPath), err)
+	}
+	return err
+}
+
+func (b *Bot) documentInput(path string) (documentInput, error) {
 	if b.cfg.LocalServer {
-		sendErr = b.sendFileByLocalPath(chatID, path)
-	} else {
-		sendErr = b.sendFileByUpload(chatID, path)
-		if isTelegramTooLarge(sendErr) {
-			return errTelegramFileTooLarge
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return documentInput{}, fmt.Errorf("abs %s: %w", path, err)
 		}
-	}
-	if sendErr != nil {
-		log.Printf("sendFile chat=%d path=%s: %v", chatID, path, sendErr)
-	}
-	return sendErr
-}
-
-func (b *Bot) sendFileByLocalPath(chatID int64, path string) error {
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return fmt.Errorf("abs %s: %w", path, err)
+		return documentInput{
+			file:        &models.InputFileString{Data: localFileURI(absPath)},
+			displayPath: absPath,
+		}, nil
 	}
 
-	ctx, cancel := b.fileSendCtx()
-	defer cancel()
-
-	_, err = b.api.SendDocument(ctx, &tg.SendDocumentParams{
-		ChatID:   chatID,
-		Document: &models.InputFileString{Data: localFileURI(absPath)},
-	})
-	if err != nil && isTelegramTooLarge(err) {
-		return errTelegramFileTooLarge
-	}
-	if err != nil {
-		return fmt.Errorf("send local file %s: %w", absPath, err)
-	}
-	return nil
-}
-
-func (b *Bot) sendFileByUpload(chatID int64, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("open %s: %w", path, err)
+		return documentInput{}, fmt.Errorf("open %s: %w", path, err)
 	}
-	defer f.Close()
-
-	ctx, cancel := b.fileSendCtx()
-	defer cancel()
-
-	_, err = b.api.SendDocument(ctx, &tg.SendDocumentParams{
-		ChatID: chatID,
-		Document: &models.InputFileUpload{
+	return documentInput{
+		file: &models.InputFileUpload{
 			Filename: filepath.Base(path),
 			Data:     f,
 		},
+		displayPath: path,
+		close: func() {
+			_ = f.Close()
+		},
+	}, nil
+}
+
+func (b *Bot) sendDocument(chatID int64, file models.InputFile) error {
+	ctx, cancel := b.fileSendCtx()
+	defer cancel()
+
+	_, err := b.api.SendDocument(ctx, &tg.SendDocumentParams{
+		ChatID:   chatID,
+		Document: file,
 	})
-	if err != nil {
-		return fmt.Errorf("upload file %s: %w", path, err)
-	}
-	return nil
+	return err
 }
 
 func localFileURI(path string) string {
@@ -112,4 +113,40 @@ func isTelegramTooLarge(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "413") || strings.Contains(msg, "request entity too large")
+}
+
+func normalizeSendFileError(path string, err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case isTelegramTooLarge(err):
+		return errTelegramFileTooLarge
+	case isTimeoutError(err):
+		return fmt.Errorf("send file %s: timeout waiting for telegram response: %w", path, err)
+	default:
+		return fmt.Errorf("send file %s: %w", path, err)
+	}
+}
+
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded")
+}
+
+func (d documentInput) closeFile() {
+	if d.close != nil {
+		d.close()
+	}
 }

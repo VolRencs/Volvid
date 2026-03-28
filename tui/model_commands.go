@@ -69,6 +69,13 @@ func loadQualityChoicesCmd(urls []string) tea.Cmd {
 	}
 }
 
+func probeFragmentDurationCmd(target app.ParsedTarget) tea.Cmd {
+	return func() tea.Msg {
+		duration, err := app.ProbeMediaDuration(target)
+		return msgFragmentDuration{duration: duration, err: err}
+	}
+}
+
 func listenDownloadCmd(ch <-chan app.DlUpdate) tea.Cmd {
 	return func() tea.Msg {
 		u, ok := <-ch

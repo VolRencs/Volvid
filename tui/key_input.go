@@ -8,7 +8,7 @@ import (
 
 func (m Model) handleURLKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "?":
+	case "ctrl+g":
 		return m.openSearchInput()
 	case "enter":
 		return m.submitURLInput()
@@ -35,13 +35,9 @@ func (m Model) handleFragmentInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m = m.syncMenu()
 		return m, nil
 	case "enter":
-		fragment, err := app.ParseFragmentRange(m.fragmentIn.Value())
+		fragment, err := app.ParseBoundedFragmentRange(m.fragmentIn.Value(), m.mediaDuration)
 		if err != nil {
-			m.fragmentErr = m.u().FragmentInputBadFormat
-			return m, nil
-		}
-		if !fragment.IsValid() {
-			m.fragmentErr = m.u().FragmentInputBadRange
+			m.fragmentErr = app.FragmentInputErrorText(m.locale, err, m.mediaDuration)
 			return m, nil
 		}
 		m.fragmentErr = ""

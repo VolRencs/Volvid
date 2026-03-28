@@ -24,6 +24,7 @@ func (s *Session) snapshot() SessionSnapshot {
 		QualityChoices:  append([]app.QualityChoice(nil), s.QualityChoices...),
 		Mode:            s.Mode,
 		Profile:         s.Profile,
+		MediaDuration:   s.MediaDuration,
 		Fragment:        cloneDownloadFragment(s.Fragment),
 		ForceSingle:     s.ForceSingle,
 		StatusMsgID:     s.StatusMsgID,

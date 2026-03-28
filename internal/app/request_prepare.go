@@ -59,8 +59,13 @@ func validatePreparedDownloadRequest(req DownloadRequest) error {
 	if req.Profile.Mode == ModeAudio && FFmpegResolved == "" {
 		return errors.New("ffmpeg is required for audio conversion")
 	}
-	if req.Fragment != nil && !req.Fragment.IsValid() {
-		return errors.New("invalid download fragment")
+	if req.Fragment != nil {
+		if !req.Fragment.IsValid() {
+			return errors.New("invalid download fragment")
+		}
+		if err := ValidateFragmentDuration(*req.Fragment, req.MediaDuration); err != nil {
+			return err
+		}
 	}
 	return nil
 }

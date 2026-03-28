@@ -34,7 +34,6 @@ func (b *Bot) runDownload(chatID int64, sess *Session, req app.DownloadRequest) 
 	msgID := snap.StatusMsgID
 
 	dlCh := make(chan app.DlUpdate, 256)
-	entries := b.playlistSelectionEntries(sess)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -49,7 +48,7 @@ func (b *Bot) runDownload(chatID int64, sess *Session, req app.DownloadRequest) 
 
 	app.StartDownloadRequestContext(ctx, req, dlCh)
 
-	state := doneSummary{Total: len(entries)}
+	state := doneSummary{Total: len(req.Entries)}
 	editor := &progressEditor{}
 	cancelled := false
 
@@ -111,62 +110,65 @@ func (b *Bot) handleDownloadUpdate(
 
 func (b *Bot) onDownloadFinished(chatID int64, msgID int, sess *Session, summary doneSummary) {
 	snap := sess.snapshot()
-	actualSize, sizeErr := app.DirSize(snap.WorkDir)
 	newFiles := filesInDir(snap.WorkDir)
-	defer cleanupBotWorkDir(snap.WorkDir)
+	actualSize, sizeErr := app.DirSize(snap.WorkDir)
 	if sizeErr != nil {
 		b.logError(fmt.Sprintf("download dir size %s", logChatUser(chatID, snap.UserID)), sizeErr)
 	}
 
-	if sizeErr == nil && actualSize > b.downloadSizeLimit(snap.UserID) {
-		b.logf("download limit exceeded after finish %s size=%d limit=%d files=%d", logChatUser(chatID, snap.UserID), actualSize, b.downloadSizeLimit(snap.UserID), len(newFiles))
+	limit := b.downloadSizeLimit(snap.UserID)
+	if sizeErr == nil && actualSize > limit {
+		b.logf("download limit exceeded after finish %s size=%d limit=%d files=%d", logChatUser(chatID, snap.UserID), actualSize, limit, len(newFiles))
+		cleanupBotWorkDir(snap.WorkDir)
 		b.notifyDownloadSizeLimitExceeded(chatID, msgID, snap.UserID)
 		return
 	}
 	b.logf("download finished %s ok=%d failed=%d total=%d files=%d size=%d", logChatUser(chatID, snap.UserID), summary.OK, summary.Failed, summary.Total, len(newFiles), actualSize)
 
-	if summary.Total == 0 {
-		b.finishSingleDownload(chatID, msgID, newFiles, summary.Failed > 0 || summary.OK == 0)
-		return
-	}
-	b.finishPlaylistDownload(chatID, msgID, newFiles, summary)
+	text := b.downloadCompletionText(chatID, msgID, newFiles, summary)
+	cleanupBotWorkDir(snap.WorkDir)
+	b.edit(chatID, msgID, text)
 }
 
-func (b *Bot) finishSingleDownload(chatID int64, msgID int, newFiles []string, failed bool) {
+func (b *Bot) downloadCompletionText(chatID int64, msgID int, newFiles []string, summary doneSummary) string {
+	if summary.Total == 0 {
+		return b.singleDownloadCompletionText(chatID, msgID, newFiles, summary)
+	}
+	return b.playlistDownloadCompletionText(chatID, msgID, newFiles, summary)
+}
+
+func (b *Bot) singleDownloadCompletionText(chatID int64, msgID int, newFiles []string, summary doneSummary) string {
+	failed := summary.Failed > 0 || summary.OK == 0
 	if failed {
 		if len(newFiles) > 0 {
-			b.edit(chatID, msgID, "❌ Не удалось скачать видео. Временные файлы удалены.")
-			return
+			return "❌ Не удалось скачать видео. Временные файлы удалены."
 		}
-		b.edit(chatID, msgID, "❌ Не удалось скачать видео.")
-		return
+		return "❌ Не удалось скачать видео."
 	}
 	if len(newFiles) == 0 {
-		b.edit(chatID, msgID, "✅ Скачано!")
-		return
+		return "✅ Скачано!"
 	}
 
 	b.edit(chatID, msgID, "✅ Готово! Отправляю файл…")
-	sent, tooLarge, sendErr := b.sendDownloadedFiles(chatID, newFiles)
-	b.logf("single send summary chat=%d sent=%d too_large=%d send_err=%d", chatID, sent, tooLarge, sendErr)
-	b.edit(chatID, msgID, b.singleSendSummary(sent, tooLarge, sendErr))
+	stats := b.sendDownloadedFiles(chatID, newFiles)
+	b.logf("single send summary chat=%d sent=%d too_large=%d send_err=%d", chatID, stats.Sent, stats.TooLarge, stats.Failed)
+	return b.singleSendSummary(stats)
 }
 
-func (b *Bot) finishPlaylistDownload(chatID int64, msgID int, newFiles []string, summary doneSummary) {
+func (b *Bot) playlistDownloadCompletionText(chatID int64, msgID int, newFiles []string, summary doneSummary) string {
 	icon := playlistResultIcon(summary.OK, summary.Failed)
 	if len(newFiles) == 0 {
-		b.edit(chatID, msgID, fmt.Sprintf(
+		return fmt.Sprintf(
 			"%s <b>Плейлист завершён</b>\n\n✔ Успешно: %d\n✘ Ошибок: %d\nИтого: %d",
 			icon, summary.OK, summary.Failed, summary.Total,
-		))
-		return
+		)
 	}
 
 	b.edit(chatID, msgID, fmt.Sprintf(
 		"%s <b>Плейлист завершён</b>\n\n✔ Успешно: %d\n✘ Ошибок: %d\nИтого: %d\n\n📤 Отправляю файлы в Telegram…",
 		icon, summary.OK, summary.Failed, summary.Total,
 	))
-	sent, tooLarge, sendErr := b.sendDownloadedFiles(chatID, newFiles)
-	b.logf("playlist send summary chat=%d sent=%d too_large=%d send_err=%d", chatID, sent, tooLarge, sendErr)
-	b.edit(chatID, msgID, b.playlistSendSummary(icon, summary.OK, summary.Failed, summary.Total, sent, tooLarge, sendErr))
+	stats := b.sendDownloadedFiles(chatID, newFiles)
+	b.logf("playlist send summary chat=%d sent=%d too_large=%d send_err=%d", chatID, stats.Sent, stats.TooLarge, stats.Failed)
+	return b.playlistSendSummary(icon, summary, stats)
 }

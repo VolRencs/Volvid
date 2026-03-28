@@ -1,10 +1,18 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 	"unicode"
+)
+
+var (
+	ErrFragmentFormat           = errors.New("invalid fragment format")
+	ErrFragmentBounds           = errors.New("invalid fragment bounds")
+	ErrFragmentDurationRequired = errors.New("fragment duration is required")
+	ErrFragmentOutOfRange       = errors.New("fragment exceeds media duration")
 )
 
 type DownloadFragment struct {
@@ -49,29 +57,106 @@ func FormatFragmentLabel(fragment *DownloadFragment) string {
 func ParseFragmentRange(raw string) (DownloadFragment, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
-		return DownloadFragment{}, fmt.Errorf("empty fragment range")
+		return DownloadFragment{}, ErrFragmentFormat
 	}
 	if strings.Count(value, "-") != 1 {
-		return DownloadFragment{}, fmt.Errorf("invalid fragment range format")
+		return DownloadFragment{}, ErrFragmentFormat
 	}
 
 	startRaw, endRaw, _ := strings.Cut(value, "-")
 	startAt, err := parseClockTimestamp(strings.TrimSpace(startRaw))
 	if err != nil {
-		return DownloadFragment{}, fmt.Errorf("invalid start time: %w", err)
+		return DownloadFragment{}, fmt.Errorf("%w: %v", ErrFragmentFormat, err)
 	}
 	endAt, err := parseClockTimestamp(strings.TrimSpace(endRaw))
 	if err != nil {
-		return DownloadFragment{}, fmt.Errorf("invalid end time: %w", err)
+		return DownloadFragment{}, fmt.Errorf("%w: %v", ErrFragmentFormat, err)
 	}
 	if startAt >= endAt {
-		return DownloadFragment{}, fmt.Errorf("invalid fragment range bounds")
+		return DownloadFragment{}, ErrFragmentBounds
 	}
 
 	return DownloadFragment{
 		StartAt: startAt,
 		EndAt:   &endAt,
 	}, nil
+}
+
+func ParseBoundedFragmentRange(raw string, mediaDuration int) (DownloadFragment, error) {
+	fragment, err := ParseFragmentRange(raw)
+	if err != nil {
+		return DownloadFragment{}, err
+	}
+	if err := ValidateFragmentDuration(fragment, mediaDuration); err != nil {
+		return DownloadFragment{}, err
+	}
+	return fragment, nil
+}
+
+func ValidateFragmentDuration(fragment DownloadFragment, mediaDuration int) error {
+	if !fragment.IsValid() {
+		return ErrFragmentBounds
+	}
+	if mediaDuration <= 0 {
+		return ErrFragmentDurationRequired
+	}
+	if fragment.StartAt >= mediaDuration {
+		return ErrFragmentOutOfRange
+	}
+	if fragment.EndAt != nil && *fragment.EndAt > mediaDuration {
+		return ErrFragmentOutOfRange
+	}
+	return nil
+}
+
+func FragmentDurationText(l Locale, mediaDuration int) string {
+	if mediaDuration <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(StringsFor(l).FragmentDurationFmt, FormatClockTimestamp(mediaDuration))
+}
+
+func FragmentInputHintFor(l Locale, mediaDuration int) string {
+	strs := StringsFor(l)
+	if mediaDuration <= 0 {
+		return strs.FragmentInputHint
+	}
+	return fmt.Sprintf(strs.FragmentInputHintWithDurationFmt, FormatClockTimestamp(mediaDuration))
+}
+
+func FragmentUnavailableText(l Locale) string {
+	return StringsFor(l).FragmentUnavailable
+}
+
+func FragmentRangeOutOfBoundsText(l Locale, mediaDuration int) string {
+	strs := StringsFor(l)
+	if mediaDuration <= 0 {
+		return strs.FragmentUnavailable
+	}
+	return fmt.Sprintf(strs.FragmentInputOutOfBoundsFmt, FormatClockTimestamp(mediaDuration))
+}
+
+func FragmentURLStartOutOfBoundsText(l Locale, mediaDuration int) string {
+	strs := StringsFor(l)
+	if mediaDuration <= 0 {
+		return strs.FragmentUnavailable
+	}
+	return fmt.Sprintf(strs.FragmentURLStartOutOfBoundsFmt, FormatClockTimestamp(mediaDuration))
+}
+
+func FragmentInputErrorText(l Locale, err error, mediaDuration int) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, ErrFragmentOutOfRange):
+		return FragmentRangeOutOfBoundsText(l, mediaDuration)
+	case errors.Is(err, ErrFragmentDurationRequired):
+		return FragmentUnavailableText(l)
+	case errors.Is(err, ErrFragmentBounds):
+		return StringsFor(l).FragmentInputBadRange
+	default:
+		return StringsFor(l).FragmentInputBadFormat
+	}
 }
 
 func ParseURLStartAt(rawURL string) (int, bool) {

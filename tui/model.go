@@ -25,6 +25,7 @@ const (
 	scrPlaylistAsk
 	scrPlaylistFetch
 	scrPlaylist
+	scrFragmentProbe
 	scrFragmentChoice
 	scrFragmentInput
 	scrMode
@@ -76,6 +77,10 @@ type (
 		choices []app.QualityChoice
 		err     error
 	}
+	msgFragmentDuration struct {
+		duration int
+		err      error
+	}
 	msgDlUpdate struct{ update app.DlUpdate }
 
 	spinnerTickMsg struct{}
@@ -113,16 +118,17 @@ type Model struct {
 	searchErr     string
 	searchResults []app.SearchResult
 
-	plInfo      *app.PlaylistInfo
-	plCursor    int
-	plTop       int
-	plSelected  map[int]bool
-	plInputMode bool
-	plInput     inputField
-	plInputErr  string
-	fragment    *app.DownloadFragment
-	fragmentErr string
-	fragmentIn  inputField
+	plInfo        *app.PlaylistInfo
+	plCursor      int
+	plTop         int
+	plSelected    map[int]bool
+	plInputMode   bool
+	plInput       inputField
+	plInputErr    string
+	mediaDuration int
+	fragment      *app.DownloadFragment
+	fragmentErr   string
+	fragmentIn    inputField
 
 	menu menu
 

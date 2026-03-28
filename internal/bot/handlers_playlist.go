@@ -15,11 +15,12 @@ func (b *Bot) handlePlaylistOpCallback(chatID int64, msgID int, sess *Session, d
 			s.PlInfo = nil
 			s.SelectedIndices = nil
 			s.PlaylistPage = 0
+			s.MediaDuration = 0
 			s.Fragment = nil
 			s.StatusMsgID = msgID
 		})
 		b.removeKb(chatID, msgID)
-		b.askFragmentChoice(chatID, sess)
+		b.probeAndAskFragment(chatID, sess)
 	case cbPlChoose:
 		sess.mutate(func(s *Session) {
 			s.StatusMsgID = msgID
@@ -33,8 +34,7 @@ func (b *Bot) handlePlaylistOpCallback(chatID int64, msgID int, sess *Session, d
 func (b *Bot) handlePlaylistSelectionInput(chatID int64, sess *Session, raw string) {
 	snap := sess.snapshot()
 	if snap.PlInfo == nil {
-		b.send(chatID, "⚠️ Сессия устарела. Пришли ссылку заново.")
-		b.sessions.reset(chatID)
+		b.resetStaleSession(chatID, 0)
 		return
 	}
 

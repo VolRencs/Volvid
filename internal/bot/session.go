@@ -14,6 +14,7 @@ const (
 	StateAwaitingPlaylistOp
 	StateFetchingPlaylist
 	StateAwaitingPlaylistSelection
+	StateFetchingFragmentMetadata
 	StateAwaitingFragmentChoice
 	StateAwaitingFragmentInput
 	StateAwaitingMode
@@ -38,6 +39,7 @@ type Session struct {
 	QualityChoices  []app.QualityChoice
 	Mode            app.DownloadMode
 	Profile         app.OutputProfile
+	MediaDuration   int
 	Fragment        *app.DownloadFragment
 	ForceSingle     bool
 	StatusMsgID     int
@@ -59,6 +61,7 @@ type SessionSnapshot struct {
 	QualityChoices  []app.QualityChoice
 	Mode            app.DownloadMode
 	Profile         app.OutputProfile
+	MediaDuration   int
 	Fragment        *app.DownloadFragment
 	ForceSingle     bool
 	StatusMsgID     int

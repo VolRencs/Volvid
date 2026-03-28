@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 
 	app "YouTubeBuild/internal/app"
@@ -51,6 +52,10 @@ func (b *Bot) resolveQualityChoices(chatID int64, sess *Session, urls []string) 
 }
 
 func (b *Bot) askMode(chatID int64, sess *Session) {
+	b.askModeWithNotice(chatID, sess, "")
+}
+
+func (b *Bot) askModeWithNotice(chatID int64, sess *Session, notice string) {
 	sess.mutate(func(s *Session) {
 		s.State = StateAwaitingMode
 		s.Mode = app.DefaultDownloadMode()
@@ -61,17 +66,75 @@ func (b *Bot) askMode(chatID int64, sess *Session) {
 		}
 	})
 
-	b.upsertSessionKeyboard(chatID, sess, b.modePromptText(sess), kbMode())
+	b.upsertSessionKeyboard(chatID, sess, b.fragmentModeNoticeText(notice, sess), kbMode())
+}
+
+func (b *Bot) probeAndAskFragment(chatID int64, sess *Session) {
+	sess.mutate(func(s *Session) {
+		s.State = StateFetchingFragmentMetadata
+		s.MediaDuration = 0
+		s.Fragment = nil
+	})
+	b.upsertSessionText(chatID, sess, "⏳ Определяю длительность видео…")
+	go b.runFragmentProbe(chatID, sess)
+}
+
+func (b *Bot) runFragmentProbe(chatID int64, sess *Session) {
+	snap := sess.snapshot()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		stopCh := sess.stopSignal()
+		if stopCh == nil {
+			return
+		}
+		select {
+		case <-stopCh:
+			cancel()
+		case <-done:
+		}
+	}()
+
+	duration, err := app.ProbeMediaDurationContext(ctx, snap.Target)
+	if sess.isCancelled() {
+		b.logf("fragment probe cancelled %s", logChatUser(chatID, snap.UserID))
+		return
+	}
+	if err != nil || duration <= 0 {
+		if err != nil {
+			b.logError(fmt.Sprintf("fragment probe %s", logChatUser(chatID, snap.UserID)), err)
+		}
+		sess.mutate(func(s *Session) {
+			s.MediaDuration = 0
+			s.Fragment = nil
+		})
+		b.askModeWithNotice(chatID, sess, app.FragmentUnavailableText(app.LocaleRU))
+		return
+	}
+
+	sess.mutate(func(s *Session) {
+		s.MediaDuration = duration
+	})
+	b.askFragmentChoice(chatID, sess)
 }
 
 func (b *Bot) askFragmentChoice(chatID int64, sess *Session) {
+	snap := sess.snapshot()
+	if snap.MediaDuration <= 0 {
+		b.askModeWithNotice(chatID, sess, app.FragmentUnavailableText(app.LocaleRU))
+		return
+	}
+
 	sess.mutate(func(s *Session) {
 		s.State = StateAwaitingFragmentChoice
 		s.Fragment = nil
 	})
 
-	snap := sess.snapshot()
-	b.upsertSessionKeyboard(chatID, sess, b.fragmentPromptText(sess), kbFragmentChoice(snap.Target.HasURLStart && snap.Target.URLStartAt > 0))
+	snap = sess.snapshot()
+	b.upsertSessionKeyboard(chatID, sess, b.fragmentPromptText(sess), kbFragmentChoice(b.allowURLStartFragment(snap)))
 }
 
 func (b *Bot) askAudioProfiles(chatID int64, sess *Session) {
@@ -84,23 +147,17 @@ func (b *Bot) askAudioProfiles(chatID int64, sess *Session) {
 }
 
 func (b *Bot) upsertSessionText(chatID int64, sess *Session, text string) {
-	snap := sess.snapshot()
-	if snap.StatusMsgID == 0 {
-		msg, _ := b.send(chatID, text)
-		if msg.ID != 0 {
-			sess.mutate(func(s *Session) {
-				s.StatusMsgID = msg.ID
-			})
-		}
-		return
-	}
-	b.edit(chatID, snap.StatusMsgID, text)
+	b.upsertSessionMessage(chatID, sess, text, nil)
 }
 
 func (b *Bot) upsertSessionKeyboard(chatID int64, sess *Session, text string, kb models.InlineKeyboardMarkup) {
+	b.upsertSessionMessage(chatID, sess, text, &kb)
+}
+
+func (b *Bot) upsertSessionMessage(chatID int64, sess *Session, text string, kb *models.InlineKeyboardMarkup) {
 	snap := sess.snapshot()
 	if snap.StatusMsgID == 0 {
-		msg, _ := b.sendKb(chatID, text, kb)
+		msg, _ := b.sendWithKeyboard(chatID, text, kb)
 		if msg.ID != 0 {
 			sess.mutate(func(s *Session) {
 				s.StatusMsgID = msg.ID
@@ -108,5 +165,9 @@ func (b *Bot) upsertSessionKeyboard(chatID int64, sess *Session, text string, kb
 		}
 		return
 	}
-	b.editKb(chatID, snap.StatusMsgID, text, kb)
+	if kb == nil {
+		b.edit(chatID, snap.StatusMsgID, text)
+		return
+	}
+	b.editWithKeyboard(chatID, snap.StatusMsgID, text, kb)
 }

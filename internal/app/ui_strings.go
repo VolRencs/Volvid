@@ -9,7 +9,7 @@ type UIStrings struct {
 
 	QBest, QEcon string
 
-	SpinnerUpdate, SpinnerPlaylist, SpinnerQuality, SpinnerSearch string
+	SpinnerUpdate, SpinnerPlaylist, SpinnerQuality, SpinnerSearch, SpinnerFragment string
 
 	UpdateAvail, CurrentVerShort string
 	FFmpegWarn, FFmpegHint       string
@@ -21,10 +21,11 @@ type UIStrings struct {
 
 	AppSubtitle, TopBarDeps, TopBarDepsBusy string
 
-	PasteURL, URLErrEmpty, URLErrBad, URLHints                                                     string
-	SearchTitle, SearchPrompt, SearchPlaceholder, SearchErrEmpty, SearchErrFailed, SearchNoResults string
-	FragmentTitle, FragmentHint, FragmentFromURLFmt, FragmentInputTitle, FragmentInputPrompt       string
-	FragmentInputHint, FragmentInputBadFormat, FragmentInputBadRange                               string
+	PasteURL, URLErrEmpty, URLErrBad, URLHints                                                            string
+	SearchTitle, SearchPrompt, SearchPlaceholder, SearchErrEmpty, SearchErrFailed, SearchNoResults        string
+	FragmentTitle, FragmentHint, FragmentFromURLFmt, FragmentInputTitle, FragmentInputPrompt              string
+	FragmentInputHint, FragmentInputHintWithDurationFmt, FragmentInputBadFormat, FragmentInputBadRange    string
+	FragmentDurationFmt, FragmentUnavailable, FragmentInputOutOfBoundsFmt, FragmentURLStartOutOfBoundsFmt string
 
 	PlVideosFmt, PlEnterNums, PlSelectedFmt string
 	ErrPickOne                              string
@@ -63,7 +64,7 @@ var strEN = UIStrings{
 
 	QBest: "▲ Best (HD·4K)", QEcon: "▼ Economy (360p)",
 
-	SpinnerUpdate: "  Checking for updates…", SpinnerPlaylist: "  Loading playlist…", SpinnerQuality: "  Scanning qualities…", SpinnerSearch: "  Searching YouTube…",
+	SpinnerUpdate: "  Checking for updates…", SpinnerPlaylist: "  Loading playlist…", SpinnerQuality: "  Scanning qualities…", SpinnerSearch: "  Searching YouTube…", SpinnerFragment: "  Detecting video duration…",
 
 	UpdateAvail: "  ✔  New version ", CurrentVerShort: "  (current %s)",
 	FFmpegWarn: "  ⚠️ ffmpeg not found", FFmpegHint: "     Required for HD, 4K and MP3",
@@ -86,8 +87,11 @@ var strEN = UIStrings{
 	FragmentTitle: "  Fragment", FragmentHint: "  Optional for single download in video or audio mode",
 	FragmentFromURLFmt: "From URL timestamp (%s) to end", FragmentInputTitle: "  Enter fragment range",
 	FragmentInputPrompt: "  Format: mm:ss-hh:mm:ss or hh:mm:ss-hh:mm:ss",
-	FragmentInputHint:   "Example: 1:00-2:30", FragmentInputBadFormat: "Invalid time format",
-	FragmentInputBadRange: "Start time must be less than end time",
+	FragmentInputHint:   "Example: 1:00-2:30", FragmentInputHintWithDurationFmt: "Example: 1:00-2:30\nVideo duration: %s\nEnd cannot exceed the video duration.",
+	FragmentInputBadFormat: "Invalid time format", FragmentInputBadRange: "Start time must be less than end time",
+	FragmentDurationFmt: "Video duration: %s", FragmentUnavailable: "Trimming is unavailable because the exact video duration could not be determined.",
+	FragmentInputOutOfBoundsFmt:    "Range must stay within the video duration (%s).",
+	FragmentURLStartOutOfBoundsFmt: "The URL timestamp is outside the video duration (%s).",
 
 	PlVideosFmt: "  %d videos", PlEnterNums: "  Enter indices:", PlSelectedFmt: "  Selected: %d / %d",
 	ErrPickOne: "Select at least one video",
@@ -135,7 +139,7 @@ var strRU = UIStrings{
 
 	QBest: "▲ Лучшее качество (HD·4K)", QEcon: "▼ Экономичное (360p)",
 
-	SpinnerUpdate: "  Проверяю обновления…", SpinnerPlaylist: "  Загружаю плейлист…", SpinnerQuality: "  Сканирую доступные качества…", SpinnerSearch: "  Ищу на YouTube…",
+	SpinnerUpdate: "  Проверяю обновления…", SpinnerPlaylist: "  Загружаю плейлист…", SpinnerQuality: "  Сканирую доступные качества…", SpinnerSearch: "  Ищу на YouTube…", SpinnerFragment: "  Определяю длительность видео…",
 
 	UpdateAvail: "  ✔  Доступна версия ", CurrentVerShort: "  (сейчас %s)",
 	FFmpegWarn: "  ⚠️ ffmpeg не найден", FFmpegHint: "     Нужен для HD, 4K и MP3",
@@ -158,8 +162,11 @@ var strRU = UIStrings{
 	FragmentTitle: "  Фрагмент", FragmentHint: "  Опционально для одиночной загрузки в режимах видео и аудио",
 	FragmentFromURLFmt: "С таймкода из URL (%s) до конца", FragmentInputTitle: "  Ввод диапазона фрагмента",
 	FragmentInputPrompt: "  Формат: mm:ss-hh:mm:ss или hh:mm:ss-hh:mm:ss",
-	FragmentInputHint:   "Пример: 1:00-2:30", FragmentInputBadFormat: "Неверный формат времени",
-	FragmentInputBadRange: "Начало должно быть меньше конца",
+	FragmentInputHint:   "Пример: 1:00-2:30", FragmentInputHintWithDurationFmt: "Пример: 1:00-2:30\nДлительность видео: %s\nКонец диапазона не должен выходить за длительность видео.",
+	FragmentInputBadFormat: "Неверный формат времени", FragmentInputBadRange: "Начало должно быть меньше конца",
+	FragmentDurationFmt: "Длительность видео: %s", FragmentUnavailable: "Обрезка недоступна: не удалось определить точную длительность видео.",
+	FragmentInputOutOfBoundsFmt:    "Диапазон должен укладываться в длительность видео (%s).",
+	FragmentURLStartOutOfBoundsFmt: "Таймкод из URL выходит за длительность видео (%s).",
 
 	PlVideosFmt: "  %d видео", PlEnterNums: "  Введи номера:", PlSelectedFmt: "  Выбрано: %d / %d",
 	ErrPickOne: "Выбери хотя бы одно видео",

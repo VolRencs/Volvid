@@ -101,18 +101,13 @@ func estimateVideoProfileSize(info videoQualityInfo, profile OutputProfile) (int
 
 func estimateFormatSize(info videoQualityInfo, format string) (int64, bool) {
 	if heights := extractExactHeights(format); len(heights) > 0 {
-		return estimateVideoSize(info, heights, false)
+		return estimateVideoSize(info, heights)
 	}
 
 	if maxHeight := extractMaxHeight(format); maxHeight > 0 {
-		heights := make([]int, 0, len(info.heights))
-		for _, height := range info.heights {
-			if height <= maxHeight {
-				heights = append(heights, height)
-			}
-		}
+		heights := heightsAtMost(info.heights, maxHeight)
 		if len(heights) > 0 {
-			return estimateVideoSize(info, heights, false)
+			return estimateVideoSize(info, heights)
 		}
 	}
 
@@ -120,9 +115,9 @@ func estimateFormatSize(info videoQualityInfo, format string) (int64, bool) {
 	case strings.Contains(format, "worst"):
 		heights := slices.Clone(info.heights)
 		slices.Reverse(heights)
-		return estimateVideoSize(info, heights, false)
+		return estimateVideoSize(info, heights)
 	case strings.Contains(format, "best"):
-		return estimateVideoSize(info, info.heights, false)
+		return estimateVideoSize(info, info.heights)
 	default:
 		return 0, false
 	}
@@ -136,8 +131,8 @@ func extractExactHeights(format string) []int {
 	seen := make(map[int]bool, len(matches))
 	heights := make([]int, 0, len(matches))
 	for _, match := range matches {
-		height := atoi(match[1])
-		if height <= 0 || seen[height] {
+		height, ok := parseDigits(match[1])
+		if !ok || height <= 0 || seen[height] {
 			continue
 		}
 		seen[height] = true
@@ -150,18 +145,19 @@ func extractMaxHeight(format string) int {
 	matches := heightMaxRE.FindAllStringSubmatch(format, -1)
 	maxHeight := 0
 	for _, match := range matches {
-		maxHeight = max(maxHeight, atoi(match[1]))
+		if height, ok := parseDigits(match[1]); ok {
+			maxHeight = max(maxHeight, height)
+		}
 	}
 	return maxHeight
 }
 
-func atoi(value string) int {
-	n := 0
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return 0
+func heightsAtMost(heights []int, maxHeight int) []int {
+	filtered := make([]int, 0, len(heights))
+	for _, height := range heights {
+		if height <= maxHeight {
+			filtered = append(filtered, height)
 		}
-		n = n*10 + int(r-'0')
 	}
-	return n
+	return filtered
 }

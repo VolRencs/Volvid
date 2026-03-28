@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 
 	app "YouTubeBuild/internal/app"
@@ -40,6 +41,8 @@ func loadBotStores(cfg Config) (*PremiumStore, *UserStore, *TimerStore, error) {
 
 func newTelegramAPI(token string, cfg Config, updateHandler func(*models.Update)) (*tg.Bot, error) {
 	opts := []tg.Option{
+		tg.WithCheckInitTimeout(telegramAPITimeout),
+		tg.WithHTTPClient(telegramPollTimeout, newTelegramHTTPClient()),
 		tg.WithAllowedUpdates(tg.AllowedUpdates{
 			models.AllowedUpdateMessage,
 			models.AllowedUpdateCallbackQuery,
@@ -69,6 +72,19 @@ func newTelegramAPI(token string, cfg Config, updateHandler func(*models.Update)
 		}
 	}
 	return api, nil
+}
+
+func newTelegramHTTPClient() *http.Client {
+	client := app.NewHTTPClient(telegramHTTPClientTimeout)
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport == nil {
+		return client
+	}
+
+	transport = transport.Clone()
+	transport.ResponseHeaderTimeout = telegramHTTPClientTimeout
+	client.Transport = transport
+	return client
 }
 
 func ensureBotDirectories() error {

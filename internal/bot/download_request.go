@@ -19,15 +19,16 @@ func (b *Bot) buildDownloadRequest(sess *Session) (app.DownloadRequest, error) {
 	}
 
 	return app.PrepareDownloadRequest(app.DownloadRequest{
-		Target:       snap.Target,
-		Profile:      profile,
-		Fragment:     snap.Fragment,
-		ForceSingle:  snap.ForceSingle,
-		PlaylistInfo: snap.PlInfo,
-		Entries:      entries,
-		Workers:      app.AutoDownloadWorkers(len(entries)),
-		OutputDir:    snap.WorkDir,
-		Locale:       app.LocaleRU,
+		Target:        snap.Target,
+		Profile:       profile,
+		Fragment:      snap.Fragment,
+		MediaDuration: snap.MediaDuration,
+		ForceSingle:   snap.ForceSingle,
+		PlaylistInfo:  snap.PlInfo,
+		Entries:       entries,
+		Workers:       app.AutoDownloadWorkers(len(entries)),
+		OutputDir:     snap.WorkDir,
+		Locale:        app.LocaleRU,
 	})
 }
 

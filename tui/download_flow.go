@@ -94,9 +94,13 @@ func (m Model) fragmentLabel(mode app.DownloadMode) string {
 }
 
 func (m Model) startModeSelection() (tea.Model, tea.Cmd) {
+	return m.startModeSelectionWithNotice("")
+}
+
+func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) {
 	m.mode = app.DefaultDownloadMode()
 	m.profile = app.DefaultVideoProfile(m.locale)
-	m.flowErr = ""
+	m.flowErr = notice
 	m.qualityChoices = nil
 	m.audioProfiles = nil
 	m.screen = scrMode
@@ -133,30 +137,20 @@ func (m Model) currentProfile() app.OutputProfile {
 
 func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	req, err := app.PrepareDownloadRequest(app.DownloadRequest{
-		Target:       m.target,
-		Profile:      m.currentProfile(),
-		Fragment:     m.fragment,
-		ForceSingle:  m.forceSingle,
-		PlaylistInfo: m.plInfo,
-		Entries:      m.dlEntries,
-		Workers:      max(m.numWorkers, 1),
-		OutputDir:    app.DlDir,
-		Locale:       m.locale,
+		Target:        m.target,
+		Profile:       m.currentProfile(),
+		Fragment:      m.fragment,
+		MediaDuration: m.mediaDuration,
+		ForceSingle:   m.forceSingle,
+		PlaylistInfo:  m.plInfo,
+		Entries:       m.dlEntries,
+		Workers:       max(m.numWorkers, 1),
+		OutputDir:     app.DlDir,
+		Locale:        m.locale,
 	})
 	if err != nil {
 		m.flowErr = err.Error()
-		switch m.currentProfile().Mode {
-		case app.ModeAudio:
-			if m.profile.Mode == 0 {
-				m.screen = scrAudio
-			}
-		case app.ModeThumbnail:
-			m.screen = scrMode
-		default:
-			if m.profile.Mode == 0 {
-				m.screen = scrQuality
-			}
-		}
+		m.restoreDownloadConfigScreen()
 		m = m.syncMenu()
 		return m, nil
 	}
@@ -182,4 +176,19 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	req.Workers = workers
 	app.StartDownloadRequest(req, ch)
 	return m, tea.Batch(listenDownloadCmd(ch), timerTickCmd())
+}
+
+func (m *Model) restoreDownloadConfigScreen() {
+	switch m.currentProfile().Mode {
+	case app.ModeAudio:
+		if m.profile.Mode == 0 {
+			m.screen = scrAudio
+		}
+	case app.ModeThumbnail:
+		m.screen = scrMode
+	default:
+		if m.profile.Mode == 0 {
+			m.screen = scrQuality
+		}
+	}
 }

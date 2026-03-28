@@ -10,16 +10,9 @@ func (m Model) gotoChecks() (tea.Model, tea.Cmd) {
 	deps := app.DetectDeps()
 	m.ytdlpVer, m.ffmpegVer = deps.YtdlpVer, deps.FFmpegVer
 	if deps.YtdlpVer == "" {
-		m.depLabel = "yt-dlp"
-		m.depProgress = app.FileProgress{}
-		m.depErr = ""
-		m.screen = scrDepDl
-
-		var cmd tea.Cmd
-		m.depCh, cmd = launchProgress(func(ch chan<- app.FileProgress) error {
+		return m.startDependencyDownload(scrDepDl, "yt-dlp", false, func(ch chan<- app.FileProgress) error {
 			return app.InstallYtDlpFor(m.locale, ch)
-		}, false)
-		return m, cmd
+		})
 	}
 	return m.gotoURLWithDeps(deps)
 }
@@ -41,14 +34,24 @@ func (m Model) gotoURLWithDeps(deps app.CheckDepsResult) (tea.Model, tea.Cmd) {
 
 func (m Model) startDepUpdate() (tea.Model, tea.Cmd) {
 	m.prevScreen = m.screen
+	m.depUpdateDone = false
+	return m.startDependencyDownload(scrDepUpdate, "", false, func(ch chan<- app.FileProgress) error {
+		return app.InstallAllDepsFor(m.locale, ch)
+	})
+}
+
+func (m Model) startDependencyDownload(
+	screen screen,
+	label string,
+	isUpdate bool,
+	fn func(chan<- app.FileProgress) error,
+) (tea.Model, tea.Cmd) {
+	m.depLabel = label
 	m.depProgress = app.FileProgress{}
 	m.depErr = ""
-	m.depUpdateDone = false
-	m.screen = scrDepUpdate
+	m.screen = screen
 
 	var cmd tea.Cmd
-	m.depCh, cmd = launchProgress(func(ch chan<- app.FileProgress) error {
-		return app.InstallAllDepsFor(m.locale, ch)
-	}, false)
+	m.depCh, cmd = launchProgress(fn, isUpdate)
 	return m, cmd
 }
