@@ -103,6 +103,7 @@ go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader ./cmd/do
 The repository includes a Windows icon source at `assets/icon/icon.ico`.
 
 ```bash
+go install github.com/akavel/rsrc@latest
 GOARCH=amd64 ./scripts/build-windows-downloader.sh VolRenDownloader.exe
 ```
 
@@ -228,6 +229,7 @@ Bot temporary files are created under `downloads/.bot/users/<chat_id>/job-*` and
 
 ```bash
 GOOS=linux GOARCH=arm64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader_arm64 ./cmd/downloader
+go install github.com/akavel/rsrc@latest
 GOARCH=amd64 ./scripts/build-windows-downloader.sh VolRenDownloader.exe
 ```
 

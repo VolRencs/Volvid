@@ -1,2 +1,0 @@
-#define IDI_APP_ICON 1
-IDI_APP_ICON ICON "../../assets/icon/icon.ico"
