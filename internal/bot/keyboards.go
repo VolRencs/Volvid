@@ -17,6 +17,9 @@ const (
 	cbModeVideo     = "mode:video"
 	cbModeAudio     = "mode:audio"
 	cbModeThumb     = "mode:thumb"
+	cbFragmentAll   = "fragment:all"
+	cbFragmentURL   = "fragment:url"
+	cbFragmentInput = "fragment:input"
 	cbAudioPrefix   = "audio:"
 	cbQualityPrefix = "q:"
 	cbPremiumBuy    = "premium:buy"
@@ -66,6 +69,25 @@ func kbMode() models.InlineKeyboardMarkup {
 			},
 		},
 	}
+}
+
+func kbFragmentChoice(hasURLStart bool) models.InlineKeyboardMarkup {
+	rows := make([][]models.InlineKeyboardButton, 0, 4)
+	rows = append(rows, []models.InlineKeyboardButton{
+		kbButton("⬇️ Полностью", cbFragmentAll),
+	})
+	if hasURLStart {
+		rows = append(rows, []models.InlineKeyboardButton{
+			kbButton("⏱ С таймкода из URL", cbFragmentURL),
+		})
+	}
+	rows = append(rows, []models.InlineKeyboardButton{
+		kbButton("✂️ Ввести диапазон", cbFragmentInput),
+	})
+	rows = append(rows, []models.InlineKeyboardButton{
+		kbButton("❌ Отмена", cbCancel),
+	})
+	return models.InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
 func kbAudioProfiles(profiles []app.OutputProfile) models.InlineKeyboardMarkup {

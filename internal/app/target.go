@@ -21,6 +21,8 @@ type ParsedTarget struct {
 	Kind         TargetKind
 	VideoID      string
 	PlaylistID   string
+	URLStartAt   int
+	HasURLStart  bool
 }
 
 func (k TargetKind) String() string {
@@ -90,6 +92,7 @@ func ParseTarget(raw string) (ParsedTarget, error) {
 	if err := parseTargetIDs(&target, host, u); err != nil {
 		return ParsedTarget{}, err
 	}
+	target.URLStartAt, target.HasURLStart = ParseURLStartAt(raw)
 	target.CanonicalURL = canonicalTargetURL(target)
 	return target, nil
 }
@@ -127,13 +130,10 @@ func parseTargetIDs(target *ParsedTarget, host string, u *url.URL) error {
 	query := u.Query()
 	switch host {
 	case "youtu.be":
-		target.VideoID = strings.Trim(path.Clean(u.Path), "/")
-		if target.VideoID == "." {
-			target.VideoID = ""
-		}
+		target.VideoID = cleanTargetID(u.Path)
 		target.PlaylistID = strings.TrimSpace(query.Get("list"))
 	case "youtube.com":
-		switch strings.Trim(path.Clean(u.Path), "/") {
+		switch cleanTargetID(u.Path) {
 		case "watch":
 			target.VideoID = strings.TrimSpace(query.Get("v"))
 			target.PlaylistID = strings.TrimSpace(query.Get("list"))
@@ -181,4 +181,12 @@ func splitPath(raw string) []string {
 		return nil
 	}
 	return strings.Split(raw, "/")
+}
+
+func cleanTargetID(raw string) string {
+	value := strings.Trim(path.Clean(raw), "/")
+	if value == "." {
+		return ""
+	}
+	return value
 }

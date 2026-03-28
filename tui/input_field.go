@@ -2,63 +2,10 @@ package tui
 
 import (
 	"strings"
-	"time"
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 )
-
-type menu struct {
-	items  []string
-	cursor int
-}
-
-func (m *menu) SetItems(items []string) {
-	m.items = append(m.items[:0], items...)
-	if len(m.items) == 0 {
-		m.cursor = 0
-		return
-	}
-	m.cursor = max(0, min(m.cursor, len(m.items)-1))
-}
-
-func (m *menu) Move(delta int) {
-	if len(m.items) == 0 {
-		return
-	}
-	m.cursor = max(0, min(m.cursor+delta, len(m.items)-1))
-}
-
-func (m menu) Index() int {
-	if len(m.items) == 0 {
-		return 0
-	}
-	return m.cursor
-}
-
-func (m menu) View() string {
-	lines := make([]string, len(m.items))
-	maxWidth := 0
-	for i, item := range m.items {
-		if i == m.cursor {
-			lines[i] = sTitle.Render(" > ") + sBold.Render(item)
-		} else {
-			lines[i] = sDim.Render("   " + item)
-		}
-		maxWidth = max(maxWidth, lipgloss.Width(lines[i]))
-	}
-
-	rowStyle := lipgloss.NewStyle().Width(maxWidth).Align(lipgloss.Left)
-	var b strings.Builder
-	for i, line := range lines {
-		if i > 0 {
-			b.WriteByte('\n')
-		}
-		b.WriteString(rowStyle.Render(line))
-	}
-	return b.String()
-}
 
 type inputField struct {
 	target        inputTarget
@@ -122,18 +69,6 @@ func (i *inputField) Blur() {
 	i.blinkTag++
 }
 
-func blinkInputCmd(target inputTarget, tag int) tea.Cmd {
-	return tea.Tick(530*time.Millisecond, func(time.Time) tea.Msg {
-		return cursorBlinkMsg{target: target, tag: tag}
-	})
-}
-
-func pasteClipboardCmd(_ inputTarget) tea.Cmd {
-	return func() tea.Msg {
-		return tea.ReadClipboard()
-	}
-}
-
 func (i *inputField) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case cursorBlinkMsg:
@@ -143,15 +78,9 @@ func (i *inputField) Update(msg tea.Msg) tea.Cmd {
 		i.cursorVisible = !i.cursorVisible
 		return blinkInputCmd(i.target, i.blinkTag)
 	case tea.PasteMsg:
-		if !i.focused {
-			return nil
-		}
-		return i.insertRunes([]rune(msg.Content))
+		return i.updateContent(msg.Content)
 	case tea.ClipboardMsg:
-		if !i.focused {
-			return nil
-		}
-		return i.insertRunes([]rune(msg.Content))
+		return i.updateContent(msg.Content)
 	case tea.KeyPressMsg:
 		if !i.focused {
 			return nil
@@ -207,10 +136,7 @@ func (i *inputField) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	if beforeCursor != i.cursor || beforeLen != len(i.value) {
-		i.ensureCursorVisible()
-		i.cursorVisible = true
-		i.blinkTag++
-		return blinkInputCmd(i.target, i.blinkTag)
+		return i.touch()
 	}
 	return nil
 }
@@ -233,10 +159,7 @@ func (i *inputField) insertRunes(runes []rune) tea.Cmd {
 
 	i.value = append(i.value[:i.cursor], append(runes, i.value[i.cursor:]...)...)
 	i.cursor += len(runes)
-	i.ensureCursorVisible()
-	i.cursorVisible = true
-	i.blinkTag++
-	return blinkInputCmd(i.target, i.blinkTag)
+	return i.touch()
 }
 
 func (i *inputField) ensureCursorVisible() {
@@ -385,4 +308,18 @@ func sanitizeRunes(runes []rune) []rune {
 		}
 	}
 	return clean
+}
+
+func (i *inputField) updateContent(content string) tea.Cmd {
+	if !i.focused {
+		return nil
+	}
+	return i.insertRunes([]rune(content))
+}
+
+func (i *inputField) touch() tea.Cmd {
+	i.ensureCursorVisible()
+	i.cursorVisible = true
+	i.blinkTag++
+	return blinkInputCmd(i.target, i.blinkTag)
 }

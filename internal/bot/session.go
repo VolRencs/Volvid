@@ -14,6 +14,8 @@ const (
 	StateAwaitingPlaylistOp
 	StateFetchingPlaylist
 	StateAwaitingPlaylistSelection
+	StateAwaitingFragmentChoice
+	StateAwaitingFragmentInput
 	StateAwaitingMode
 	StateAwaitingAudioProfile
 	StateFetchingQuality
@@ -36,6 +38,7 @@ type Session struct {
 	QualityChoices  []app.QualityChoice
 	Mode            app.DownloadMode
 	Profile         app.OutputProfile
+	Fragment        *app.DownloadFragment
 	ForceSingle     bool
 	StatusMsgID     int
 	stopCh          chan struct{}
@@ -56,6 +59,7 @@ type SessionSnapshot struct {
 	QualityChoices  []app.QualityChoice
 	Mode            app.DownloadMode
 	Profile         app.OutputProfile
+	Fragment        *app.DownloadFragment
 	ForceSingle     bool
 	StatusMsgID     int
 }
@@ -87,33 +91,6 @@ func (s *Session) stopSignal() <-chan struct{} {
 	return s.stopCh
 }
 
-func (s *Session) snapshot() SessionSnapshot {
-	if s == nil {
-		return SessionSnapshot{}
-	}
-
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return SessionSnapshot{
-		UserID:          s.UserID,
-		State:           s.State,
-		URL:             s.URL,
-		Target:          s.Target,
-		WorkDir:         s.WorkDir,
-		SearchQuery:     s.SearchQuery,
-		SearchResults:   append([]app.SearchResult(nil), s.SearchResults...),
-		PlInfo:          clonePlaylistInfo(s.PlInfo),
-		SelectedIndices: cloneSelection(s.SelectedIndices),
-		PlaylistPage:    s.PlaylistPage,
-		QualityChoices:  append([]app.QualityChoice(nil), s.QualityChoices...),
-		Mode:            s.Mode,
-		Profile:         s.Profile,
-		ForceSingle:     s.ForceSingle,
-		StatusMsgID:     s.StatusMsgID,
-	}
-}
-
 func (s *Session) mutate(fn func(*Session)) {
 	if s == nil || fn == nil {
 		return
@@ -139,68 +116,4 @@ func newSession(userID int64, url, workDir string) *Session {
 
 func idleSession() *Session {
 	return &Session{State: StateIdle}
-}
-
-func clonePlaylistInfo(info *app.PlaylistInfo) *app.PlaylistInfo {
-	if info == nil {
-		return nil
-	}
-	cloned := &app.PlaylistInfo{
-		Title:   info.Title,
-		Entries: append([]app.PlaylistEntry(nil), info.Entries...),
-	}
-	return cloned
-}
-
-func cloneSelection(src map[int]bool) map[int]bool {
-	if len(src) == 0 {
-		return nil
-	}
-	out := make(map[int]bool, len(src))
-	for k, v := range src {
-		out[k] = v
-	}
-	return out
-}
-
-type SessionStore struct {
-	mu   sync.RWMutex
-	data map[int64]*Session
-}
-
-func newSessionStore() *SessionStore {
-	return &SessionStore{data: make(map[int64]*Session)}
-}
-
-func (s *SessionStore) get(id int64) *Session {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.data[id]
-}
-
-func (s *SessionStore) set(id int64, sess *Session) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data[id] = sess
-}
-
-func (s *SessionStore) reset(id int64) *Session {
-	sess := idleSession()
-	s.set(id, sess)
-	return sess
-}
-
-func (s *SessionStore) hasBusy() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for _, sess := range s.data {
-		if sess == nil {
-			continue
-		}
-		if sess.snapshot().State != StateIdle {
-			return true
-		}
-	}
-	return false
 }

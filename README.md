@@ -9,7 +9,7 @@
 ![Go](https://img.shields.io/badge/Go-1.26.1%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-6.1.2-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-6.1.4-orange?style=flat-square)
 
 </div>
 
@@ -96,6 +96,14 @@ git clone https://github.com/VolRencs/YouTubeDownloader
 cd YouTubeDownloader
 go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader ./cmd/downloader
 ./VolRenDownloader
+```
+
+### Build The Windows TUI With Icon
+
+The repository includes a Windows icon source at `assets/icon/icon.ico`.
+
+```bash
+GOARCH=amd64 ./scripts/build-windows-downloader.sh VolRenDownloader.exe
 ```
 
 ### Build The Telegram Bot
@@ -220,7 +228,7 @@ Bot temporary files are created under `downloads/.bot/users/<chat_id>/job-*` and
 
 ```bash
 GOOS=linux GOARCH=arm64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader_arm64 ./cmd/downloader
-GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader.exe ./cmd/downloader
+GOARCH=amd64 ./scripts/build-windows-downloader.sh VolRenDownloader.exe
 ```
 
 ---

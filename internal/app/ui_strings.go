@@ -23,6 +23,8 @@ type UIStrings struct {
 
 	PasteURL, URLErrEmpty, URLErrBad, URLHints                                                     string
 	SearchTitle, SearchPrompt, SearchPlaceholder, SearchErrEmpty, SearchErrFailed, SearchNoResults string
+	FragmentTitle, FragmentHint, FragmentFromURLFmt, FragmentInputTitle, FragmentInputPrompt       string
+	FragmentInputHint, FragmentInputBadFormat, FragmentInputBadRange                               string
 
 	PlVideosFmt, PlEnterNums, PlSelectedFmt string
 	ErrPickOne                              string
@@ -43,6 +45,7 @@ type UIStrings struct {
 
 	MenuUpdateY, MenuUpdateN, MenuFFmpegY, MenuFFmpegN, MenuVidOnly, MenuOpenPl string
 	MenuAgainY, MenuAgainN, WorkerSeq, WorkerNFmt                               string
+	MenuFullVideo, MenuFromURLStart, MenuManualRange                            string
 
 	DepLabelFmt string
 	LangTab     string
@@ -80,6 +83,11 @@ var strEN = UIStrings{
 	SearchTitle: "  Search YouTube", SearchPrompt: "  Enter a video title or keywords",
 	SearchPlaceholder: "lofi hip hop mix", SearchErrEmpty: "Search query cannot be empty",
 	SearchErrFailed: "Search failed", SearchNoResults: "Nothing found",
+	FragmentTitle: "  Fragment", FragmentHint: "  Optional for single download in video or audio mode",
+	FragmentFromURLFmt: "From URL timestamp (%s) to end", FragmentInputTitle: "  Enter fragment range",
+	FragmentInputPrompt: "  Format: mm:ss-hh:mm:ss or hh:mm:ss-hh:mm:ss",
+	FragmentInputHint:   "Example: 1:00-2:30", FragmentInputBadFormat: "Invalid time format",
+	FragmentInputBadRange: "Start time must be less than end time",
 
 	PlVideosFmt: "  %d videos", PlEnterNums: "  Enter indices:", PlSelectedFmt: "  Selected: %d / %d",
 	ErrPickOne: "Select at least one video",
@@ -109,6 +117,7 @@ var strEN = UIStrings{
 	MenuVidOnly: "This video only", MenuOpenPl: "Open full playlist",
 	MenuAgainY: "Download more", MenuAgainN: "Exit",
 	WorkerSeq: "Sequential (1 worker)", WorkerNFmt: "%d workers",
+	MenuFullVideo: "Full", MenuFromURLStart: "From URL timestamp", MenuManualRange: "Custom range",
 
 	DepLabelFmt: "update %s",
 	LangTab:     "Tab · language",
@@ -146,6 +155,11 @@ var strRU = UIStrings{
 	SearchTitle: "  Поиск на YouTube", SearchPrompt: "  Введи название видео или ключевые слова",
 	SearchPlaceholder: "lofi hip hop mix", SearchErrEmpty: "Поисковый запрос не может быть пустым",
 	SearchErrFailed: "Не удалось выполнить поиск", SearchNoResults: "Ничего не найдено",
+	FragmentTitle: "  Фрагмент", FragmentHint: "  Опционально для одиночной загрузки в режимах видео и аудио",
+	FragmentFromURLFmt: "С таймкода из URL (%s) до конца", FragmentInputTitle: "  Ввод диапазона фрагмента",
+	FragmentInputPrompt: "  Формат: mm:ss-hh:mm:ss или hh:mm:ss-hh:mm:ss",
+	FragmentInputHint:   "Пример: 1:00-2:30", FragmentInputBadFormat: "Неверный формат времени",
+	FragmentInputBadRange: "Начало должно быть меньше конца",
 
 	PlVideosFmt: "  %d видео", PlEnterNums: "  Введи номера:", PlSelectedFmt: "  Выбрано: %d / %d",
 	ErrPickOne: "Выбери хотя бы одно видео",
@@ -175,6 +189,7 @@ var strRU = UIStrings{
 	MenuVidOnly: "Только это видео", MenuOpenPl: "Открыть плейлист",
 	MenuAgainY: "Да, скачать ещё", MenuAgainN: "Нет, выйти",
 	WorkerSeq: "Последовательно (1 поток)", WorkerNFmt: "%d потоков",
+	MenuFullVideo: "Полностью", MenuFromURLStart: "С таймкода из URL", MenuManualRange: "Свой диапазон",
 
 	DepLabelFmt: "обновление %s",
 	LangTab:     "Tab · язык",

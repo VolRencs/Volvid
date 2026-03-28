@@ -16,7 +16,6 @@ jobs:
         include:
           - os: windows-latest
             artifact: VolRenDownloader.exe
-            build_cmd: go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader.exe ./cmd/downloader
           - os: ubuntu-latest
             artifact: VolRenDownloader_linux_amd64
             build_cmd: GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader_linux_amd64 ./cmd/downloader
@@ -28,7 +27,23 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.26.1"
-      - run: ${{ matrix.build_cmd }}
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install llvm --no-progress -y
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          llvm-rc --version
+          llvm-cvtres --version
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: bash ./scripts/build-windows-downloader.sh VolRenDownloader.exe
+      - if: runner.os != 'Windows'
+        run: ${{ matrix.build_cmd }}
       - uses: ncipollo/release-action@v1
         with:
           allowUpdates: true

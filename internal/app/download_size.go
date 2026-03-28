@@ -25,10 +25,11 @@ func EstimateDownloadSize(req DownloadRequest) (SizeEstimate, error) {
 }
 
 func EstimateDownloadSizeContext(ctx context.Context, req DownloadRequest) (SizeEstimate, error) {
-	req = NormalizeDownloadRequest(req)
-	if err := ValidateDownloadRequest(req); err != nil {
+	preparedReq, err := PrepareDownloadRequest(req)
+	if err != nil {
 		return SizeEstimate{}, err
 	}
+	req = preparedReq
 
 	urls := requestSourceURLs(req)
 	if len(urls) == 0 {

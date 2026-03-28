@@ -3,11 +3,11 @@ package app
 import "strings"
 
 func requestUsesPlaylist(req DownloadRequest) bool {
-	req = NormalizeDownloadRequest(req)
 	return req.PlaylistInfo != nil && !req.ForceSingle && len(req.Entries) > 0
 }
 
 func requestEntries(req DownloadRequest) []PlaylistEntry {
+	req = NormalizeDownloadRequest(req)
 	if !requestUsesPlaylist(req) {
 		return nil
 	}
