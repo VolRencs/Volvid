@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -30,16 +29,26 @@ const (
 	ytdlpLineMoved    = "__VRDL_MOVED__"
 )
 
-type browserProfile struct {
-	Browser string
-	Profile string
+type cookieBrowserFamily string
+
+const (
+	cookieFamilyFirefox  cookieBrowserFamily = "firefox"
+	cookieFamilyChromium cookieBrowserFamily = "chromium"
+)
+
+type cookieBrowserSpec struct {
+	Browser          string
+	Family           cookieBrowserFamily
+	Roots            []string
+	SupportsProfiles bool
 }
 
-type firefoxProfile struct {
-	Name     string
-	Path     string
-	Default  bool
-	Relative bool
+type cookieCandidate struct {
+	Browser    string
+	Family     cookieBrowserFamily
+	Profile    string
+	CookiePath string
+	ModTime    time.Time
 }
 
 var (
@@ -164,43 +173,17 @@ func currentGOOS() string {
 }
 
 func detectBrowserCookies(home, goos string) BrowserCookiesInfo {
-	switch goos {
-	case "linux":
-		if profile, ok := detectLinuxFirefoxProfile(home); ok {
-			return BrowserCookiesInfo{
-				Status:  cookiesStatusActive,
-				Browser: profile.Browser,
-				Profile: profile.Profile,
-			}
+	candidates, foundRoots := collectCookieCandidates(cookieBrowserSpecs(home, goos))
+	if len(candidates) > 0 {
+		best := newestCookieCandidate(candidates)
+		return BrowserCookiesInfo{
+			Status:  cookiesStatusActive,
+			Browser: best.Browser,
+			Profile: best.Profile,
 		}
-		if profile, ok := detectLinuxChromiumProfile(home); ok {
-			return BrowserCookiesInfo{
-				Status:  cookiesStatusActive,
-				Browser: profile.Browser,
-				Profile: profile.Profile,
-			}
-		}
-		if linuxBrowserRootExists(home) {
-			return BrowserCookiesInfo{Status: cookiesStatusNoProfile}
-		}
-	case "windows":
-		if profile, ok := detectWindowsFirefoxProfile(); ok {
-			return BrowserCookiesInfo{
-				Status:  cookiesStatusActive,
-				Browser: profile.Browser,
-				Profile: profile.Profile,
-			}
-		}
-		if profile, ok := detectWindowsChromiumProfile(); ok {
-			return BrowserCookiesInfo{
-				Status:  cookiesStatusActive,
-				Browser: profile.Browser,
-				Profile: profile.Profile,
-			}
-		}
-		if windowsBrowserRootExists() {
-			return BrowserCookiesInfo{Status: cookiesStatusNoProfile}
-		}
+	}
+	if foundRoots {
+		return BrowserCookiesInfo{Status: cookiesStatusNoProfile}
 	}
 	return BrowserCookiesInfo{Status: cookiesStatusBrowserNotFound}
 }
@@ -216,343 +199,395 @@ func detectJSRuntime(node DependencyInfo) JSRuntimeInfo {
 	}
 }
 
-func linuxBrowserRootExists(home string) bool {
-	for _, root := range linuxFirefoxRoots(home) {
-		if pathExists(root) {
-			return true
-		}
+func cookieBrowserSpecs(home, goos string) []cookieBrowserSpec {
+	switch goos {
+	case "linux":
+		return linuxCookieBrowserSpecs(home)
+	case "windows":
+		return windowsCookieBrowserSpecs()
+	default:
+		return nil
 	}
-	for _, candidate := range linuxChromiumCandidates(home) {
-		if pathExists(candidate.Root) {
-			return true
-		}
-	}
-	return false
 }
 
-func windowsBrowserRootExists() bool {
-	for _, root := range windowsFirefoxRoots() {
-		if pathExists(root) {
-			return true
+func collectCookieCandidates(specs []cookieBrowserSpec) ([]cookieCandidate, bool) {
+	out := make([]cookieCandidate, 0, len(specs))
+	seen := make(map[string]struct{}, len(specs)*2)
+	foundRoots := false
+
+	for _, spec := range specs {
+		roots, ok := resolveCookieRoots(spec.Roots)
+		if ok {
+			foundRoots = true
+		}
+		for _, candidate := range browserCookieCandidates(spec, roots) {
+			key := filepath.Clean(candidate.CookiePath)
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, candidate)
 		}
 	}
-	for _, candidate := range windowsChromiumCandidates() {
-		if pathExists(candidate.Root) {
-			return true
+
+	return out, foundRoots
+}
+
+func browserCookieCandidates(spec cookieBrowserSpec, roots []string) []cookieCandidate {
+	switch spec.Family {
+	case cookieFamilyFirefox:
+		return firefoxCookieCandidates(spec.Browser, roots)
+	case cookieFamilyChromium:
+		return chromiumCookieCandidates(spec.Browser, roots, spec.SupportsProfiles)
+	default:
+		return nil
+	}
+}
+
+func newestCookieCandidate(candidates []cookieCandidate) cookieCandidate {
+	best := candidates[0]
+	for _, candidate := range candidates[1:] {
+		if candidate.ModTime.After(best.ModTime) {
+			best = candidate
 		}
 	}
-	return false
+	return best
 }
 
-func detectLinuxFirefoxProfile(home string) (browserProfile, bool) {
-	return detectFirefoxProfileInRoots("firefox", linuxFirefoxRoots(home))
-}
-
-func detectWindowsFirefoxProfile() (browserProfile, bool) {
-	return detectFirefoxProfileInRoots("firefox", windowsFirefoxRoots())
-}
-
-func detectFirefoxProfileInRoots(browser string, roots []string) (browserProfile, bool) {
-	foundRoot := false
-	var newest browserProfile
-	var newestTime time.Time
+func resolveCookieRoots(roots []string) ([]string, bool) {
+	resolved := make([]string, 0, len(roots))
+	seen := make(map[string]struct{}, len(roots))
+	found := false
 
 	for _, root := range roots {
 		root = strings.TrimSpace(root)
-		if root == "" || !pathExists(root) {
+		if root == "" {
 			continue
 		}
-		foundRoot = true
-
-		profiles := readFirefoxProfiles(root)
-		for _, profile := range profiles {
-			cookiesPath := filepath.Join(profile.Path, "cookies.sqlite")
-			info, err := os.Stat(cookiesPath)
-			if err != nil || info.IsDir() {
+		matches := expandCookieRoot(root)
+		if len(matches) > 0 {
+			found = true
+		}
+		for _, match := range matches {
+			key := filepath.Clean(match)
+			if _, ok := seen[key]; ok {
 				continue
 			}
-			if profile.Default {
-				return browserProfile{Browser: browser, Profile: profile.Path}, true
-			}
-			if newest.Profile == "" || info.ModTime().After(newestTime) {
-				newest = browserProfile{Browser: browser, Profile: profile.Path}
-				newestTime = info.ModTime()
-			}
+			seen[key] = struct{}{}
+			resolved = append(resolved, key)
 		}
 	}
 
-	if newest.Profile != "" {
-		return newest, true
-	}
-	if foundRoot {
-		return browserProfile{}, false
-	}
-	return browserProfile{}, false
+	return resolved, found
 }
 
-func linuxFirefoxRoots(home string) []string {
-	return []string{
-		filepath.Join(home, ".mozilla", "firefox"),
-		filepath.Join(home, ".config", "mozilla", "firefox"),
-		filepath.Join(home, ".var", "app", "org.mozilla.firefox", ".mozilla", "firefox"),
-		filepath.Join(home, ".var", "app", "org.mozilla.firefox", "config", "mozilla", "firefox"),
-		filepath.Join(home, "snap", "firefox", "common", ".mozilla", "firefox"),
-	}
-}
-
-func windowsFirefoxRoots() []string {
-	return []string{
-		filepath.Join(os.Getenv("APPDATA"), "Mozilla", "Firefox"),
-	}
-}
-
-func readFirefoxProfiles(root string) []firefoxProfile {
-	iniPath := filepath.Join(root, "profiles.ini")
-	if profiles, ok := readFirefoxProfilesINI(root, iniPath); ok && len(profiles) > 0 {
-		return profiles
-	}
-	return fallbackFirefoxProfiles(root)
-}
-
-func readFirefoxProfilesINI(root, iniPath string) ([]firefoxProfile, bool) {
-	file, err := os.Open(iniPath)
-	if err != nil {
-		return nil, false
-	}
-	defer file.Close()
-
-	var (
-		section      string
-		profiles     []firefoxProfile
-		current      firefoxProfile
-		defaultPaths []string
-		hasData      bool
-	)
-
-	normalizeProfilePath := func(path string, relative bool) string {
-		if relative {
-			return filepath.Join(root, filepath.FromSlash(path))
+func expandCookieRoot(root string) []string {
+	if !strings.ContainsAny(root, "*?[") {
+		if pathExists(root) {
+			return []string{absoluteIfPossible(root)}
 		}
-		return filepath.Clean(filepath.FromSlash(path))
-	}
-
-	normalizeInstallDefault := func(path string) string {
-		path = strings.TrimSpace(path)
-		if path == "" {
-			return ""
-		}
-		if filepath.IsAbs(path) {
-			return filepath.Clean(filepath.FromSlash(path))
-		}
-		return filepath.Join(root, filepath.FromSlash(path))
-	}
-
-	flush := func() {
-		if !strings.HasPrefix(section, "Profile") || strings.TrimSpace(current.Path) == "" {
-			current = firefoxProfile{}
-			return
-		}
-		current.Path = normalizeProfilePath(current.Path, current.Relative)
-		profiles = append(profiles, current)
-		current = firefoxProfile{}
-	}
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			flush()
-			section = strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
-			continue
-		}
-
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		if key == "" {
-			continue
-		}
-		hasData = true
-		if strings.HasPrefix(section, "Install") {
-			if key == "Default" {
-				if path := normalizeInstallDefault(value); path != "" {
-					defaultPaths = append(defaultPaths, path)
-				}
-			}
-			continue
-		}
-
-		switch key {
-		case "Name":
-			current.Name = value
-		case "Path":
-			if value == "" {
-				continue
-			}
-			current.Path = value
-		case "Default":
-			current.Default = value == "1"
-		case "IsRelative":
-			current.Relative = value == "1"
-		}
-	}
-	flush()
-
-	if len(defaultPaths) > 0 {
-		defaultSet := make(map[string]struct{}, len(defaultPaths))
-		for _, path := range defaultPaths {
-			defaultSet[filepath.Clean(path)] = struct{}{}
-		}
-		for i := range profiles {
-			if _, ok := defaultSet[filepath.Clean(profiles[i].Path)]; ok {
-				profiles[i].Default = true
-			}
-		}
-	}
-	return profiles, hasData
-}
-
-func fallbackFirefoxProfiles(root string) []firefoxProfile {
-	entries, err := os.ReadDir(root)
-	if err != nil {
 		return nil
 	}
 
-	profiles := make([]firefoxProfile, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		dir := filepath.Join(root, entry.Name())
-		if !pathExists(filepath.Join(dir, "cookies.sqlite")) {
-			continue
-		}
-		profiles = append(profiles, firefoxProfile{Name: entry.Name(), Path: dir})
-	}
-	return profiles
-}
-
-type chromiumRoot struct {
-	Browser string
-	Root    string
-}
-
-func detectLinuxChromiumProfile(home string) (browserProfile, bool) {
-	return detectChromiumProfile(linuxChromiumCandidates(home))
-}
-
-func detectWindowsChromiumProfile() (browserProfile, bool) {
-	return detectChromiumProfile(windowsChromiumCandidates())
-}
-
-func detectChromiumProfile(candidates []chromiumRoot) (browserProfile, bool) {
-	var (
-		best     browserProfile
-		bestTime time.Time
-	)
-
-	for _, candidate := range candidates {
-		profile, modTime, ok := detectChromiumProfileForRoot(candidate)
-		if !ok {
-			continue
-		}
-		if best.Profile == "" || modTime.After(bestTime) {
-			best = profile
-			bestTime = modTime
-		}
-	}
-
-	return best, best.Profile != ""
-}
-
-func detectChromiumProfileForRoot(candidate chromiumRoot) (browserProfile, time.Time, bool) {
-	root := strings.TrimSpace(candidate.Root)
-	if root == "" || !pathExists(root) {
-		return browserProfile{}, time.Time{}, false
-	}
-
-	for _, name := range []string{"Default"} {
-		dir := filepath.Join(root, name)
-		if modTime, ok := chromiumCookieProfileTime(dir); ok {
-			return browserProfile{Browser: candidate.Browser, Profile: dir}, modTime, true
-		}
-	}
-
-	entries, err := os.ReadDir(root)
+	matches, err := filepath.Glob(root)
 	if err != nil {
-		return browserProfile{}, time.Time{}, false
+		return nil
 	}
-
-	var (
-		best     browserProfile
-		bestTime time.Time
-	)
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if !strings.HasPrefix(name, "Profile ") && name != "Guest Profile" {
-			continue
-		}
-		dir := filepath.Join(root, name)
-		modTime, ok := chromiumCookieProfileTime(dir)
-		if !ok {
-			continue
-		}
-		if best.Profile == "" || modTime.After(bestTime) {
-			best = browserProfile{Browser: candidate.Browser, Profile: dir}
-			bestTime = modTime
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if pathExists(match) {
+			out = append(out, absoluteIfPossible(match))
 		}
 	}
-
-	return best, bestTime, best.Profile != ""
+	return out
 }
 
-func chromiumCookieProfileTime(dir string) (time.Time, bool) {
-	for _, candidate := range []string{
-		filepath.Join(dir, "Network", "Cookies"),
-		filepath.Join(dir, "Cookies"),
+func firefoxCookieCandidates(browser string, roots []string) []cookieCandidate {
+	out := make([]cookieCandidate, 0, len(roots))
+	seen := make(map[string]struct{}, len(roots)*2)
+
+	for _, root := range roots {
+		for _, pattern := range []string{
+			filepath.Join(root, "cookies.sqlite"),
+			filepath.Join(root, "*", "cookies.sqlite"),
+			filepath.Join(root, "Profiles", "*", "cookies.sqlite"),
+		} {
+			matches, err := filepath.Glob(pattern)
+			if err != nil {
+				continue
+			}
+			for _, match := range matches {
+				info, ok := readableCookieFile(match)
+				if !ok {
+					continue
+				}
+				key := filepath.Clean(match)
+				if _, exists := seen[key]; exists {
+					continue
+				}
+				seen[key] = struct{}{}
+				out = append(out, cookieCandidate{
+					Browser:    browser,
+					Family:     cookieFamilyFirefox,
+					Profile:    absoluteIfPossible(filepath.Dir(match)),
+					CookiePath: absoluteIfPossible(match),
+					ModTime:    info.ModTime(),
+				})
+			}
+		}
+	}
+
+	return out
+}
+
+func chromiumCookieCandidates(browser string, roots []string, supportsProfiles bool) []cookieCandidate {
+	out := make([]cookieCandidate, 0, len(roots))
+	seen := make(map[string]struct{}, len(roots)*2)
+
+	for _, root := range roots {
+		for _, profileDir := range chromiumProfileDirs(root, supportsProfiles) {
+			cookiePath, info, ok := chromiumCookieFile(profileDir)
+			if !ok {
+				continue
+			}
+			key := filepath.Clean(cookiePath)
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, cookieCandidate{
+				Browser:    browser,
+				Family:     cookieFamilyChromium,
+				Profile:    absoluteIfPossible(profileDir),
+				CookiePath: absoluteIfPossible(cookiePath),
+				ModTime:    info.ModTime(),
+			})
+		}
+	}
+
+	return out
+}
+
+func chromiumProfileDirs(root string, supportsProfiles bool) []string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil
+	}
+	if !supportsProfiles {
+		return []string{root}
+	}
+
+	out := []string{root}
+	for _, fixed := range []string{"Default", "Guest Profile"} {
+		out = append(out, filepath.Join(root, fixed))
+	}
+	if matches, err := filepath.Glob(filepath.Join(root, "Profile *")); err == nil {
+		out = append(out, matches...)
+	}
+	return uniquePaths(out)
+}
+
+func chromiumCookieFile(profileDir string) (string, os.FileInfo, bool) {
+	for _, path := range []string{
+		filepath.Join(profileDir, "Network", "Cookies"),
+		filepath.Join(profileDir, "Cookies"),
 	} {
-		info, err := os.Stat(candidate)
-		if err == nil && !info.IsDir() {
-			return info.ModTime(), true
+		if info, ok := readableCookieFile(path); ok {
+			return path, info, true
 		}
 	}
-	return time.Time{}, false
+	return "", nil, false
 }
 
-func linuxChromiumCandidates(home string) []chromiumRoot {
-	return []chromiumRoot{
-		{Browser: "chrome", Root: filepath.Join(home, ".config", "google-chrome")},
-		{Browser: "chromium", Root: filepath.Join(home, ".config", "chromium")},
-		{Browser: "edge", Root: filepath.Join(home, ".config", "microsoft-edge")},
-		{Browser: "brave", Root: filepath.Join(home, ".config", "BraveSoftware", "Brave-Browser")},
-		{Browser: "vivaldi", Root: filepath.Join(home, ".config", "vivaldi")},
-		{Browser: "opera", Root: filepath.Join(home, ".config", "opera")},
-		{Browser: "chrome", Root: filepath.Join(home, ".var", "app", "com.google.Chrome", "config", "google-chrome")},
-		{Browser: "chromium", Root: filepath.Join(home, ".var", "app", "org.chromium.Chromium", "config", "chromium")},
-		{Browser: "brave", Root: filepath.Join(home, ".var", "app", "com.brave.Browser", "config", "BraveSoftware", "Brave-Browser")},
+func readableCookieFile(path string) (os.FileInfo, bool) {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return nil, false
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, false
+	}
+	_ = file.Close()
+	return info, true
+}
+
+func linuxCookieBrowserSpecs(home string) []cookieBrowserSpec {
+	configHome := configHomeDir(home)
+	chromeConfigHome := chromeConfigHomeDir(home)
+	chromeUserDataDir := chromeUserDataDir(home)
+
+	return []cookieBrowserSpec{
+		{
+			Browser:          "firefox",
+			Family:           cookieFamilyFirefox,
+			SupportsProfiles: true,
+			Roots: uniquePaths([]string{
+				filepath.Join(configHome, "mozilla", "firefox"),
+				filepath.Join(home, ".mozilla", "firefox"),
+				filepath.Join(home, ".var", "app", "org.mozilla.firefox", "config", "mozilla", "firefox"),
+				filepath.Join(home, ".var", "app", "org.mozilla.firefox", ".mozilla", "firefox"),
+				filepath.Join(home, "snap", "firefox", "common", ".mozilla", "firefox"),
+			}),
+		},
+		{
+			Browser:          "chrome",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots: uniquePaths([]string{
+				chromeUserDataDir,
+				filepath.Join(chromeConfigHome, "google-chrome"),
+				filepath.Join(configHome, "google-chrome"),
+				filepath.Join(home, ".var", "app", "com.google.Chrome", "config", "google-chrome"),
+			}),
+		},
+		{
+			Browser:          "chromium",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots: uniquePaths([]string{
+				chromeUserDataDir,
+				filepath.Join(chromeConfigHome, "chromium"),
+				filepath.Join(configHome, "chromium"),
+				filepath.Join(home, ".var", "app", "org.chromium.Chromium", "config", "chromium"),
+			}),
+		},
+		{
+			Browser:          "edge",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots:            []string{filepath.Join(configHome, "microsoft-edge")},
+		},
+		{
+			Browser:          "brave",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots: uniquePaths([]string{
+				filepath.Join(configHome, "BraveSoftware", "Brave-Browser"),
+				filepath.Join(home, ".var", "app", "com.brave.Browser", "config", "BraveSoftware", "Brave-Browser"),
+			}),
+		},
+		{
+			Browser:          "vivaldi",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots:            []string{filepath.Join(configHome, "vivaldi")},
+		},
+		{
+			Browser:          "opera",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: false,
+			Roots:            []string{filepath.Join(configHome, "opera")},
+		},
 	}
 }
 
-func windowsChromiumCandidates() []chromiumRoot {
-	local := os.Getenv("LOCALAPPDATA")
-	appdata := os.Getenv("APPDATA")
-	return []chromiumRoot{
-		{Browser: "chrome", Root: filepath.Join(local, "Google", "Chrome", "User Data")},
-		{Browser: "chromium", Root: filepath.Join(local, "Chromium", "User Data")},
-		{Browser: "edge", Root: filepath.Join(local, "Microsoft", "Edge", "User Data")},
-		{Browser: "brave", Root: filepath.Join(local, "BraveSoftware", "Brave-Browser", "User Data")},
-		{Browser: "vivaldi", Root: filepath.Join(local, "Vivaldi", "User Data")},
-		{Browser: "opera", Root: filepath.Join(appdata, "Opera Software")},
+func windowsCookieBrowserSpecs() []cookieBrowserSpec {
+	appData := strings.TrimSpace(os.Getenv("APPDATA"))
+	localAppData := strings.TrimSpace(os.Getenv("LOCALAPPDATA"))
+
+	return []cookieBrowserSpec{
+		{
+			Browser:          "firefox",
+			Family:           cookieFamilyFirefox,
+			SupportsProfiles: true,
+			Roots: uniquePaths([]string{
+				filepath.Join(appData, "Mozilla", "Firefox", "Profiles"),
+				filepath.Join(localAppData, "Packages", "Mozilla.Firefox_*", "LocalCache", "Roaming", "Mozilla", "Firefox", "Profiles"),
+			}),
+		},
+		{
+			Browser:          "chrome",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots:            []string{filepath.Join(localAppData, "Google", "Chrome", "User Data")},
+		},
+		{
+			Browser:          "chromium",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots:            []string{filepath.Join(localAppData, "Chromium", "User Data")},
+		},
+		{
+			Browser:          "edge",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots:            []string{filepath.Join(localAppData, "Microsoft", "Edge", "User Data")},
+		},
+		{
+			Browser:          "brave",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots:            []string{filepath.Join(localAppData, "BraveSoftware", "Brave-Browser", "User Data")},
+		},
+		{
+			Browser:          "vivaldi",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots:            []string{filepath.Join(localAppData, "Vivaldi", "User Data")},
+		},
+		{
+			Browser:          "opera",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: false,
+			Roots:            []string{filepath.Join(appData, "Opera Software", "Opera Stable")},
+		},
 	}
+}
+
+func configHomeDir(home string) string {
+	if dir := resolveUserPath(home, os.Getenv("XDG_CONFIG_HOME")); dir != "" {
+		return dir
+	}
+	return filepath.Join(home, ".config")
+}
+
+func chromeConfigHomeDir(home string) string {
+	if dir := resolveUserPath(home, os.Getenv("CHROME_CONFIG_HOME")); dir != "" {
+		return dir
+	}
+	return configHomeDir(home)
+}
+
+func chromeUserDataDir(home string) string {
+	return resolveUserPath(home, os.Getenv("CHROME_USER_DATA_DIR"))
+}
+
+func resolveUserPath(home, raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "~"+string(os.PathSeparator)) {
+		return absoluteIfPossible(filepath.Join(home, strings.TrimPrefix(raw, "~"+string(os.PathSeparator))))
+	}
+	if filepath.IsAbs(raw) {
+		return absoluteIfPossible(raw)
+	}
+	if home == "" {
+		return absoluteIfPossible(raw)
+	}
+	return absoluteIfPossible(filepath.Join(home, raw))
+}
+
+func uniquePaths(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		key := filepath.Clean(path)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+	}
+
+	return out
 }
 
 func resolveRuntimeDeps() CheckDepsResult {

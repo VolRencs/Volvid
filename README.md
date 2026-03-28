@@ -9,7 +9,7 @@
 ![Go](https://img.shields.io/badge/Go-1.26.1%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-6.1.6-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-6.1.7-orange?style=flat-square)
 
 </div>
 
@@ -26,7 +26,7 @@ The project includes:
 - a keyboard-driven **TUI** built on [Bubble Tea v2](https://charm.land/bubbletea/v2)
 - an optional **Telegram bot** for downloading by URL or by YouTube search
 
-On first run the app prepares **yt-dlp** inside `_deps/`. On Windows, **ffmpeg** can also be downloaded on demand. The interface is available in **English** and **Russian**; press **Tab** in the TUI to switch language.
+The app checks **yt-dlp** and **ffmpeg** on startup and opens a dependency screen if one of them is missing. Managed binaries can be downloaded into `_deps/`, while system-installed binaries are preferred when available. **node** is optional and is used as a **yt-dlp JS runtime** when found. Browser cookies are auto-detected from supported browsers on **Linux** and **Windows**. The interface is available in **English** and **Russian**; press **Tab** in the TUI to switch language.
 
 ---
 
@@ -38,9 +38,10 @@ On first run the app prepares **yt-dlp** inside `_deps/`. On Windows, **ffmpeg**
 - **Audio-only mode** with 5 presets: MP3 320k, MP3 192k, M4A/AAC Best, Opus Best, FLAC
 - **Thumbnail download**
 - **Playlist browser** with Space toggles, manual ranges and multi-worker downloads
-- **YouTube search** from the main input via `?`
+- **YouTube search** from the main input via `Ctrl+G`
 - **Auto-update** check on startup
-- **Dependency refresh** inside the UI with `Ctrl+U`
+- **Dependency screen** with `yt-dlp`, `ffmpeg`, `node`, browser cookies and JS runtime status
+- **Managed dependency refresh** inside the UI with `Ctrl+U`
 - **Session summary** with per-run history
 
 ### Telegram bot
@@ -129,17 +130,18 @@ go build -tags bot -trimpath -buildvcs=false -ldflags="-s -w" -o tgbot ./cmd/tgb
 ## TUI Flow
 
 1. Paste a YouTube link on the main screen.
-2. Or press `?` and search by video title.
+2. Or press `Ctrl+G` and search by video title.
 3. Choose **Video / Audio / Thumbnail**.
 4. For video: choose quality.
 5. For audio: choose one of the available presets.
 6. Start the download.
 
-On first launch:
+On startup:
 
-1. `yt-dlp` is checked and downloaded if needed.
-2. On Windows, the app can offer to download `ffmpeg`.
-3. On Linux, `ffmpeg` is expected to be available on the system.
+1. `yt-dlp` and `ffmpeg` are treated as required dependencies.
+2. If one of them is missing, the TUI opens the dependency screen before the URL screen.
+3. `node` is optional and can be downloaded from the same screen, but it does not block the app.
+4. Browser cookies and JS runtime status are detected automatically.
 
 ---
 
@@ -155,8 +157,8 @@ On first launch:
 
 ### Admin commands
 
-- `/status` show dependency and Bot API backend status
-- `/update` refresh yt-dlp and ffmpeg runtime dependencies
+- `/status` show dependency, browser cookies, JS runtime and Bot API backend status
+- `/update` refresh managed runtime dependencies
 - `/broadcast <text>` or reply with `/broadcast`
 - `/schedule <duration> <text>` or reply with `/schedule <duration>`
 - `/timers`
@@ -186,11 +188,11 @@ Notes:
 | `Enter` | Confirm |
 | `Space` | Toggle item in playlist view |
 | `/` | Enter playlist indices manually |
-| `?` | Open YouTube search from the main URL screen |
+| `Ctrl+G` | Open YouTube search from the main URL screen |
 | `Esc` | Leave search and return to URL input |
 | `a` / `а` | Select all / clear all in playlists |
 | `Tab` | Switch UI language (EN / RU) |
-| `Ctrl+U` | Update yt-dlp and ffmpeg dependencies |
+| `Ctrl+U` | Open dependency management / update managed dependencies |
 | `Ctrl+C` | Quit |
 
 ---
@@ -203,7 +205,7 @@ Typical layout next to the binary:
 next to the binary/
 ├── VolRenDownloader / VolRenDownloader.exe / tgbot
 ├── .volren_locale          ← saved TUI language
-├── _deps/                  ← yt-dlp; on Windows also ffmpeg.exe
+├── _deps/                  ← managed yt-dlp / ffmpeg / node binaries
 ├── downloads/              ← downloaded TUI files
 │   └── .bot/
 │       └── users/          ← temporary bot job folders
@@ -218,10 +220,10 @@ Bot temporary files are created under `downloads/.bot/users/<chat_id>/job-*` and
 
 ## Platforms
 
-| OS | Arch | yt-dlp | ffmpeg | App update |
-|----|------|--------|--------|------------|
-| Windows | x64 | from GitHub | downloaded on demand | `.bat` replace after close |
-| Linux | amd64 / arm64 | from GitHub | system package | binary replace |
+| OS | Arch | yt-dlp | ffmpeg | node | App update |
+|----|------|--------|--------|------|------------|
+| Windows | x64 / arm64 | system or `_deps` | system or `_deps` | system or `_deps` | `.bat` replace after close |
+| Linux | amd64 / arm64 | system or `_deps` | system or `_deps` | system or `_deps` | binary replace |
 
 ---
 
@@ -260,10 +262,10 @@ go build -tags bot ./cmd/tgbot
 Check access to GitHub or place the binary into `_deps/` manually.
 
 **YouTube says “Sign in to confirm you’re not a bot”**  
-Refresh dependencies with `Ctrl+U` in the TUI or `/update` in the bot.
+Check the dependency screen or `/status` first. The app auto-detects browser cookies and JS runtime; if cookies are inactive, make sure you have a supported browser profile on the same machine.
 
 **HD merge / MP3 conversion fails**  
-Make sure `ffmpeg` is available. On Linux, install it from your distro packages.
+Make sure `ffmpeg` is available. If it is missing, open the dependency screen in the TUI or prepare it in `_deps/`. System-installed `ffmpeg` is preferred when available.
 
 **Large bot downloads are rejected**  
 Check both limits:
