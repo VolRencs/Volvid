@@ -84,6 +84,8 @@ func (b *Bot) handleDownloadUpdate(
 	editor *progressEditor,
 ) bool {
 	switch update.Type {
+	case app.EvStart:
+		state.Stem = update.Text
 	case app.EvDest:
 		state.Stem = update.Text
 	case app.EvProgress:

@@ -12,10 +12,9 @@ type UIStrings struct {
 	SpinnerUpdate, SpinnerPlaylist, SpinnerQuality, SpinnerSearch, SpinnerFragment string
 
 	UpdateAvail, CurrentVerShort string
-	FFmpegWarn, FFmpegHint       string
 	PlaylistMixWarn              string
 
-	DepUpdatingVer, DepsUpdating                          string
+	DepsUpdating                                          string
 	UpdateAppliedWin, UpdateAppliedUnix, UpdateDonePrefix string
 	HelpAnyKey, HelpExit, DepsOK, ErrPrefix               string
 
@@ -44,9 +43,9 @@ type UIStrings struct {
 
 	SummaryOK, SummaryFail, SummaryPlaylistTitle, SessionHist, SuccessFmt string
 
-	MenuUpdateY, MenuUpdateN, MenuFFmpegY, MenuFFmpegN, MenuVidOnly, MenuOpenPl string
-	MenuAgainY, MenuAgainN, WorkerSeq, WorkerNFmt                               string
-	MenuFullVideo, MenuFromURLStart, MenuManualRange                            string
+	MenuUpdateY, MenuUpdateN, MenuVidOnly, MenuOpenPl string
+	MenuAgainY, MenuAgainN, WorkerSeq, WorkerNFmt     string
+	MenuFullVideo, MenuFromURLStart, MenuManualRange  string
 
 	DepLabelFmt string
 	LangTab     string
@@ -67,10 +66,9 @@ var strEN = UIStrings{
 	SpinnerUpdate: "  Checking for updates…", SpinnerPlaylist: "  Loading playlist…", SpinnerQuality: "  Scanning qualities…", SpinnerSearch: "  Searching YouTube…", SpinnerFragment: "  Detecting video duration…",
 
 	UpdateAvail: "  ✔  New version ", CurrentVerShort: "  (current %s)",
-	FFmpegWarn: "  ⚠️ ffmpeg not found", FFmpegHint: "     Required for HD, 4K and MP3",
 	PlaylistMixWarn: "  ⚠️ URL has both a video and a playlist",
 
-	DepUpdatingVer: "update ", DepsUpdating: "Updating dependencies…",
+	DepsUpdating:      "Updating dependencies…",
 	UpdateAppliedWin:  "  The app will close. The update bat will replace the exe in the background.",
 	UpdateAppliedUnix: "  Binary replaced. Restart the app.",
 	UpdateDonePrefix:  "  ✔  Update applied — ",
@@ -117,7 +115,6 @@ var strEN = UIStrings{
 	SuccessFmt: "/%d ok",
 
 	MenuUpdateY: "Yes, update", MenuUpdateN: "Skip",
-	MenuFFmpegY: "Yes, download (~80 MB)", MenuFFmpegN: "Skip",
 	MenuVidOnly: "This video only", MenuOpenPl: "Open full playlist",
 	MenuAgainY: "Download more", MenuAgainN: "Exit",
 	WorkerSeq: "Sequential (1 worker)", WorkerNFmt: "%d workers",
@@ -142,10 +139,9 @@ var strRU = UIStrings{
 	SpinnerUpdate: "  Проверяю обновления…", SpinnerPlaylist: "  Загружаю плейлист…", SpinnerQuality: "  Сканирую доступные качества…", SpinnerSearch: "  Ищу на YouTube…", SpinnerFragment: "  Определяю длительность видео…",
 
 	UpdateAvail: "  ✔  Доступна версия ", CurrentVerShort: "  (сейчас %s)",
-	FFmpegWarn: "  ⚠️ ffmpeg не найден", FFmpegHint: "     Нужен для HD, 4K и MP3",
 	PlaylistMixWarn: "  ⚠️ В ссылке и видео, и плейлист",
 
-	DepUpdatingVer: "обновление ", DepsUpdating: "Обновление зависимостей…",
+	DepsUpdating:      "Обновление зависимостей…",
 	UpdateAppliedWin:  "  Приложение сейчас закроется. Update bat заменит exe в фоне и удалится сам.",
 	UpdateAppliedUnix: "  Бинарник заменён. Перезапустите программу.",
 	UpdateDonePrefix:  "  ✔  Обновление применено — ",
@@ -192,7 +188,6 @@ var strRU = UIStrings{
 	SuccessFmt: "/%d успешно",
 
 	MenuUpdateY: "Да, обновить", MenuUpdateN: "Пропустить",
-	MenuFFmpegY: "Да, скачать (~80 МБ)", MenuFFmpegN: "Пропустить",
 	MenuVidOnly: "Только это видео", MenuOpenPl: "Открыть плейлист",
 	MenuAgainY: "Да, скачать ещё", MenuAgainN: "Нет, выйти",
 	WorkerSeq: "Последовательно (1 поток)", WorkerNFmt: "%d потоков",

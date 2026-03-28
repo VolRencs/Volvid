@@ -73,11 +73,15 @@ func (m Model) viewSlot(index int, slot slotState, withBadge bool) string {
 	}
 	indent := strings.Repeat(" ", lipgloss.Width(prefix))
 
-	if slot.title == "" && !slot.done && !slot.failed {
+	if slot.title == "" && !slot.done && !slot.failed && !slot.proc && slot.pct <= 0 && slot.doneB <= 0 {
 		return prefix + sDim.Render(u.Waiting) + "\n"
 	}
 
-	titleRaw := sSlotTitle.Render(trunc(slot.title, 46))
+	titleText := trunc(slot.title, 46)
+	if strings.TrimSpace(titleText) == "" {
+		titleText = u.Downloading
+	}
+	titleRaw := sSlotTitle.Render(titleText)
 	title := sDim.Render(titleRaw)
 	if slot.done {
 		title = sNormal.Render(titleRaw)

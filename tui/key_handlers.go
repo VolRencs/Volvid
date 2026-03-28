@@ -41,6 +41,21 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			m.menu.Move(1)
 			return m, nil
+		case "esc":
+			if m.screen == scrDepUpdate {
+				if m.depMode == depModeManage {
+					m.screen = m.prevScreen
+					if m.screen == scrURL {
+						return m, m.urlInput.Focus()
+					}
+					return m, nil
+				}
+				if !m.deps.MissingRequired() {
+					return m.gotoURL()
+				}
+				return m, tea.Quit
+			}
+			return m, nil
 		case "enter":
 			return m.activateMenu()
 		default:
@@ -57,13 +72,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case scrDepUpdate:
-		if (m.depUpdateDone || m.depErr != "") && (k == "enter" || k == "esc" || k == "q") {
-			m.screen = m.prevScreen
-			if m.screen == scrURL {
-				return m, m.urlInput.Focus()
-			}
-			return m, nil
-		}
 		return m, nil
 
 	case scrURL:
@@ -81,7 +89,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) isMenuScreen() bool {
 	switch m.screen {
-	case scrUpdateReady, scrFFmpegAsk, scrPlaylistAsk, scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrSearchResults, scrFragmentChoice:
+	case scrUpdateReady, scrPlaylistAsk, scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrSearchResults, scrFragmentChoice, scrDepUpdate:
 		return true
 	}
 	return false

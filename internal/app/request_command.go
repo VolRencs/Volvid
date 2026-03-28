@@ -24,7 +24,6 @@ func buildPreparedDownloadArgs(req DownloadRequest, sourceURL, outputTemplate, f
 	args = append(args, modeArgs...)
 	args = append(args, baseDownloadArgs(outputTemplate)...)
 	args = appendFragmentArgs(args, req)
-	args = append(args, "--print", `after_move:%(filepath)j`)
 	args = append(args, extra...)
 	args = append(args, sourceURL)
 

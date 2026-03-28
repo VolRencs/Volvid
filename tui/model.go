@@ -15,7 +15,6 @@ const (
 	scrUpdateReady
 	scrUpdateDl
 	scrUpdateDone
-	scrFFmpegAsk
 	scrDepDl
 	scrDepUpdate
 	scrURL
@@ -56,6 +55,29 @@ type slotState struct {
 	proc   bool
 	done   bool
 	failed bool
+}
+
+type depScreenMode uint8
+
+const (
+	depModeStartup depScreenMode = iota + 1
+	depModeManage
+)
+
+type depActionKind uint8
+
+const (
+	depActionInstall depActionKind = iota + 1
+	depActionContinue
+	depActionRefresh
+	depActionBack
+	depActionExit
+)
+
+type depAction struct {
+	Kind  depActionKind
+	Key   string
+	Label string
 }
 
 type (
@@ -101,8 +123,8 @@ type Model struct {
 
 	spinnerFrame int
 
-	ytdlpVer  string
-	ffmpegVer string
+	deps    app.CheckDepsResult
+	depMode depScreenMode
 
 	updateInfo  *app.UpdateInfo
 	depProgress app.FileProgress

@@ -1,6 +1,10 @@
 package bot
 
-import app "YouTubeBuild/internal/app"
+import (
+	"strings"
+
+	app "YouTubeBuild/internal/app"
+)
 
 func (b *Bot) handleURL(chatID, userID int64, rawURL string) {
 	target, ok := b.parseURLTarget(chatID, userID, rawURL)
@@ -35,13 +39,27 @@ func (b *Bot) canStartDownloadFlow(chatID, userID int64) bool {
 	if b.rejectWhileDownloading(chatID) {
 		return false
 	}
-	if app.YtdlpVersion() != "" {
+	deps := app.DetectDeps()
+	if !deps.MissingRequired() {
 		return true
 	}
 
-	b.logf("dependencies unavailable %s yt-dlp missing", logChatUser(chatID, userID))
+	missing := "обязательные зависимости"
+	if names := deps.MissingRequiredDeps(); len(names) > 0 {
+		labels := make([]string, 0, len(names))
+		for _, dep := range names {
+			if dep.Name != "" {
+				labels = append(labels, dep.Name)
+			}
+		}
+		if len(labels) > 0 {
+			missing = strings.Join(labels, ", ")
+		}
+	}
+	b.logf("dependencies unavailable %s missing=%q", logChatUser(chatID, userID), missing)
 	b.send(chatID,
-		"⚠️ <b>yt-dlp недоступен.</b>\n\n"+
+		"⚠️ <b>Недоступны обязательные зависимости.</b>\n\n"+
+			"Не найдены: <code>"+escapeHTML(missing)+"</code>\n\n"+
 			"Бот не смог автоматически подготовить зависимости на сервере.")
 	return false
 }

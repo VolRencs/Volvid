@@ -33,7 +33,8 @@ func (b *Bot) startDepsUpdate(chatID int64) {
 			b.mu.Unlock()
 		}()
 
-		if err := app.InstallAllDepsFor(app.LocaleRU, nil); err != nil {
+		before := app.DetectDeps()
+		if err := app.UpdateManagedDepsFor(app.LocaleRU, nil); err != nil {
 			log.Printf("bot deps update: %v", err)
 			b.send(chatID, "⚠️ Не удалось обновить зависимости:\n<code>"+escapeHTML(err.Error())+"</code>")
 			return
@@ -46,11 +47,39 @@ func (b *Bot) startDepsUpdate(chatID int64) {
 		b.mu.Unlock()
 
 		text := "✅ Зависимости обновлены.\n\n" +
-			verLine("yt-dlp", deps.YtdlpVer) + "\n" +
-			verLine("ffmpeg", deps.FFmpegVer)
-		b.logf("deps update done chat=%d yt-dlp=%q ffmpeg=%q", chatID, deps.YtdlpVer, deps.FFmpegVer)
+			depLine(deps.YTDLP) + "\n" +
+			depLine(deps.FFmpeg) + "\n" +
+			depLine(deps.Node) + "\n" +
+			accessLine("browser cookies", deps.Cookies.Status, cookiesDetail(deps.Cookies)) + "\n" +
+			accessLine("js runtime", deps.Runtime.Status, runtimeDetail(deps.Runtime))
+		if systemDepsNotice(before) != "" {
+			text += "\n\n" + systemDepsNotice(before)
+		}
+		b.logf(
+			"deps update done chat=%d yt-dlp=%q ffmpeg=%q node=%q cookies=%q js=%q",
+			chatID,
+			deps.YTDLP.Version,
+			deps.FFmpeg.Version,
+			deps.Node.Version,
+			cookiesDetail(deps.Cookies),
+			runtimeDetail(deps.Runtime),
+		)
 		b.send(chatID, text)
 	}()
+}
+
+func systemDepsNotice(deps app.CheckDepsResult) string {
+	hasSystem := false
+	for _, dep := range deps.Dependencies() {
+		if dep.Source == app.DepSystem {
+			hasSystem = true
+			break
+		}
+	}
+	if !hasSystem {
+		return ""
+	}
+	return "ℹ️ System-зависимости через /update не обновляются. Их нужно обновлять в самой системе."
 }
 
 func (b *Bot) helpText(msg *models.Message) string {
@@ -70,7 +99,7 @@ func (b *Bot) helpText(msg *models.Message) string {
 
 	if b.isAdminMessage(msg) {
 		lines = append(lines,
-			"/status — версии yt-dlp и ffmpeg",
+			"/status — статусы yt-dlp / ffmpeg / node",
 			"/broadcast — рассылка текста или reply-копии сообщения",
 			"/schedule — таймер рассылки",
 			"/timers — активные таймеры",

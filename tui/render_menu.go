@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	app "YouTubeBuild/internal/app"
@@ -23,7 +24,7 @@ func (m Model) kbUpdDeps() binding  { return binding{key: "ctrl+u", help: m.u().
 func (m Model) kbSpace() binding    { return binding{key: "space", help: m.u().HelpSpace} }
 func (m Model) kbAll() binding      { return binding{key: "a", help: m.u().HelpAll} }
 func (m Model) kbSlash() binding    { return binding{key: "/", help: m.u().HelpSlash} }
-func (m Model) kbSearch() binding   { return binding{key: "?", help: m.u().HelpSearch} }
+func (m Model) kbSearch() binding   { return binding{key: "ctrl+g", help: m.u().HelpSearch} }
 func (m Model) kbEsc() binding      { return binding{key: "esc", help: m.u().HelpBack} }
 func (m Model) kbAny() binding      { return binding{key: m.u().HelpAnyKey, help: m.u().HelpExit} }
 func (m Model) spinnerView() string { return spinnerFrames[m.spinnerFrame%len(spinnerFrames)] }
@@ -84,13 +85,6 @@ func (m Model) renderPromptMenu() string {
 			"\n\n" +
 			m.menuAndNav()
 
-	case scrFFmpegAsk:
-		return sWarn.Render(u.FFmpegWarn) +
-			"\n" +
-			sDim.Render(u.FFmpegHint) +
-			"\n\n" +
-			m.menuAndNav()
-
 	default:
 		return sWarn.Render(u.PlaylistMixWarn) + "\n\n" + m.menuAndNav()
 	}
@@ -115,25 +109,160 @@ func (m Model) renderUpdateDone() string {
 }
 
 func (m Model) renderDepsUpdateScreen() string {
-	u := m.u()
+	title := "  Dependencies"
+	if m.locale == app.LocaleRU {
+		title = "  Зависимости"
+	}
+
+	rows := make([]depStatusRow, 0, len(m.deps.Dependencies())+2)
+	for _, dep := range m.deps.Dependencies() {
+		rows = append(rows, depStatusRow{
+			Label: dep.Name,
+			Value: m.depLineValue(dep),
+		})
+	}
+	rows = append(rows,
+		depStatusRow{Label: "cookies", Value: m.depAccessValue(m.deps.Cookies.Status, m.cookiesAccessDetail())},
+		depStatusRow{Label: "js", Value: m.depAccessValue(m.deps.Runtime.Status, m.runtimeAccessDetail())},
+	)
+
+	block := m.renderDepStatusRows(rows)
+
 	var b strings.Builder
+	b.WriteString(sBold.Render(title))
+	b.WriteString("\n\n")
+	b.WriteString(block)
 
-	if m.depUpdateDone {
-		b.WriteString(sOk.Render(u.DepsOK) + "\n\n")
-		b.WriteString("  " + sGray.Render("yt-dlp  ") + sOk.Render(m.ytdlpVer) + "\n")
-		if m.ffmpegVer != "" {
-			b.WriteString("  " + sGray.Render("ffmpeg  ") + sOk.Render(m.ffmpegVer) + "\n")
+	systemCount := 0
+	for _, dep := range m.deps.Dependencies() {
+		if dep.Source == app.DepSystem {
+			systemCount++
 		}
-		b.WriteString(m.hint(m.kbEnter()))
-		return b.String()
 	}
-
+	if systemCount > 0 {
+		note := "System dependencies are not updated here."
+		if m.locale == app.LocaleRU {
+			note = "Системные зависимости здесь не обновляются."
+		}
+		b.WriteString("\n\n" + lipgloss.PlaceHorizontal(lipgloss.Width(block), lipgloss.Center, sDim.Render(note)))
+	}
 	if m.depErr != "" {
-		b.WriteString(sErr.Render(u.ErrPrefix) + sDim.Render(m.depErr) + "\n")
-		b.WriteString(m.hint(m.kbEnter()))
-		return b.String()
+		errLine := sErr.Render(m.u().ErrPrefix) + sDim.Render(m.depErr)
+		b.WriteString("\n\n" + lipgloss.PlaceHorizontal(max(lipgloss.Width(block), lipgloss.Width(errLine)), lipgloss.Center, errLine))
+	}
+	b.WriteString("\n\n")
+	b.WriteString(m.menuAndNav())
+	return b.String()
+}
+
+type depStatusRow struct {
+	Label string
+	Value string
+}
+
+func (m Model) renderDepStatusRows(rows []depStatusRow) string {
+	labelWidth := 0
+	lines := make([]string, 0, len(rows))
+
+	for _, row := range rows {
+		labelWidth = max(labelWidth, lipgloss.Width(strings.TrimSpace(row.Label)))
 	}
 
-	b.WriteString(m.viewDependencyProgress(u.DepsUpdating))
-	return b.String()
+	for _, row := range rows {
+		label := fmt.Sprintf("%*s", labelWidth, strings.TrimSpace(row.Label))
+		line := sGray.Render(label) + sDim.Render("  :  ") + row.Value
+		lines = append(lines, line)
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) depLineValue(dep app.DependencyInfo) string {
+	role := m.depRoleText(dep)
+	if !dep.Available {
+		return sErr.Render(m.depText("missing")) + sDim.Render("  ["+role+"]")
+	}
+
+	meta := []string{string(dep.Source), role}
+	version := dep.Version
+	if strings.TrimSpace(version) == "" {
+		version = m.depText("available")
+	}
+	return sOk.Render(version) + sDim.Render("  ["+strings.Join(meta, ", ")+"]")
+}
+
+func (m Model) depAccessValue(status, detail string) string {
+	status = strings.TrimSpace(status)
+	detail = strings.TrimSpace(detail)
+	switch status {
+	case "", "browser not found", "not found":
+		return sDim.Render(m.depText("not_active"))
+	case "active":
+		if detail == "" {
+			return sOk.Render(m.depText("active"))
+		}
+		return sOk.Render(detail) + sDim.Render("  ["+status+"]")
+	default:
+		if detail == "" {
+			return sWarn.Render(status)
+		}
+		return sWarn.Render(detail) + sDim.Render("  ["+status+"]")
+	}
+}
+
+func (m Model) depText(kind string) string {
+	if m.locale == app.LocaleRU {
+		switch kind {
+		case "active":
+			return "активно"
+		case "missing":
+			return "не найден"
+		case "not_active":
+			return "не активно"
+		case "available":
+			return "доступно"
+		}
+		return kind
+	}
+	switch kind {
+	case "active":
+		return "active"
+	case "missing":
+		return "missing"
+	case "not_active":
+		return "not active"
+	case "available":
+		return "available"
+	}
+	return kind
+}
+
+func (m Model) cookiesAccessDetail() string {
+	if strings.TrimSpace(m.deps.Cookies.Browser) == "" {
+		return ""
+	}
+	if strings.EqualFold(strings.TrimSpace(m.deps.Cookies.Browser), "firefox") {
+		return m.deps.Cookies.Browser
+	}
+	if profile := strings.TrimSpace(m.deps.Cookies.Profile); profile != "" {
+		return m.deps.Cookies.Browser + ":" + filepath.Base(profile)
+	}
+	return m.deps.Cookies.Browser
+}
+
+func (m Model) runtimeAccessDetail() string {
+	return strings.TrimSpace(m.deps.Runtime.Name)
+}
+
+func (m Model) depRoleText(dep app.DependencyInfo) string {
+	if dep.Required {
+		if m.locale == app.LocaleRU {
+			return "обязательно"
+		}
+		return "required"
+	}
+	if m.locale == app.LocaleRU {
+		return "опционально"
+	}
+	return "optional"
 }

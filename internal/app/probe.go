@@ -79,10 +79,9 @@ func ProbeMediaContext(ctx context.Context, target ParsedTarget) (*MediaProbe, e
 		return cloneMediaProbe(cached.(*MediaProbe)), nil
 	}
 
-	out, err := commandOutput(
+	out, err := ytdlpOutput(
 		ctx,
 		qualityScanTimeout,
-		YtdlpBin,
 		"--dump-single-json",
 		"--no-playlist",
 		"--no-warnings",

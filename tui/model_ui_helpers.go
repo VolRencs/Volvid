@@ -47,10 +47,15 @@ func (m Model) menuItems() []string {
 	switch m.screen {
 	case scrUpdateReady:
 		return []string{u.MenuUpdateY, u.MenuUpdateN}
-	case scrFFmpegAsk:
-		return []string{u.MenuFFmpegY, u.MenuFFmpegN}
 	case scrPlaylistAsk:
 		return []string{u.MenuVidOnly, u.MenuOpenPl}
+	case scrDepUpdate:
+		actions := m.depActions()
+		items := make([]string, 0, len(actions))
+		for _, action := range actions {
+			items = append(items, action.Label)
+		}
+		return items
 	case scrMode:
 		return m.modeOptions()
 	case scrFragmentChoice:
@@ -73,6 +78,7 @@ func (m Model) menuItems() []string {
 func (m *Model) syncLocalizedInputs() {
 	m.searchInput.SetPlaceholder(m.u().SearchPlaceholder)
 	m.plInput.SetPlaceholder(m.u().PlInputPlaceholder)
+	m.menu.SetItems(m.menuItems())
 }
 
 func (m Model) fragmentChoiceOptions() []string {

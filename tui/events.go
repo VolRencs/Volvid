@@ -80,6 +80,10 @@ func (m *Model) updateElapsed() {
 func (m Model) handleDepDone(msg msgDepDone) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		m.depErr = msg.err.Error()
+		if m.prevScreen == scrDepUpdate || m.screen == scrDepDl {
+			m.screen = scrDepUpdate
+			m = m.syncMenu()
+		}
 		return m, nil
 	}
 	if msg.isUpdate {
@@ -89,13 +93,13 @@ func (m Model) handleDepDone(msg msgDepDone) (tea.Model, tea.Cmd) {
 		m.screen = scrUpdateDone
 		return m, nil
 	}
-	if m.screen == scrDepUpdate {
-		deps := app.DetectDeps()
-		m.ytdlpVer, m.ffmpegVer = deps.YtdlpVer, deps.FFmpegVer
-		m.depUpdateDone = true
-		return m, nil
-	}
-	return m.gotoURL()
+
+	deps := app.DetectDeps()
+	m = m.withDeps(deps)
+	m.depUpdateDone = true
+	m.screen = scrDepUpdate
+	m = m.syncMenu()
+	return m, nil
 }
 
 func (m Model) handleQualityScanned(msg msgQualityScanned) (tea.Model, tea.Cmd) {

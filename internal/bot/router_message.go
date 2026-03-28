@@ -63,8 +63,11 @@ func (b *Bot) handleCommand(msg *models.Message) {
 		}
 		deps := app.DetectDeps()
 		b.send(chatID, "⚙️ <b>Зависимости</b>\n\n"+
-			verLine("yt-dlp", deps.YtdlpVer)+"\n"+
-			verLine("ffmpeg", deps.FFmpegVer)+"\n"+
+			depLine(deps.YTDLP)+"\n"+
+			depLine(deps.FFmpeg)+"\n"+
+			depLine(deps.Node)+"\n"+
+			accessLine("browser cookies", deps.Cookies.Status, cookiesDetail(deps.Cookies))+"\n"+
+			accessLine("js runtime", deps.Runtime.Status, runtimeDetail(deps.Runtime))+"\n"+
 			verLine("bot api", b.backendLabel()+" | "+b.cfg.ServerURL))
 	case "update":
 		if !b.ensureOwnerCommand(msg) {

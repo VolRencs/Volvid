@@ -25,7 +25,7 @@ func (m Model) renderTextInputScreen(title, prompt string, field inputField, err
 
 func (m Model) viewURLScreen() string {
 	u := m.u()
-	return m.renderTextInputScreen(u.PasteURL, "", m.urlInput, m.urlErr, u.URLHints, m.kbEnter(), m.kbSearch(), m.kbQuit(), m.kbUpdDeps())
+	return m.renderTextInputScreen(u.PasteURL, "", m.urlInput, m.urlErr, u.URLHints, m.kbEnter(), m.kbSearch(), m.kbQuit())
 }
 
 func (m Model) viewSearchInput() string {

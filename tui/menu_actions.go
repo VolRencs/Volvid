@@ -19,13 +19,31 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		}
 		return m.gotoChecks()
 
-	case scrFFmpegAsk:
-		if idx == 0 {
-			return m.startDependencyDownload(scrDepDl, "ffmpeg", false, func(ch chan<- app.FileProgress) error {
-				return app.InstallFFmpegFor(m.locale, ch)
-			})
+	case scrDepUpdate:
+		actions := m.depActions()
+		if idx < 0 || idx >= len(actions) {
+			return m, nil
 		}
-		return m.gotoURL()
+		action := actions[idx]
+		switch action.Kind {
+		case depActionInstall:
+			m.prevScreen = scrDepUpdate
+			return m.startDependencyDownload(scrDepDl, action.Key, false, func(ch chan<- app.FileProgress) error {
+				return app.InstallDependencyFor(action.Key, m.locale, ch)
+			})
+		case depActionRefresh:
+			return m.openDependencyScreen(m.depMode)
+		case depActionContinue:
+			return m.gotoURL()
+		case depActionBack:
+			m.screen = m.prevScreen
+			if m.screen == scrURL {
+				return m, m.urlInput.Focus()
+			}
+			return m, nil
+		case depActionExit:
+			return m, tea.Quit
+		}
 
 	case scrPlaylistAsk:
 		if idx == 0 {

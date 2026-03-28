@@ -9,10 +9,14 @@ import (
 )
 
 const (
-	Version = "6.1.5"
+	Version = "6.1.6"
 
-	ffmpegWinURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-	ytdlpBase    = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
+	ffmpegWinURL        = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+	ffmpegWinARM64URL   = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-winarm64-gpl.zip"
+	ffmpegLinuxAMD64URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
+	ffmpegLinuxARM64URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
+	nodeLatestV22URL    = "https://nodejs.org/download/release/latest-v22.x/"
+	ytdlpBase           = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
 
 	githubAPIURL = "https://api.github.com/repos/VolRencs/YouTubeDownloader/releases/latest"
 
@@ -25,10 +29,16 @@ var (
 
 	AppDir string
 
-	DepsDir        string
-	DlDir          string
+	DepsDir string
+	DlDir   string
+
 	YtdlpBin       string
+	YtdlpResolved  string
+	FFmpegBin      string
+	FFprobeBin     string
 	FFmpegResolved string
+	NodeBin        string
+	NodeResolved   string
 
 	apiClient = &http.Client{Timeout: 8 * time.Second}
 	dlClient  *http.Client
@@ -58,8 +68,14 @@ func init() {
 	DlDir = filepath.Join(base, "downloads")
 	if IsWindows {
 		YtdlpBin = filepath.Join(DepsDir, "yt-dlp.exe")
+		FFmpegBin = filepath.Join(DepsDir, "ffmpeg.exe")
+		FFprobeBin = filepath.Join(DepsDir, "ffprobe.exe")
+		NodeBin = filepath.Join(DepsDir, "node.exe")
 	} else {
 		YtdlpBin = filepath.Join(DepsDir, "yt-dlp")
+		FFmpegBin = filepath.Join(DepsDir, "ffmpeg")
+		FFprobeBin = filepath.Join(DepsDir, "ffprobe")
+		NodeBin = filepath.Join(DepsDir, "node")
 	}
 	apiClient = NewHTTPClient(8 * time.Second)
 	dlClient = newDownloadHTTPClient()

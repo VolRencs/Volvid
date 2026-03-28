@@ -60,7 +60,8 @@ func validatePreparedDownloadRequest(req DownloadRequest) error {
 			return err
 		}
 	}
-	if requestNeedsFFmpeg(req) && FFmpegResolved == "" {
+	deps := resolveRuntimeDeps()
+	if requestNeedsFFmpeg(req) && !deps.FFmpeg.Available {
 		return requestFFmpegError(req)
 	}
 	return nil

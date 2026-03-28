@@ -103,6 +103,7 @@ func StartDownloadRequestContext(ctx context.Context, req DownloadRequest, ch ch
 }
 
 func runSingleDownload(ctx context.Context, req DownloadRequest, ch chan<- DlUpdate) downloadResult {
+	ch <- DlUpdate{Type: EvStart, Slot: 0, Text: StringsFor(req.Locale).Downloading}
 	return runDownloadRequest(
 		ctx,
 		0,
@@ -247,7 +248,6 @@ func audioFragmentSourceArgs(url, outputTemplate string, extra []string) []strin
 		"-f", "bestaudio/best",
 		"-o", outputTemplate,
 		"--windows-filenames",
-		"--print", `after_move:%(filepath)j`,
 	)
 	args = append(args, extra...)
 	args = append(args, url)

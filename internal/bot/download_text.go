@@ -67,6 +67,9 @@ func (b *Bot) downloadProgressText(done, failed, total int, dlStem string, updat
 			app.FmtBytesFor(update.DoneB, app.LocaleRU), update.Speed,
 		)
 	}
+	if strings.TrimSpace(dlStem) == "" {
+		dlStem = "Скачивание"
+	}
 	return fmt.Sprintf(
 		"⬇️ <b>%s</b>\n%.1f%%  %s  %s",
 		escapeHTML(dlStem), update.Pct,

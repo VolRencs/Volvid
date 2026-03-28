@@ -141,6 +141,18 @@ func (m Model) currentProfile() app.OutputProfile {
 }
 
 func (m Model) startDownload() (tea.Model, tea.Cmd) {
+	deps := app.DetectDeps()
+	m = m.withDeps(deps)
+
+	switch {
+	case !deps.YTDLP.Available:
+		m.prevScreen = m.screen
+		return m.openDependencyScreenWithError(depModeManage, m.depRequirementText(deps.YTDLP.Name))
+	case (m.currentProfile().Mode == app.ModeAudio || m.fragment != nil) && !deps.FFmpeg.Available:
+		m.prevScreen = m.screen
+		return m.openDependencyScreenWithError(depModeManage, m.depRequirementText(deps.FFmpeg.Name))
+	}
+
 	req, err := app.PrepareDownloadRequest(app.DownloadRequest{
 		Target:        m.target,
 		Profile:       m.currentProfile(),

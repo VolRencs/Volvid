@@ -68,6 +68,19 @@ func NewWithConfig(token string, cfg Config) (*Bot, error) {
 		return nil, err
 	}
 
-	log.Printf("Инициализирован Telegram бот id=%d backend=%q server=%s yt-dlp=%q ffmpeg=%q", api.ID(), cfg.backendLabel(), cfg.ServerURL, deps.YtdlpVer, deps.FFmpegVer)
+	log.Printf(
+		"Инициализирован Telegram бот id=%d backend=%q server=%s yt-dlp=%q[%s] ffmpeg=%q[%s] node=%q[%s] cookies=%q js=%q",
+		api.ID(),
+		cfg.backendLabel(),
+		cfg.ServerURL,
+		deps.YTDLP.Version,
+		deps.YTDLP.Source,
+		deps.FFmpeg.Version,
+		deps.FFmpeg.Source,
+		deps.Node.Version,
+		deps.Node.Source,
+		cookiesDetail(deps.Cookies),
+		runtimeDetail(deps.Runtime),
+	)
 	return b, nil
 }

@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"strings"
-
 	app "YouTubeBuild/internal/app"
 
 	tea "charm.land/bubbletea/v2"
@@ -12,10 +10,6 @@ func (m Model) handleURLKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+g":
 		return m.openSearchInput()
-	case "?", "shift+/":
-		if strings.TrimSpace(m.urlInput.Value()) == "" {
-			return m.openSearchInput()
-		}
 	case "enter":
 		return m.submitURLInput()
 	default:

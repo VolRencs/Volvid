@@ -9,13 +9,13 @@ import (
 func (m Model) renderTopBar() string {
 	u := m.u()
 	badge := " " +
-		sGray.Render("yt-dlp ") + verOrDash(m.ytdlpVer) +
+		sGray.Render("yt-dlp ") + verOrDash(m.deps.YTDLP.Version) +
 		sDim.Render("  ·  ") +
-		sGray.Render("ffmpeg ") + verOrDash(m.ffmpegVer) +
+		sGray.Render("ffmpeg ") + verOrDash(m.deps.FFmpeg.Version) +
 		" "
 
 	var action string
-	if m.screen == scrDepUpdate && !m.depUpdateDone && m.depErr == "" {
+	if (m.screen == scrDepDl || m.screen == scrUpdateDl) && m.depErr == "" {
 		action = " " + sWarn.Render(m.spinnerView()+u.TopBarDepsBusy) + " "
 	} else {
 		action = " " + sGray.Render(u.TopBarDeps) + "  " + sDim.Render("Ctrl+U") + " "

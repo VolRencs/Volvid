@@ -37,7 +37,7 @@ func (m Model) renderBody() string {
 	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch, scrSearchFetch, scrFragmentProbe:
 		b.WriteString(m.renderSpinnerScreen(m.spinnerScreenText()))
 
-	case scrUpdateReady, scrFFmpegAsk, scrPlaylistAsk:
+	case scrUpdateReady, scrPlaylistAsk:
 		b.WriteString(m.renderPromptMenu())
 
 	case scrMode:

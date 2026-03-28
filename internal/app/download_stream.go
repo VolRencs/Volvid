@@ -5,19 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"path/filepath"
-	"regexp"
 	"slices"
-	"strconv"
 	"strings"
-)
-
-var (
-	dlRE    = regexp.MustCompile(`(?i)\[download\]\s+(?P<pct>[\d.]+)%\s+of\s+~?\s*(?P<size>[\d.]+)\s*(?P<unit>[KMGTkmgt]i?[Bb])`)
-	speedRE = regexp.MustCompile(`(?i)at\s+(?P<speed>[\d.]+\s*[KMGTkmgt]i?[Bb]/s)`)
-	destRE  = regexp.MustCompile(`\[download\]\s+Destination:\s+(.+)`)
-	procRE  = regexp.MustCompile(`(?i)^\s*\[(Merger|ExtractAudio|Thumbnails?Convertor)\]`)
-	numRE   = regexp.MustCompile(`^\d+\s*[-–]\s*`)
 )
 
 type DlEventType uint8
@@ -51,26 +40,19 @@ type downloadResult struct {
 	Err        error
 }
 
-func subexp(re *regexp.Regexp, m []string, name string) string {
-	if i := re.SubexpIndex(name); i >= 0 && i < len(m) {
-		return m[i]
-	}
-	return ""
-}
-
 func ffmpegArgs() []string {
-	if FFmpegResolved != "" {
-		return []string{"--ffmpeg-location", FFmpegResolved}
+	resolveRuntimeDeps()
+	if strings.TrimSpace(FFmpegResolved) == "" {
+		return nil
 	}
-	return nil
+	return []string{"--ffmpeg-location", FFmpegResolved}
 }
 
 func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan<- DlUpdate) downloadResult {
-	cmd, pr, runCtx, cancel, err := startMergedOutputCommand(
+	cmd, pr, runCtx, cancel, err := startYTDLPMergedOutputCommand(
 		ctx,
 		0,
-		YtdlpBin,
-		slices.Concat([]string{"--newline", "--no-warnings"}, args)...,
+		slices.Concat(streamProtocolArgs(), []string{"--no-warnings"}, args)...,
 	)
 	if err != nil {
 		return failedDownload(err)
@@ -78,64 +60,52 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan
 	defer cancel()
 	defer pr.Close()
 
-	loc := StringsFor(l)
 	result := downloadResult{}
+	lastTitle := ""
 
 	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
-		switch {
-		case line == "":
+		if line == "" {
 			continue
-		case parsePrintedOutputPath(line, &result):
+		}
+
+		if parseMovedOutputPath(line, &result) {
 			continue
-		case strings.HasPrefix(strings.ToLower(line), "error:"):
+		}
+		if strings.HasPrefix(strings.ToLower(line), "error:") {
 			result.ErrText = strings.TrimSpace(line[6:])
+			continue
 		}
 
 		switch {
-		case destRE.MatchString(line):
-			m := destRE.FindStringSubmatch(line)
-			stem := strings.TrimSpace(m[1])
-			stem = numRE.ReplaceAllString(
-				filepath.Base(strings.TrimSuffix(stem, filepath.Ext(stem))), "",
-			)
-			if r := []rune(stem); len(r) > 58 {
-				stem = string(r[:58])
-			}
-			ch <- DlUpdate{Type: EvDest, Slot: slot, Text: stem}
-
-		case dlRE.MatchString(line):
-			m := dlRE.FindStringSubmatch(line)
-			pct, _ := strconv.ParseFloat(subexp(dlRE, m, "pct"), 64)
-			size, _ := strconv.ParseFloat(subexp(dlRE, m, "size"), 64)
-			totalB := int64(size * float64(unitToMult(subexp(dlRE, m, "unit"))))
-			speed := ""
-			if sm := speedRE.FindStringSubmatch(line); sm != nil {
-				speed = subexp(speedRE, sm, "speed")
-			}
-			ch <- DlUpdate{
-				Type:   EvProgress,
-				Slot:   slot,
-				Pct:    pct,
-				DoneB:  int64(float64(totalB) * pct / 100),
-				TotalB: totalB,
-				Speed:  speed,
+		case strings.HasPrefix(line, ytdlpLineStart):
+			title := parseJSONStringWithPrefix(line, ytdlpLineStart)
+			if title != "" {
+				lastTitle = title
+				ch <- DlUpdate{Type: EvStart, Slot: slot, Text: title}
 			}
 
-		case procRE.MatchString(line):
-			m := procRE.FindStringSubmatch(line)
-			label := loc.MergeProc
-			switch lower := strings.ToLower(m[1]); {
-			case strings.Contains(lower, "audio"):
-				label = loc.MP3Proc
-			case strings.Contains(lower, "thumbnail"):
-				label = loc.ThumbProc
+		case strings.HasPrefix(line, ytdlpLineProgress):
+			update, title, ok := parseProgressUpdate(line, slot, l)
+			if !ok {
+				continue
 			}
-			ch <- DlUpdate{Type: EvProc, Slot: slot, Text: label}
+			if title != "" && title != lastTitle {
+				lastTitle = title
+				ch <- DlUpdate{Type: EvDest, Slot: slot, Text: title}
+			}
+			ch <- update
+
+		case strings.HasPrefix(line, ytdlpLinePost):
+			label := postprocessLabel(line, l)
+			if label != "" {
+				ch <- DlUpdate{Type: EvProc, Slot: slot, Text: label}
+			}
 		}
 	}
+
 	if err := sc.Err(); err != nil {
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
@@ -164,23 +134,105 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan
 	return result
 }
 
-func parsePrintedOutputPath(line string, result *downloadResult) bool {
-	if result == nil || !strings.HasPrefix(line, `"`) {
+func streamProtocolArgs() []string {
+	return []string{
+		"--newline",
+		"--progress",
+		"--print", "before_dl:" + ytdlpLineStart + "%(title|)j",
+		"--print", "after_move:" + ytdlpLineMoved + "%(filepath)j",
+		"--progress-template", "download:" + ytdlpLineProgress + "%(progress.downloaded_bytes|0)s\t%(progress.total_bytes|0)s\t%(progress.total_bytes_estimate|0)s\t%(progress.speed|0)s\t%(progress._percent_str|0)s\t%(info.title|)j",
+		"--progress-template", "postprocess:" + ytdlpLinePost + "%(progress.postprocessor|)s",
+	}
+}
+
+func parseMovedOutputPath(line string, result *downloadResult) bool {
+	if result == nil || !strings.HasPrefix(line, ytdlpLineMoved) {
 		return false
 	}
+	result.OutputPath = parseJSONStringWithPrefix(line, ytdlpLineMoved)
+	return strings.TrimSpace(result.OutputPath) != ""
+}
 
-	var path string
-	if err := json.Unmarshal([]byte(line), &path); err != nil {
-		return false
+func parseJSONStringWithPrefix(line, prefix string) string {
+	if !strings.HasPrefix(line, prefix) {
+		return ""
+	}
+	raw := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	if raw == "" {
+		return ""
 	}
 
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return false
+	var value string
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+func parseProgressUpdate(line string, slot int, l Locale) (DlUpdate, string, bool) {
+	payload := strings.TrimPrefix(line, ytdlpLineProgress)
+	parts := strings.SplitN(payload, "\t", 6)
+	if len(parts) != 6 {
+		return DlUpdate{}, "", false
 	}
 
-	result.OutputPath = path
-	return true
+	doneB := parseDownloadInt(parts[0])
+	totalB := parseDownloadInt(parts[1])
+	if totalB <= 0 {
+		totalB = parseDownloadInt(parts[2])
+	}
+	speed := formatProgressSpeed(parts[3], l)
+	pct := parseDownloadFloat(parts[4])
+	if pct <= 0 && totalB > 0 && doneB > 0 {
+		pct = float64(doneB) / float64(totalB) * 100
+	}
+	title := parseJSONStringField(parts[5])
+
+	return DlUpdate{
+		Type:   EvProgress,
+		Slot:   slot,
+		Pct:    pct,
+		DoneB:  doneB,
+		TotalB: totalB,
+		Speed:  speed,
+	}, title, true
+}
+
+func parseJSONStringField(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var value string
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+func formatProgressSpeed(raw string, l Locale) string {
+	value := int64(parseDownloadFloat(raw))
+	if value <= 0 {
+		return ""
+	}
+	suffix := "/s"
+	if l == LocaleRU {
+		suffix = "/с"
+	}
+	return FmtBytesFor(value, l) + suffix
+}
+
+func postprocessLabel(line string, l Locale) string {
+	name := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(line, ytdlpLinePost)))
+	loc := StringsFor(l)
+	switch {
+	case strings.Contains(name, "audio"):
+		return loc.MP3Proc
+	case strings.Contains(name, "thumbnail"):
+		return loc.ThumbProc
+	default:
+		return loc.MergeProc
+	}
 }
 
 func failedDownload(err error) downloadResult {
