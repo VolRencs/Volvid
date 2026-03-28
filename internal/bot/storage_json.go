@@ -87,28 +87,21 @@ func readOrInitJSONFile(path string, zeroValue any) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	switch {
 	case err == nil:
-	case errors.Is(err, os.ErrNotExist):
-		data, err = marshalJSONFileData(zeroValue)
-		if err != nil {
-			return nil, fmt.Errorf("encode %s: %w", path, err)
+		if len(data) != 0 {
+			return data, nil
 		}
-		if err := writeJSONFile(path, zeroValue); err != nil {
-			return nil, err
-		}
-		return data, nil
 	default:
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("read %s: %w", path, err)
+		}
 	}
 
-	if len(data) == 0 {
-		data, err = marshalJSONFileData(zeroValue)
-		if err != nil {
-			return nil, fmt.Errorf("encode %s: %w", path, err)
-		}
-		if err := os.WriteFile(path, data, 0o644); err != nil {
-			return nil, fmt.Errorf("write %s: %w", path, err)
-		}
-		return data, nil
+	data, err = marshalJSONFileData(zeroValue)
+	if err != nil {
+		return nil, fmt.Errorf("encode %s: %w", path, err)
+	}
+	if err := writeJSONFile(path, zeroValue); err != nil {
+		return nil, err
 	}
 	return data, nil
 }

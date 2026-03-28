@@ -58,6 +58,6 @@ func (m Model) handlePlaylistInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m.closePlaylistInput()
 		return m, nil
 	default:
-		return m, m.plInput.Update(msg)
+		return m.routeFocusedInputMessage(msg)
 	}
 }

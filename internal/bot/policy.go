@@ -14,15 +14,31 @@ const (
 	premiumPlaylistItemLimit = 30
 )
 
+type accountPolicy struct {
+	hasPremium        bool
+	downloadSizeLimit int64
+	playlistItemLimit int
+}
+
 func (b *Bot) hasPremium(userID int64) bool {
 	return b != nil && b.premium != nil && b.premium.HasPremium(userID)
 }
 
-func (b *Bot) downloadSizeLimit(userID int64) int64 {
-	if b.hasPremium(userID) {
-		return premiumDownloadSizeLimitBytes
+func (b *Bot) policyFor(userID int64) accountPolicy {
+	policy := accountPolicy{
+		downloadSizeLimit: regularDownloadSizeLimitBytes,
+		playlistItemLimit: regularPlaylistItemLimit,
 	}
-	return regularDownloadSizeLimitBytes
+	if b.hasPremium(userID) {
+		policy.hasPremium = true
+		policy.downloadSizeLimit = premiumDownloadSizeLimitBytes
+		policy.playlistItemLimit = premiumPlaylistItemLimit
+	}
+	return policy
+}
+
+func (b *Bot) downloadSizeLimit(userID int64) int64 {
+	return b.policyFor(userID).downloadSizeLimit
 }
 
 func (b *Bot) downloadSizeLimitText(userID int64) string {
@@ -30,10 +46,7 @@ func (b *Bot) downloadSizeLimitText(userID int64) string {
 }
 
 func (b *Bot) playlistItemLimit(userID int64) int {
-	if b.hasPremium(userID) {
-		return premiumPlaylistItemLimit
-	}
-	return regularPlaylistItemLimit
+	return b.policyFor(userID).playlistItemLimit
 }
 
 func (b *Bot) playlistItemLimitText(userID int64) string {
@@ -58,25 +71,25 @@ func (b *Bot) premiumOfferText() string {
 }
 
 func (b *Bot) validatePlaylistSelectionCount(userID int64, count int) bool {
-	return count >= 0 && count <= b.playlistItemLimit(userID)
+	return count >= 0 && count <= b.policyFor(userID).playlistItemLimit
 }
 
 func (b *Bot) downloadSizeLimitExceededText(userID int64) string {
-	if b.hasPremium(userID) {
+	if b.policyFor(userID).hasPremium {
 		return "Лимит 2GB превышен."
 	}
 	return "Лимит 500MB превышен. Купите премиум для увеличения до 2GB"
 }
 
 func (b *Bot) playlistItemLimitExceededText(userID int64) string {
-	if b.hasPremium(userID) {
+	if b.policyFor(userID).hasPremium {
 		return "Можно выбрать не больше 30 видео из плейлиста."
 	}
 	return "Можно выбрать не больше 5 видео из плейлиста. Купите премиум для увеличения до 30 видео."
 }
 
 func (b *Bot) playlistItemLimitAlert(userID int64) string {
-	if b.hasPremium(userID) {
+	if b.policyFor(userID).hasPremium {
 		return "Доступно максимум 30 видео."
 	}
 	return "Доступно максимум 5 видео. Купите премиум для увеличения до 30."
@@ -91,7 +104,7 @@ func (b *Bot) notifyPlaylistItemLimitExceeded(chatID int64, userID int64) {
 }
 
 func (b *Bot) notifyEntitlementLimit(chatID int64, msgID int, userID int64, text string) {
-	offerPremium := !b.hasPremium(userID)
+	offerPremium := !b.policyFor(userID).hasPremium
 
 	if msgID != 0 {
 		if offerPremium {

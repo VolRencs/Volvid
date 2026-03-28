@@ -31,15 +31,17 @@ func (m *Model) pasteIntoActiveInput(content string) tea.Cmd {
 }
 
 func (m *Model) pasteIntoInput(input activeInputState, content string) tea.Cmd {
-	if input.err != nil {
-		*input.err = ""
-	}
-
 	var cmds []tea.Cmd
 	if !input.field.Focused() {
 		cmds = append(cmds, input.field.Focus())
 	}
-	cmds = append(cmds, input.field.insertRunes([]rune(content)))
+
+	before := input.field.Value()
+	cmd := input.field.insertRunes([]rune(content))
+	if input.field.Value() != before && input.err != nil {
+		*input.err = ""
+	}
+	cmds = append(cmds, cmd)
 	return tea.Batch(cmds...)
 }
 
@@ -48,7 +50,12 @@ func (m *Model) updateActiveInput(msg tea.Msg) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return input.field.Update(msg)
+	before := input.field.Value()
+	cmd := input.field.Update(msg)
+	if input.field.Value() != before && input.err != nil {
+		*input.err = ""
+	}
+	return cmd
 }
 
 func (m Model) handleTerminalPaste(content string) (tea.Model, tea.Cmd) {

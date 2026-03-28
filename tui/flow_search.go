@@ -51,7 +51,12 @@ func (m Model) submitSearchInput() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) activateSearchResult(idx int) (tea.Model, tea.Cmd) {
-	result := m.searchResultAt(idx)
+	if idx < 0 || idx >= len(m.searchResults) {
+		m.screen = scrSearchInput
+		m.searchErr = m.u().SearchErrFailed
+		return m, m.searchInput.Focus()
+	}
+	result := m.searchResults[idx]
 	if strings.TrimSpace(result.URL) == "" {
 		m.screen = scrSearchInput
 		m.searchErr = m.u().SearchErrFailed

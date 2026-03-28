@@ -88,7 +88,11 @@ func (m Model) viewSlot(index int, slot slotState, withBadge bool) string {
 	case slot.done:
 		return row1 + "  " + sOk.Render("✔") + "\n" + indent + renderProgressBar(barW, 100) + "\n"
 	case slot.failed:
-		return row1 + "\n" + indent + sErr.Render(u.ErrSlot) + "\n"
+		message := u.ErrSlot
+		if strings.TrimSpace(slot.label) != "" {
+			message = slot.label
+		}
+		return row1 + "\n" + indent + sErr.Render(message) + "\n"
 	case slot.proc:
 		return row1 + "\n" + indent + sWarn.Render("⚙ ") + sDim.Render(slot.label) + "\n"
 	default:
@@ -104,7 +108,11 @@ func (m Model) viewSummary() string {
 		if m.singleOK {
 			b.WriteString(sOk.Render(u.SummaryOK) + "\n" + sDim.Render("     → "+app.DlDir) + "\n\n")
 		} else {
-			b.WriteString(sErr.Render(u.SummaryFail) + "\n\n")
+			b.WriteString(sErr.Render(u.SummaryFail) + "\n")
+			if strings.TrimSpace(m.downloadErr) != "" {
+				b.WriteString(sDim.Render("     "+m.downloadErr) + "\n")
+			}
+			b.WriteString("\n")
 		}
 	} else {
 		icon := sOk.Render("✔")

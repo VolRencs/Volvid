@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	app "YouTubeBuild/internal/app"
 
 	tea "charm.land/bubbletea/v2"
@@ -10,20 +12,23 @@ func (m Model) handleURLKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+g":
 		return m.openSearchInput()
+	case "?", "shift+/":
+		if strings.TrimSpace(m.urlInput.Value()) == "" {
+			return m.openSearchInput()
+		}
 	case "enter":
 		return m.submitURLInput()
 	default:
-		m.urlErr = ""
-		return m, m.urlInput.Update(msg)
+		return m.routeFocusedInputMessage(msg)
 	}
+	return m.routeFocusedInputMessage(msg)
 }
 
 func (m Model) handleSearchInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "enter" {
 		return m.submitSearchInput()
 	}
-	m.searchErr = ""
-	return m, m.searchInput.Update(msg)
+	return m.routeFocusedInputMessage(msg)
 }
 
 func (m Model) handleFragmentInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -45,7 +50,6 @@ func (m Model) handleFragmentInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m.fragmentIn.Blur()
 		return m.startModeSelection()
 	default:
-		m.fragmentErr = ""
-		return m, m.fragmentIn.Update(msg)
+		return m.routeFocusedInputMessage(msg)
 	}
 }

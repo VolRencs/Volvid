@@ -9,10 +9,20 @@ import (
 func (b *Bot) handleModeCallback(chatID int64, msgID int, sess *Session, data string) string {
 	switch data {
 	case cbModeVideo:
-		b.setSessionDownloadChoice(sess, StateAwaitingMode, app.ModeVideo, app.OutputProfile{}, msgID)
+		sess.mutate(func(s *Session) {
+			s.State = StateAwaitingMode
+			s.Mode = app.ModeVideo
+			s.Profile = app.OutputProfile{}
+			s.StatusMsgID = msgID
+		})
 		b.scanAndAskQuality(chatID, sess)
 	case cbModeAudio:
-		b.setSessionDownloadChoice(sess, StateAwaitingAudioProfile, app.ModeAudio, app.OutputProfile{}, msgID)
+		sess.mutate(func(s *Session) {
+			s.State = StateAwaitingAudioProfile
+			s.Mode = app.ModeAudio
+			s.Profile = app.OutputProfile{}
+			s.StatusMsgID = msgID
+		})
 		b.askAudioProfiles(chatID, sess)
 	case cbModeThumb:
 		sess.mutate(func(s *Session) {
@@ -20,7 +30,7 @@ func (b *Bot) handleModeCallback(chatID int64, msgID int, sess *Session, data st
 			s.Profile = app.ThumbnailOutputProfile(app.LocaleRU)
 			s.StatusMsgID = msgID
 		})
-		return b.startConfiguredDownloadAlert(chatID, sess)
+		return b.startConfiguredDownloadText(chatID, sess)
 	}
 	return ""
 }
@@ -40,7 +50,7 @@ func (b *Bot) handleAudioProfileCallback(chatID int64, msgID int, sess *Session,
 		s.Profile = profile
 		s.StatusMsgID = msgID
 	})
-	return b.startConfiguredDownloadAlert(chatID, sess)
+	return b.startConfiguredDownloadText(chatID, sess)
 }
 
 func (b *Bot) handleQualityCallback(chatID int64, msgID int, sess *Session, data string) string {
@@ -60,5 +70,15 @@ func (b *Bot) handleQualityCallback(chatID int64, msgID int, sess *Session, data
 		s.Profile = choice.Profile(app.LocaleRU)
 		s.StatusMsgID = msgID
 	})
-	return b.startConfiguredDownloadAlert(chatID, sess)
+	return b.startConfiguredDownloadText(chatID, sess)
+}
+
+func (b *Bot) startConfiguredDownloadText(chatID int64, sess *Session) string {
+	if err := b.startConfiguredDownload(chatID, sess); err != nil {
+		if err == errDownloadLimitExceeded {
+			return ""
+		}
+		return err.Error()
+	}
+	return ""
 }

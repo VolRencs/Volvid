@@ -11,10 +11,11 @@ import (
 const downloadEditThrottle = 2 * time.Second
 
 type doneSummary struct {
-	Stem   string
-	OK     int
-	Failed int
-	Total  int
+	Stem    string
+	OK      int
+	Failed  int
+	Total   int
+	ErrText string
 }
 
 type progressEditor struct {
@@ -98,6 +99,9 @@ func (b *Bot) handleDownloadUpdate(
 			state.OK++
 		} else {
 			state.Failed++
+			if state.ErrText == "" {
+				state.ErrText = update.ErrText
+			}
 		}
 		if state.Total > 0 && state.OK+state.Failed < state.Total {
 			return false
@@ -140,6 +144,9 @@ func (b *Bot) downloadCompletionText(chatID int64, msgID int, newFiles []string,
 func (b *Bot) singleDownloadCompletionText(chatID int64, msgID int, newFiles []string, summary doneSummary) string {
 	failed := summary.Failed > 0 || summary.OK == 0
 	if failed {
+		if summary.ErrText != "" {
+			return "❌ Не удалось скачать видео.\n\n" + escapeHTML(summary.ErrText)
+		}
 		if len(newFiles) > 0 {
 			return "❌ Не удалось скачать видео. Временные файлы удалены."
 		}
@@ -158,10 +165,14 @@ func (b *Bot) singleDownloadCompletionText(chatID int64, msgID int, newFiles []s
 func (b *Bot) playlistDownloadCompletionText(chatID int64, msgID int, newFiles []string, summary doneSummary) string {
 	icon := playlistResultIcon(summary.OK, summary.Failed)
 	if len(newFiles) == 0 {
-		return fmt.Sprintf(
+		text := fmt.Sprintf(
 			"%s <b>Плейлист завершён</b>\n\n✔ Успешно: %d\n✘ Ошибок: %d\nИтого: %d",
 			icon, summary.OK, summary.Failed, summary.Total,
 		)
+		if summary.ErrText != "" {
+			text += "\n\n" + escapeHTML(summary.ErrText)
+		}
+		return text
 	}
 
 	b.edit(chatID, msgID, fmt.Sprintf(

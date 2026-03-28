@@ -23,7 +23,7 @@ func (m Model) kbUpdDeps() binding  { return binding{key: "ctrl+u", help: m.u().
 func (m Model) kbSpace() binding    { return binding{key: "space", help: m.u().HelpSpace} }
 func (m Model) kbAll() binding      { return binding{key: "a", help: m.u().HelpAll} }
 func (m Model) kbSlash() binding    { return binding{key: "/", help: m.u().HelpSlash} }
-func (m Model) kbSearch() binding   { return binding{key: "ctrl+g", help: m.u().HelpSearch} }
+func (m Model) kbSearch() binding   { return binding{key: "?", help: m.u().HelpSearch} }
 func (m Model) kbEsc() binding      { return binding{key: "esc", help: m.u().HelpBack} }
 func (m Model) kbAny() binding      { return binding{key: m.u().HelpAnyKey, help: m.u().HelpExit} }
 func (m Model) spinnerView() string { return spinnerFrames[m.spinnerFrame%len(spinnerFrames)] }

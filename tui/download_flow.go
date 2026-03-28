@@ -34,6 +34,8 @@ func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {
 		case app.EvDone:
 			s.done = u.OK
 			s.failed = !u.OK
+			s.proc = false
+			s.label = trunc(u.ErrText, 64)
 			s.pct = 100
 		}
 	}
@@ -46,6 +48,9 @@ func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {
 		m.dlDone++
 	} else {
 		m.dlFailed++
+		if m.downloadErr == "" {
+			m.downloadErr = u.ErrText
+		}
 	}
 
 	if m.dlTotal == 0 || m.dlDone+m.dlFailed >= m.dlTotal {
@@ -54,7 +59,7 @@ func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {
 		}
 		label := m.downloadLabel()
 		if m.dlTotal > 0 {
-			label += m.sessionPlaylistSuffix(m.dlTotal)
+			label += app.PlaylistSuffix(m.locale, m.dlTotal)
 		}
 		m.session.Record(label, m.url, m.dlFailed == 0 || (m.dlTotal == 0 && u.OK))
 		m.screen = scrSummary
@@ -165,6 +170,7 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	m.dlFailed = 0
 	m.dlTotal = len(m.dlEntries)
 	m.singleOK = false
+	m.downloadErr = ""
 	m.dlStartedAt = time.Now()
 	m.dlElapsed = 0
 	m.timerActive = true

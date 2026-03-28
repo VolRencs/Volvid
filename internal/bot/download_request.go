@@ -6,12 +6,15 @@ import (
 	app "YouTubeBuild/internal/app"
 )
 
+func resolvedSessionProfile(snap SessionSnapshot) app.OutputProfile {
+	if snap.Profile.Mode != 0 {
+		return snap.Profile
+	}
+	return app.DefaultProfileForMode(snap.Mode, app.LocaleRU)
+}
+
 func (b *Bot) buildDownloadRequest(sess *Session) (app.DownloadRequest, error) {
 	snap := sess.snapshot()
-	profile := snap.Profile
-	if profile.Mode == 0 {
-		profile = app.DefaultProfileForMode(snap.Mode, app.LocaleRU)
-	}
 
 	entries, err := b.requestEntries(sess, snap)
 	if err != nil {
@@ -20,7 +23,7 @@ func (b *Bot) buildDownloadRequest(sess *Session) (app.DownloadRequest, error) {
 
 	return app.PrepareDownloadRequest(app.DownloadRequest{
 		Target:        snap.Target,
-		Profile:       profile,
+		Profile:       resolvedSessionProfile(snap),
 		Fragment:      snap.Fragment,
 		MediaDuration: snap.MediaDuration,
 		ForceSingle:   snap.ForceSingle,

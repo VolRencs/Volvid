@@ -35,11 +35,6 @@ type DownloadRequest struct {
 	Locale        Locale
 }
 
-type CommandSpec struct {
-	Args        []string
-	NeedsFFmpeg bool
-}
-
 func DefaultVideoProfile(l Locale) OutputProfile {
 	return OutputProfile{
 		Key:           "best",

@@ -7,17 +7,27 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-type sessionTextHandler func(chatID int64, sess *Session, text string)
-type sessionCallbackHandler func(meta callbackMeta) string
-
 const staleSessionAlert = "Сессия устарела. Пришли ссылку заново."
 
 func (b *Bot) dispatchSessionCallback(meta callbackMeta) string {
-	handler := b.sessionCallbackHandler(sessionState(meta.sess))
-	if handler == nil {
+	switch sessionState(meta.sess) {
+	case StateAwaitingSearchSelection:
+		return b.handleSearchCallback(meta.chatID, meta.sess, meta.data, meta.userID)
+	case StateAwaitingPlaylistOp:
+		return b.handlePlaylistOpCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
+	case StateAwaitingFragmentChoice:
+		return b.handleFragmentChoiceCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
+	case StateAwaitingPlaylistSelection:
+		return b.handlePlaylistSelectionCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
+	case StateAwaitingMode:
+		return b.handleModeCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
+	case StateAwaitingAudioProfile:
+		return b.handleAudioProfileCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
+	case StateAwaitingQuality:
+		return b.handleQualityCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
+	default:
 		return ""
 	}
-	return handler(meta)
 }
 
 func (b *Bot) handleSessionTextInput(msg *models.Message, chatID int64, sess *Session, text string) bool {
@@ -25,57 +35,15 @@ func (b *Bot) handleSessionTextInput(msg *models.Message, chatID int64, sess *Se
 		return false
 	}
 
-	handler := b.sessionTextHandler(sessionState(sess))
-	if handler == nil {
-		return false
-	}
-	handler(chatID, sess, text)
-	return true
-}
-
-func (b *Bot) sessionTextHandler(state UserState) sessionTextHandler {
-	switch state {
+	switch sessionState(sess) {
 	case StateAwaitingFragmentInput:
-		return b.handleFragmentInput
+		b.handleFragmentInput(chatID, sess, text)
+		return true
 	case StateAwaitingPlaylistSelection:
-		return b.handlePlaylistSelectionInput
+		b.handlePlaylistSelectionInput(chatID, sess, text)
+		return true
 	default:
-		return nil
-	}
-}
-
-func (b *Bot) sessionCallbackHandler(state UserState) sessionCallbackHandler {
-	switch state {
-	case StateAwaitingSearchSelection:
-		return func(meta callbackMeta) string {
-			return b.handleSearchCallback(meta.chatID, meta.sess, meta.data, meta.userID)
-		}
-	case StateAwaitingPlaylistOp:
-		return func(meta callbackMeta) string {
-			return b.handlePlaylistOpCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
-		}
-	case StateAwaitingFragmentChoice:
-		return func(meta callbackMeta) string {
-			return b.handleFragmentChoiceCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
-		}
-	case StateAwaitingPlaylistSelection:
-		return func(meta callbackMeta) string {
-			return b.handlePlaylistSelectionCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
-		}
-	case StateAwaitingMode:
-		return func(meta callbackMeta) string {
-			return b.handleModeCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
-		}
-	case StateAwaitingAudioProfile:
-		return func(meta callbackMeta) string {
-			return b.handleAudioProfileCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
-		}
-	case StateAwaitingQuality:
-		return func(meta callbackMeta) string {
-			return b.handleQualityCallback(meta.chatID, meta.msgID, meta.sess, meta.data)
-		}
-	default:
-		return nil
+		return false
 	}
 }
 

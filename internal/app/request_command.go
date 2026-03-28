@@ -1,64 +1,93 @@
 package app
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
-func BuildCommandSpec(req DownloadRequest, sourceURL, outputTemplate, format string, extra []string) (CommandSpec, error) {
-	req, err := PrepareDownloadRequest(req)
-	if err != nil {
-		return CommandSpec{}, err
-	}
-	return buildPreparedCommandSpec(req, sourceURL, outputTemplate, format, extra)
-}
+type fragmentStrategy uint8
 
-func buildPreparedCommandSpec(req DownloadRequest, sourceURL, outputTemplate, format string, extra []string) (CommandSpec, error) {
-	args := make([]string, 0, 16+len(extra))
+const (
+	fragmentNone fragmentStrategy = iota
+	fragmentVideo
+	fragmentAudio
+)
+
+func buildPreparedDownloadArgs(req DownloadRequest, sourceURL, outputTemplate, format string, extra []string) ([]string, error) {
+	args := make([]string, 0, 20+len(extra))
 	args = append(args, ffmpegArgs()...)
 
-	modeArgs, needsFFmpeg, err := buildModeCommandArgs(req.Profile, format)
+	modeArgs, err := downloadModeArgs(req.Profile, format)
 	if err != nil {
-		return CommandSpec{}, err
+		return nil, err
 	}
 	args = append(args, modeArgs...)
-	args = append(args, "-o", outputTemplate, "--windows-filenames")
-	args = appendFragmentCommandArgs(args, req)
+	args = append(args, baseDownloadArgs(outputTemplate)...)
+	args = appendFragmentArgs(args, req)
+	args = append(args, "--print", `after_move:%(filepath)j`)
 	args = append(args, extra...)
 	args = append(args, sourceURL)
 
-	return CommandSpec{
-		Args:        args,
-		NeedsFFmpeg: needsFFmpeg,
-	}, nil
+	return args, nil
 }
 
-func buildModeCommandArgs(profile OutputProfile, format string) ([]string, bool, error) {
+func baseDownloadArgs(outputTemplate string) []string {
+	return []string{"-o", outputTemplate, "--windows-filenames"}
+}
+
+func downloadModeArgs(profile OutputProfile, format string) ([]string, error) {
 	switch profile.Mode {
 	case ModeThumbnail:
-		return []string{"--skip-download", "--write-thumbnail"}, false, nil
+		return []string{"--skip-download", "--write-thumbnail"}, nil
 	case ModeAudio:
-		args := []string{"--extract-audio"}
+		args := []string{"-f", "bestaudio/best", "--extract-audio"}
 		if profile.AudioFormat != "" {
 			args = append(args, "--audio-format", profile.AudioFormat)
 		}
 		if profile.AudioQuality != "" {
 			args = append(args, "--audio-quality", profile.AudioQuality)
 		}
-		return args, true, nil
+		return args, nil
 	case ModeVideo:
 		if format == "" {
 			format = "bestvideo+bestaudio/best"
 		}
-		return []string{"-f", format, "--merge-output-format", "mp4"}, false, nil
+		return []string{"-f", format, "--merge-output-format", "mp4"}, nil
 	default:
-		return nil, false, fmt.Errorf("unsupported download mode %d", profile.Mode)
+		return nil, fmt.Errorf("unsupported download mode %d", profile.Mode)
 	}
 }
 
-func appendFragmentCommandArgs(args []string, req DownloadRequest) []string {
+func appendFragmentArgs(args []string, req DownloadRequest) []string {
 	if req.Fragment == nil {
 		return args
 	}
 	if section, ok := req.Fragment.sectionArg(); ok {
 		args = append(args, "--download-sections", section)
+		if fragmentDownloadStrategy(req) == fragmentVideo {
+			args = append(args, "--force-keyframes-at-cuts")
+		}
 	}
 	return args
+}
+
+func fragmentDownloadStrategy(req DownloadRequest) fragmentStrategy {
+	if req.Fragment == nil {
+		return fragmentNone
+	}
+	if req.Profile.Mode == ModeAudio {
+		return fragmentAudio
+	}
+	return fragmentVideo
+}
+
+func audioOutputExtension(profile OutputProfile) string {
+	switch strings.ToLower(strings.TrimSpace(profile.AudioFormat)) {
+	case "", "best":
+		return "mp3"
+	case "aac":
+		return "m4a"
+	default:
+		return strings.ToLower(strings.TrimSpace(profile.AudioFormat))
+	}
 }

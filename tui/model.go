@@ -147,6 +147,7 @@ type Model struct {
 	dlFailed       int
 	dlTotal        int
 	singleOK       bool
+	downloadErr    string
 	dlStartedAt    time.Time
 	dlElapsed      time.Duration
 	timerActive    bool

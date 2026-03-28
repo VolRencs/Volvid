@@ -3,6 +3,8 @@ package app
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -32,14 +34,21 @@ const (
 )
 
 type DlUpdate struct {
-	Type   DlEventType
-	Slot   int
-	Text   string
-	Pct    float64
-	DoneB  int64
-	TotalB int64
-	Speed  string
-	OK     bool
+	Type    DlEventType
+	Slot    int
+	Text    string
+	ErrText string
+	Pct     float64
+	DoneB   int64
+	TotalB  int64
+	Speed   string
+	OK      bool
+}
+
+type downloadResult struct {
+	OutputPath string
+	ErrText    string
+	Err        error
 }
 
 func subexp(re *regexp.Regexp, m []string, name string) string {
@@ -56,7 +65,7 @@ func ffmpegArgs() []string {
 	return nil
 }
 
-func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan<- DlUpdate) bool {
+func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan<- DlUpdate) downloadResult {
 	cmd, pr, runCtx, cancel, err := startMergedOutputCommand(
 		ctx,
 		0,
@@ -64,17 +73,27 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan
 		slices.Concat([]string{"--newline", "--no-warnings"}, args)...,
 	)
 	if err != nil {
-		return false
+		return failedDownload(err)
 	}
 	defer cancel()
 	defer pr.Close()
 
 	loc := StringsFor(l)
+	result := downloadResult{}
 
 	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	for sc.Scan() {
-		line := sc.Text()
+		line := strings.TrimSpace(sc.Text())
+		switch {
+		case line == "":
+			continue
+		case parsePrintedOutputPath(line, &result):
+			continue
+		case strings.HasPrefix(strings.ToLower(line), "error:"):
+			result.ErrText = strings.TrimSpace(line[6:])
+		}
+
 		switch {
 		case destRE.MatchString(line):
 			m := destRE.FindStringSubmatch(line)
@@ -122,13 +141,63 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan
 			_ = cmd.Process.Kill()
 		}
 		_ = waitCommand(cmd, runCtx)
-		return false
+		result.Err = err
+		if result.ErrText == "" {
+			result.ErrText = commandErrorText(err)
+		}
+		return result
 	}
 	if err := waitCommand(cmd, runCtx); err != nil {
-		return false
+		result.Err = err
+		if result.ErrText == "" {
+			result.ErrText = commandErrorText(err)
+		}
+		return result
 	}
 	if runCtx != nil && runCtx.Err() != nil {
+		result.Err = runCtx.Err()
+		if result.ErrText == "" {
+			result.ErrText = commandErrorText(runCtx.Err())
+		}
+		return result
+	}
+	return result
+}
+
+func parsePrintedOutputPath(line string, result *downloadResult) bool {
+	if result == nil || !strings.HasPrefix(line, `"`) {
 		return false
 	}
+
+	var path string
+	if err := json.Unmarshal([]byte(line), &path); err != nil {
+		return false
+	}
+
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+
+	result.OutputPath = path
 	return true
+}
+
+func failedDownload(err error) downloadResult {
+	return downloadResult{Err: err, ErrText: commandErrorText(err)}
+}
+
+func commandErrorText(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "operation cancelled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "operation timed out"
+	default:
+		return err.Error()
+	}
 }

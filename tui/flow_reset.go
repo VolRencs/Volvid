@@ -50,6 +50,7 @@ func (m *Model) resetDownloadProgressState() {
 	m.dlFailed = 0
 	m.dlTotal = 0
 	m.singleOK = false
+	m.downloadErr = ""
 	m.dlStartedAt = time.Time{}
 	m.dlElapsed = 0
 	m.timerActive = false

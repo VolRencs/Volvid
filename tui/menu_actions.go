@@ -48,7 +48,14 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		return m.activateFragmentChoice(idx)
 
 	case scrMode:
-		m.mode = m.modeAt(idx)
+		switch idx {
+		case 1:
+			m.mode = app.ModeAudio
+		case 2:
+			m.mode = app.ModeThumbnail
+		default:
+			m.mode = app.ModeVideo
+		}
 		m.profile = app.OutputProfile{}
 		m.qualityChoices = nil
 		m.audioProfiles = nil
@@ -68,12 +75,18 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		}
 
 	case scrAudio:
-		m.profile = m.audioProfileAt(idx)
+		if idx < 0 || idx >= len(m.audioProfiles) {
+			return m, nil
+		}
+		m.profile = m.audioProfiles[idx]
 		m.flowErr = ""
 		return m.continueAfterProfileSelection()
 
 	case scrQuality:
-		m.profile = m.qualityProfileAt(idx)
+		if idx < 0 || idx >= len(m.qualityChoices) {
+			return m, nil
+		}
+		m.profile = m.qualityChoices[idx].Profile(m.locale)
 		m.flowErr = ""
 		return m.continueAfterProfileSelection()
 
@@ -86,7 +99,7 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) continueAfterProfileSelection() (tea.Model, tea.Cmd) {
-	if m.shouldAskWorkers() {
+	if len(m.dlEntries) > 1 {
 		m.screen = scrWorkers
 		m = m.syncMenu()
 		return m, nil

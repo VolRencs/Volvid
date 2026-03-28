@@ -80,12 +80,6 @@ func (s *idSetStore) List() []int64 {
 	return sortedIDSet(s.ids)
 }
 
-func (s *idSetStore) reloadIfChanged() (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.reloadLocked(false)
-}
-
 func (s *idSetStore) reloadLocked(force bool) (bool, error) {
 	return reloadJSONStateLocked(
 		&s.file,

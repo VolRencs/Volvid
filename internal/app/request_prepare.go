@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func NormalizeDownloadRequest(req DownloadRequest) DownloadRequest {
+func normalizeDownloadRequest(req DownloadRequest) DownloadRequest {
 	if req.Profile.Mode == 0 {
 		req.Profile = DefaultVideoProfile(req.Locale)
 	}
@@ -29,10 +29,6 @@ func NormalizeDownloadRequest(req DownloadRequest) DownloadRequest {
 	return req
 }
 
-func ValidateDownloadRequest(req DownloadRequest) error {
-	return validatePreparedDownloadRequest(prepareDownloadRequest(req))
-}
-
 func PrepareDownloadRequest(req DownloadRequest) (DownloadRequest, error) {
 	req = prepareDownloadRequest(req)
 	if err := validatePreparedDownloadRequest(req); err != nil {
@@ -42,7 +38,7 @@ func PrepareDownloadRequest(req DownloadRequest) (DownloadRequest, error) {
 }
 
 func prepareDownloadRequest(req DownloadRequest) DownloadRequest {
-	req = NormalizeDownloadRequest(req)
+	req = normalizeDownloadRequest(req)
 	if req.Fragment != nil && !requestAllowsFragment(req) {
 		req.Fragment = nil
 	}
@@ -56,9 +52,6 @@ func validatePreparedDownloadRequest(req DownloadRequest) error {
 	if req.Profile.Mode == 0 {
 		return errors.New("download profile is required")
 	}
-	if req.Profile.Mode == ModeAudio && FFmpegResolved == "" {
-		return errors.New("ffmpeg is required for audio conversion")
-	}
 	if req.Fragment != nil {
 		if !req.Fragment.IsValid() {
 			return errors.New("invalid download fragment")
@@ -66,6 +59,9 @@ func validatePreparedDownloadRequest(req DownloadRequest) error {
 		if err := ValidateFragmentDuration(*req.Fragment, req.MediaDuration); err != nil {
 			return err
 		}
+	}
+	if requestNeedsFFmpeg(req) && FFmpegResolved == "" {
+		return requestFFmpegError(req)
 	}
 	return nil
 }
@@ -78,4 +74,22 @@ func requestAllowsFragment(req DownloadRequest) bool {
 		return false
 	}
 	return req.Target.IsVideo()
+}
+
+func requestNeedsFFmpeg(req DownloadRequest) bool {
+	if req.Profile.Mode == ModeAudio {
+		return true
+	}
+	return req.Fragment != nil
+}
+
+func requestFFmpegError(req DownloadRequest) error {
+	switch {
+	case req.Fragment != nil:
+		return errors.New("ffmpeg is required for fragment downloads")
+	case req.Profile.Mode == ModeAudio:
+		return errors.New("ffmpeg is required for audio conversion")
+	default:
+		return errors.New("ffmpeg is required")
+	}
 }

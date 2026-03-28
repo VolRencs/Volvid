@@ -95,6 +95,10 @@ func (i *inputField) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	beforeCursor := i.cursor
 	beforeLen := len(i.value)
 
+	if isClipboardPasteKey(msg) {
+		return pasteClipboardCmd(i.target)
+	}
+
 	switch msg.String() {
 	case "left", "ctrl+b":
 		if i.cursor > 0 {
@@ -127,8 +131,6 @@ func (i *inputField) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		i.deleteWordForward()
 	case "ctrl+k":
 		i.deleteAfterCursor()
-	case "ctrl+v", "shift+insert":
-		return pasteClipboardCmd(i.target)
 	default:
 		if msg.Text != "" {
 			return i.insertRunes([]rune(msg.Text))
@@ -320,4 +322,12 @@ func (i *inputField) touch() tea.Cmd {
 	i.cursorVisible = true
 	i.blinkTag++
 	return blinkInputCmd(i.target, i.blinkTag)
+}
+
+func isClipboardPasteKey(msg tea.KeyPressMsg) bool {
+	switch msg.String() {
+	case "ctrl+v", "ctrl+shift+v", "shift+ctrl+v", "shift+insert":
+		return true
+	}
+	return msg.Text == string(rune(22))
 }

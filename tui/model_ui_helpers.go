@@ -10,53 +10,13 @@ func (m Model) qualityOptions() []string {
 	return app.QualityChoiceLabels(m.qualityChoices, m.locale)
 }
 
-func (m Model) qualityProfileAt(idx int) app.OutputProfile {
-	if idx < 0 || idx >= len(m.qualityChoices) {
-		return app.OutputProfile{}
-	}
-	return m.qualityChoices[idx].Profile(m.locale)
-}
-
 func (m Model) audioOptions() []string {
 	return app.OutputProfileLabels(m.audioProfiles)
-}
-
-func (m Model) audioProfileAt(idx int) app.OutputProfile {
-	if idx < 0 || idx >= len(m.audioProfiles) {
-		return app.OutputProfile{}
-	}
-	return m.audioProfiles[idx]
-}
-
-func (m Model) modeAt(idx int) app.DownloadMode {
-	switch idx {
-	case 1:
-		return app.ModeAudio
-	case 2:
-		return app.ModeThumbnail
-	default:
-		return app.ModeVideo
-	}
-}
-
-func (m Model) searchResultAt(idx int) app.SearchResult {
-	if idx < 0 || idx >= len(m.searchResults) {
-		return app.SearchResult{}
-	}
-	return m.searchResults[idx]
-}
-
-func (m Model) shouldAskWorkers() bool {
-	return len(m.dlEntries) > 1
 }
 
 func (m Model) modeOptions() []string {
 	u := m.u()
 	return []string{u.ModeVideo, u.ModeAudio, u.ModeThumbnail}
-}
-
-func (m Model) sessionPlaylistSuffix(n int) string {
-	return app.PlaylistSuffix(m.locale, n)
 }
 
 func (m Model) uiBusy() bool {

@@ -18,10 +18,6 @@ func playlistResultIcon(done, failed int) string {
 	}
 }
 
-func formatFragmentLabel(fragment *app.DownloadFragment) string {
-	return app.FormatFragmentLabel(fragment)
-}
-
 func (b *Bot) fragmentPromptText(sess *Session) string {
 	snap := sess.snapshot()
 	lines := []string{"✂️ <b>Фрагмент</b>", "", "Выбери вариант загрузки:"}
@@ -34,12 +30,8 @@ func (b *Bot) fragmentPromptText(sess *Session) string {
 	return strings.Join(lines, "\n")
 }
 
-func (b *Bot) fragmentInputHint(mediaDuration int) string {
-	return escapeHTML(app.FragmentInputHintFor(app.LocaleRU, mediaDuration))
-}
-
 func (b *Bot) fragmentInputText(mediaDuration int) string {
-	return escapeHTML(strings.TrimSpace(app.StringsFor(app.LocaleRU).FragmentInputPrompt)) + "\n\n" + b.fragmentInputHint(mediaDuration)
+	return escapeHTML(strings.TrimSpace(app.StringsFor(app.LocaleRU).FragmentInputPrompt)) + "\n\n" + escapeHTML(app.FragmentInputHintFor(app.LocaleRU, mediaDuration))
 }
 
 func (b *Bot) fragmentModeNoticeText(notice string, sess *Session) string {
@@ -51,6 +43,18 @@ func (b *Bot) fragmentModeNoticeText(notice string, sess *Session) string {
 
 func (b *Bot) allowURLStartFragment(snap SessionSnapshot) bool {
 	return snap.Target.HasURLStart && snap.Target.URLStartAt > 0 && snap.MediaDuration > 0 && snap.Target.URLStartAt < snap.MediaDuration
+}
+
+func playlistPromptText(snap SessionSnapshot, body, fallback string) string {
+	if snap.PlInfo == nil || snap.ForceSingle {
+		return fallback
+	}
+	return fmt.Sprintf(
+		"📋 <b>%s</b>\n%d видео\n\n%s",
+		escapeHTML(snap.PlInfo.Title),
+		playlistSelectionCount(snap),
+		body,
+	)
 }
 
 func (b *Bot) downloadProgressText(done, failed, total int, dlStem string, update app.DlUpdate) string {
@@ -87,15 +91,7 @@ func (b *Bot) qualityScanText(sess *Session) string {
 
 func (b *Bot) qualityPromptText(sess *Session) string {
 	snap := sess.snapshot()
-	if snap.PlInfo != nil && !snap.ForceSingle {
-		count := playlistSelectionCount(snap)
-		return fmt.Sprintf(
-			"📋 <b>%s</b>\n%d видео\n\nВыбери качество видео:",
-			escapeHTML(snap.PlInfo.Title),
-			count,
-		)
-	}
-	return "🎬 Выбери качество видео:"
+	return playlistPromptText(snap, "Выбери качество видео:", "🎬 Выбери качество видео:")
 }
 
 func (b *Bot) qualityScanURLs(sess *Session) []string {
@@ -110,28 +106,16 @@ func (b *Bot) qualityScanURLs(sess *Session) []string {
 }
 
 func (b *Bot) modePromptText(sess *Session) string {
-	snap := sess.snapshot()
-	if snap.PlInfo != nil && !snap.ForceSingle {
-		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nЧто скачать?", escapeHTML(snap.PlInfo.Title), playlistSelectionCount(snap))
-	}
-	return "🎛 <b>Выбери режим</b>\n\nЧто скачать?"
+	return playlistPromptText(sess.snapshot(), "Что скачать?", "🎛 <b>Выбери режим</b>\n\nЧто скачать?")
 }
 
 func (b *Bot) audioPromptText(sess *Session) string {
-	snap := sess.snapshot()
-	if snap.PlInfo != nil && !snap.ForceSingle {
-		return fmt.Sprintf("📋 <b>%s</b>\n%d видео\n\nВыбери аудио:", escapeHTML(snap.PlInfo.Title), playlistSelectionCount(snap))
-	}
-	return "🎵 Выбери аудио:"
+	return playlistPromptText(sess.snapshot(), "Выбери аудио:", "🎵 Выбери аудио:")
 }
 
 func (b *Bot) downloadStartText(sess *Session) string {
 	snap := sess.snapshot()
-	profile := snap.Profile
-	if profile.Mode == 0 {
-		profile = app.DefaultProfileForMode(snap.Mode, app.LocaleRU)
-	}
-
+	profile := resolvedSessionProfile(snap)
 	modeIcon, modeLabel := downloadModeDisplay(profile)
 
 	if snap.PlInfo != nil && !snap.ForceSingle {
@@ -143,7 +127,7 @@ func (b *Bot) downloadStartText(sess *Session) string {
 			escapeHTML(modeLabel),
 		)
 	}
-	fragment := formatFragmentLabel(snap.Fragment)
+	fragment := app.FormatFragmentLabel(snap.Fragment)
 	if fragment != "" && profile.Mode != app.ModeThumbnail {
 		return fmt.Sprintf("%s %s\n✂️ Фрагмент: <code>%s</code>\n\n⬇️ Начинаю скачивание…", modeIcon, escapeHTML(modeLabel), escapeHTML(fragment))
 	}
