@@ -20,7 +20,7 @@ require_tool() {
 	fi
 }
 
-resolve_tool() {
+resolve_tool_candidate() {
 	local tool="$1"
 	local -a candidates=()
 	local path_tool
@@ -52,8 +52,53 @@ resolve_tool() {
 		fi
 	done
 
-	echo "missing required tool: $tool" >&2
+	return 1
+}
+
+resolve_first_tool() {
+	local path_tool
+	local tool
+
+	for tool in "$@"; do
+		if path_tool="$(resolve_tool_candidate "$tool")"; then
+			echo "$path_tool"
+			return 0
+		fi
+	done
+
+	echo "missing required tool: $1" >&2
 	exit 1
+}
+
+is_windows_binary() {
+	local tool="$1"
+	case "$(basename "$tool")" in
+	*.exe | rc | cvtres)
+		return 0
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+native_path() {
+	local path="$1"
+	if command -v cygpath >/dev/null 2>&1; then
+		cygpath -w "$path"
+		return 0
+	fi
+	echo "$path"
+}
+
+tool_path_arg() {
+	local tool="$1"
+	local path="$2"
+	if is_windows_binary "$tool"; then
+		native_path "$path"
+		return 0
+	fi
+	echo "$path"
 }
 
 machine_for_arch() {
@@ -78,8 +123,8 @@ cleanup() {
 trap cleanup EXIT
 
 require_tool go
-LLVM_RC="$(resolve_tool llvm-rc)"
-LLVM_CVTRES="$(resolve_tool llvm-cvtres)"
+RC_TOOL="$(resolve_first_tool rc llvm-rc)"
+CVTRES_TOOL="$(resolve_first_tool cvtres llvm-cvtres)"
 
 if [[ ! -f "$RC_FILE" ]]; then
 	echo "missing resource file: $RC_FILE" >&2
@@ -94,9 +139,9 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 
 (
 	cd "$PKG_DIR"
-	"$LLVM_RC" /fo "$RES_FILE" "$(basename "$RC_FILE")"
+	"$RC_TOOL" /fo "$(tool_path_arg "$RC_TOOL" "$RES_FILE")" "$(basename "$RC_FILE")"
 )
 
-"$LLVM_CVTRES" "/MACHINE:$(machine_for_arch "$ARCH")" "/OUT:$SYSO_FILE" "$RES_FILE"
+"$CVTRES_TOOL" "/MACHINE:$(machine_for_arch "$ARCH")" "/OUT:$(tool_path_arg "$CVTRES_TOOL" "$SYSO_FILE")" "$(tool_path_arg "$CVTRES_TOOL" "$RES_FILE")"
 
 GOOS=windows GOARCH="$ARCH" go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$OUTPUT_PATH" ./cmd/downloader
