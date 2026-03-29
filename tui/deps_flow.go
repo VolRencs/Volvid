@@ -37,17 +37,51 @@ func (m Model) openDependencyScreen(mode depScreenMode) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) openDependencyScreenWithError(mode depScreenMode, errText string) (tea.Model, tea.Cmd) {
+	if mode == depModeStartup {
+		m.depReturnScreen = scrURL
+	}
 	m.depMode = mode
 	m.depErr = errText
 	m.screen = scrDepUpdate
 	m = m.syncMenu()
+	if mode == depModeManage {
+		return m.startDepsRefresh()
+	}
 	return m, nil
 }
 
 func (m Model) startDepUpdate() (tea.Model, tea.Cmd) {
-	m.prevScreen = m.screen
+	m.depReturnScreen = m.screen
 	m.depUpdateDone = false
 	return m.openDependencyScreen(depModeManage)
+}
+
+func (m Model) startDepsRefresh() (tea.Model, tea.Cmd) {
+	m.depRefreshToken++
+	m.depRefreshing = true
+	if m.screen == scrDepUpdate {
+		m = m.syncMenu()
+	}
+	return m, refreshDepsCmd(m.depRefreshToken)
+}
+
+func (m Model) returnFromDependencyScreen() (tea.Model, tea.Cmd) {
+	if m.depMode == depModeStartup {
+		m.depErr = ""
+		if !m.deps.MissingRequired() {
+			return m.gotoURL()
+		}
+		return m, tea.Quit
+	}
+
+	target := m.depReturnScreen
+	if target == scrUpdateCheck {
+		target = scrURL
+	}
+
+	m.depErr = ""
+	m.screen = target
+	return m.restoreActiveScreen()
 }
 
 func (m Model) depActions() []depAction {
@@ -63,8 +97,10 @@ func (m Model) depActions() []depAction {
 		actions = append(actions, depAction{Kind: depActionInstall, Key: dep.Key, Label: label})
 	}
 
-	actions = append(actions, depAction{Kind: depActionRefresh, Label: m.depActionLabel("refresh", "")})
-	if !m.deps.MissingRequired() {
+	if !m.depRefreshing {
+		actions = append(actions, depAction{Kind: depActionRefresh, Label: m.depActionLabel("refresh", "")})
+	}
+	if m.depMode == depModeStartup && !m.deps.MissingRequired() {
 		actions = append(actions, depAction{Kind: depActionContinue, Label: m.depActionLabel("continue", "")})
 	}
 	if m.depMode == depModeManage {

@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	app "YouTubeBuild/internal/app"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func (m Model) qualityOptions() []string {
@@ -25,6 +27,39 @@ func (m Model) uiBusy() bool {
 		return true
 	}
 	return false
+}
+
+func (m Model) isAppUpdateScreen() bool {
+	switch m.screen {
+	case scrUpdateCheck, scrUpdateReady, scrUpdateDl, scrUpdateDone:
+		return true
+	}
+	return false
+}
+
+func (m Model) canOpenDependencyScreen() bool {
+	return !m.uiBusy() && !m.isAppUpdateScreen()
+}
+
+func (m Model) restoreActiveScreen() (tea.Model, tea.Cmd) {
+	switch m.screen {
+	case scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrSearchResults, scrFragmentChoice, scrPlaylistAsk:
+		m = m.syncMenu()
+		return m, nil
+	case scrURL:
+		return m, m.urlInput.Focus()
+	case scrSearchInput:
+		return m, m.searchInput.Focus()
+	case scrFragmentInput:
+		return m, m.fragmentIn.Focus()
+	case scrPlaylist:
+		if m.plInputMode {
+			return m, m.plInput.Focus()
+		}
+		return m, nil
+	default:
+		return m, nil
+	}
 }
 
 func (m Model) workerMenuOptions(n int) []string {

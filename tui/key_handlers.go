@@ -22,7 +22,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if k == "ctrl+u" && !m.uiBusy() {
+	if k == "ctrl+u" && m.canOpenDependencyScreen() {
 		return m.startDepUpdate()
 	}
 
@@ -43,17 +43,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "esc":
 			if m.screen == scrDepUpdate {
-				if m.depMode == depModeManage {
-					m.screen = m.prevScreen
-					if m.screen == scrURL {
-						return m, m.urlInput.Focus()
-					}
-					return m, nil
-				}
-				if !m.deps.MissingRequired() {
-					return m.gotoURL()
-				}
-				return m, tea.Quit
+				return m.returnFromDependencyScreen()
 			}
 			return m, nil
 		case "enter":

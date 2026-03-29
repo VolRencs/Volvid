@@ -47,9 +47,9 @@ type CheckDepsResult struct {
 }
 
 const (
-	versionProbeAttempts = 8
-	versionProbeDelay    = 250 * time.Millisecond
-	versionProbeTimeout  = 5 * time.Second
+	versionProbeAttempts = 1
+	versionProbeDelay    = 0
+	versionProbeTimeout  = 1500 * time.Millisecond
 )
 
 type DepsLogger func(format string, args ...any)
@@ -91,14 +91,14 @@ func filterDependencies(deps []DependencyInfo, keep func(DependencyInfo) bool) [
 }
 
 func EnsureRuntimeDeps(logf DepsLogger) (CheckDepsResult, error) {
-	deps := DetectDeps()
+	deps := RefreshDeps()
 	for _, dep := range deps.DownloadableMissing() {
 		if logf != nil {
 			logf("Зависимости: %s не найден, скачиваю…", dep.Name)
 		}
 		if err := InstallDependencyFor(dep.Key, LocaleEN, nil); err != nil {
 			if dep.Required {
-				return DetectDeps(), fmt.Errorf("установка %s: %w", dep.Name, err)
+				return RefreshDeps(), fmt.Errorf("установка %s: %w", dep.Name, err)
 			}
 			if logf != nil {
 				logf("Зависимости: не удалось подготовить %s: %v", dep.Name, err)
@@ -106,7 +106,7 @@ func EnsureRuntimeDeps(logf DepsLogger) (CheckDepsResult, error) {
 		}
 	}
 
-	deps = DetectDeps()
+	deps = RefreshDeps()
 	if deps.MissingRequired() {
 		return deps, fmt.Errorf("%s не найден", strings.Join(missingDependencyNames(deps.MissingRequiredDeps()), ", "))
 	}
@@ -118,7 +118,7 @@ func UpdateManagedDeps(ch chan<- FileProgress) error {
 }
 
 func UpdateManagedDepsFor(l Locale, ch chan<- FileProgress) error {
-	deps := DetectDeps()
+	deps := RefreshDeps()
 	for _, dep := range deps.ActionableDependencies() {
 		if dep.Source == DepSystem {
 			continue
@@ -126,6 +126,9 @@ func UpdateManagedDepsFor(l Locale, ch chan<- FileProgress) error {
 		if err := InstallDependencyFor(dep.Key, l, ch); err != nil {
 			return fmt.Errorf("%s: %w", dep.Name, err)
 		}
+	}
+	if len(deps.ActionableDependencies()) > 0 {
+		RefreshDeps()
 	}
 	return nil
 }

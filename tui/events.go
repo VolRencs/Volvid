@@ -51,6 +51,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case msgDepDone:
 		return m.handleDepDone(msg)
 
+	case msgDepsRefreshed:
+		if msg.token != m.depRefreshToken {
+			return m, nil
+		}
+		m.depRefreshing = false
+		m = m.withDeps(msg.deps)
+		if m.screen == scrDepUpdate {
+			m = m.syncMenu()
+		}
+		return m, nil
+
 	case msgPlaylistFetched:
 		return m.handlePlaylistFetched(msg)
 
@@ -80,8 +91,11 @@ func (m *Model) updateElapsed() {
 func (m Model) handleDepDone(msg msgDepDone) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		m.depErr = msg.err.Error()
-		if m.prevScreen == scrDepUpdate || m.screen == scrDepDl {
+		if m.screen == scrDepDl {
 			m.screen = scrDepUpdate
+			m = m.syncMenu()
+		} else if m.screen == scrUpdateDl {
+			m.screen = scrUpdateReady
 			m = m.syncMenu()
 		}
 		return m, nil
@@ -94,12 +108,11 @@ func (m Model) handleDepDone(msg msgDepDone) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	deps := app.DetectDeps()
-	m = m.withDeps(deps)
+	m.depErr = ""
 	m.depUpdateDone = true
 	m.screen = scrDepUpdate
 	m = m.syncMenu()
-	return m, nil
+	return m.startDepsRefresh()
 }
 
 func (m Model) handleQualityScanned(msg msgQualityScanned) (tea.Model, tea.Cmd) {

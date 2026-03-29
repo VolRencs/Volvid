@@ -48,6 +48,12 @@ func launchProgress(fn func(chan<- app.FileProgress) error, isUpdate bool) (<-ch
 	return ch, streamFileProgressCmd(ch, isUpdate)
 }
 
+func refreshDepsCmd(token int) tea.Cmd {
+	return func() tea.Msg {
+		return msgDepsRefreshed{deps: app.RefreshDeps(), token: token}
+	}
+}
+
 func fetchPlaylistCmd(url string, l app.Locale) tea.Cmd {
 	return func() tea.Msg {
 		info, err := app.FetchPlaylistInfoFor(nil, url, l)

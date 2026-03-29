@@ -27,20 +27,15 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		action := actions[idx]
 		switch action.Kind {
 		case depActionInstall:
-			m.prevScreen = scrDepUpdate
 			return m.startDependencyDownload(scrDepDl, action.Key, false, func(ch chan<- app.FileProgress) error {
 				return app.InstallDependencyFor(action.Key, m.locale, ch)
 			})
 		case depActionRefresh:
-			return m.openDependencyScreen(m.depMode)
+			return m.startDepsRefresh()
 		case depActionContinue:
 			return m.gotoURL()
 		case depActionBack:
-			m.screen = m.prevScreen
-			if m.screen == scrURL {
-				return m, m.urlInput.Focus()
-			}
-			return m, nil
+			return m.returnFromDependencyScreen()
 		case depActionExit:
 			return m, tea.Quit
 		}

@@ -87,6 +87,10 @@ type (
 		err      error
 		isUpdate bool
 	}
+	msgDepsRefreshed struct {
+		deps  app.CheckDepsResult
+		token int
+	}
 	msgPlaylistFetched struct {
 		info *app.PlaylistInfo
 		err  error
@@ -174,9 +178,11 @@ type Model struct {
 	dlElapsed      time.Duration
 	timerActive    bool
 
-	session       app.Session
-	prevScreen    screen
-	depUpdateDone bool
+	session         app.Session
+	depReturnScreen screen
+	depRefreshing   bool
+	depRefreshToken int
+	depUpdateDone   bool
 }
 
 func New() tea.Model {

@@ -79,11 +79,17 @@ func (m Model) renderPromptMenu() string {
 
 	switch m.screen {
 	case scrUpdateReady:
-		return sOk.Render(u.UpdateAvail) +
-			sBold.Render(m.updateInfo.Latest) +
-			sDim.Render(fmt.Sprintf(u.CurrentVerShort, app.Version)) +
-			"\n\n" +
-			m.menuAndNav()
+		var b strings.Builder
+		b.WriteString(sOk.Render(u.UpdateAvail))
+		b.WriteString(sBold.Render(m.updateInfo.Latest))
+		b.WriteString(sDim.Render(fmt.Sprintf(u.CurrentVerShort, app.Version)))
+		if m.depErr != "" {
+			b.WriteString("\n\n")
+			b.WriteString(renderErrorLine(m.depErr))
+		}
+		b.WriteString("\n\n")
+		b.WriteString(m.menuAndNav())
+		return b.String()
 
 	default:
 		return sWarn.Render(u.PlaylistMixWarn) + "\n\n" + m.menuAndNav()
@@ -109,6 +115,7 @@ func (m Model) renderUpdateDone() string {
 }
 
 func (m Model) renderDepsUpdateScreen() string {
+	u := m.u()
 	title := "  Dependencies"
 	if m.locale == app.LocaleRU {
 		title = "  Зависимости"
@@ -130,6 +137,11 @@ func (m Model) renderDepsUpdateScreen() string {
 
 	var b strings.Builder
 	b.WriteString(sBold.Render(title))
+	if m.depRefreshing {
+		b.WriteString("\n")
+		b.WriteString("  ")
+		b.WriteString(sDim.Render(m.spinnerView() + " " + u.DepsRefreshing))
+	}
 	b.WriteString("\n\n")
 	b.WriteString(block)
 
@@ -185,8 +197,15 @@ func (m Model) depLineValue(dep app.DependencyInfo) string {
 
 	meta := []string{string(dep.Source), role}
 	version := dep.Version
+	checking := strings.TrimSpace(version) == "" && m.depRefreshing
+	if checking {
+		version = m.depText("checking")
+	}
 	if strings.TrimSpace(version) == "" {
 		version = m.depText("available")
+	}
+	if checking {
+		return sDim.Render(version) + sDim.Render("  ["+strings.Join(meta, ", ")+"]")
 	}
 	return sOk.Render(version) + sDim.Render("  ["+strings.Join(meta, ", ")+"]")
 }
@@ -194,6 +213,9 @@ func (m Model) depLineValue(dep app.DependencyInfo) string {
 func (m Model) depAccessValue(status, detail string) string {
 	status = strings.TrimSpace(status)
 	detail = strings.TrimSpace(detail)
+	if m.depRefreshing && status == "" {
+		return sDim.Render(m.depText("checking"))
+	}
 	switch status {
 	case "", "browser not found", "not found":
 		return sDim.Render(m.depText("not_active"))
@@ -221,6 +243,8 @@ func (m Model) depText(kind string) string {
 			return "не активно"
 		case "available":
 			return "доступно"
+		case "checking":
+			return "проверяю..."
 		}
 		return kind
 	}
@@ -233,6 +257,8 @@ func (m Model) depText(kind string) string {
 		return "not active"
 	case "available":
 		return "available"
+	case "checking":
+		return "checking..."
 	}
 	return kind
 }

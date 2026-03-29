@@ -146,10 +146,10 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 
 	switch {
 	case !deps.YTDLP.Available:
-		m.prevScreen = m.screen
+		m.depReturnScreen = m.screen
 		return m.openDependencyScreenWithError(depModeManage, m.depRequirementText(deps.YTDLP.Name))
 	case (m.currentProfile().Mode == app.ModeAudio || m.fragment != nil) && !deps.FFmpeg.Available:
-		m.prevScreen = m.screen
+		m.depReturnScreen = m.screen
 		return m.openDependencyScreenWithError(depModeManage, m.depRequirementText(deps.FFmpeg.Name))
 	}
 

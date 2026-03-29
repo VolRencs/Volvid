@@ -54,12 +54,38 @@ type cookieCandidate struct {
 var (
 	firefoxUserAgentOnce  sync.Once
 	firefoxUserAgentCache string
+	depsCacheMu           sync.RWMutex
+	depsCache             CheckDepsResult
+	depsCacheReady        bool
 )
 
 func DetectDeps() CheckDepsResult {
+	depsCacheMu.RLock()
+	if depsCacheReady {
+		deps := depsCache
+		depsCacheMu.RUnlock()
+		applyDetectedPaths(deps)
+		return deps
+	}
+	depsCacheMu.RUnlock()
+	return RefreshDeps()
+}
+
+func RefreshDeps() CheckDepsResult {
 	deps := detectDeps(true)
+	depsCacheMu.Lock()
+	depsCache = deps
+	depsCacheReady = true
+	depsCacheMu.Unlock()
 	applyDetectedPaths(deps)
 	return deps
+}
+
+func InvalidateDepsCache() {
+	depsCacheMu.Lock()
+	depsCache = CheckDepsResult{}
+	depsCacheReady = false
+	depsCacheMu.Unlock()
 }
 
 func detectDeps(withVersions bool) CheckDepsResult {

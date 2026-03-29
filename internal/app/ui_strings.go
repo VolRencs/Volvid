@@ -14,7 +14,7 @@ type UIStrings struct {
 	UpdateAvail, CurrentVerShort string
 	PlaylistMixWarn              string
 
-	DepsUpdating                                          string
+	DepsUpdating, DepsRefreshing                          string
 	UpdateAppliedWin, UpdateAppliedUnix, UpdateDonePrefix string
 	HelpAnyKey, HelpExit, DepsOK, ErrPrefix               string
 
@@ -69,6 +69,7 @@ var strEN = UIStrings{
 	PlaylistMixWarn: "  ⚠️ URL has both a video and a playlist",
 
 	DepsUpdating:      "Updating dependencies…",
+	DepsRefreshing:    "Refreshing dependency status…",
 	UpdateAppliedWin:  "  The app will close. The update bat will replace the exe in the background.",
 	UpdateAppliedUnix: "  Binary replaced. Restart the app.",
 	UpdateDonePrefix:  "  ✔  Update applied — ",
@@ -142,6 +143,7 @@ var strRU = UIStrings{
 	PlaylistMixWarn: "  ⚠️ В ссылке и видео, и плейлист",
 
 	DepsUpdating:      "Обновление зависимостей…",
+	DepsRefreshing:    "Обновляю статус зависимостей…",
 	UpdateAppliedWin:  "  Приложение сейчас закроется. Update bat заменит exe в фоне и удалится сам.",
 	UpdateAppliedUnix: "  Бинарник заменён. Перезапустите программу.",
 	UpdateDonePrefix:  "  ✔  Обновление применено — ",

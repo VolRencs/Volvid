@@ -14,16 +14,22 @@ import (
 )
 
 func InstallDependencyFor(key string, l Locale, ch chan<- FileProgress) error {
+	var err error
 	switch strings.TrimSpace(key) {
 	case "ytdlp":
-		return InstallYtDlpFor(l, ch)
+		err = InstallYtDlpFor(l, ch)
 	case "ffmpeg":
-		return InstallFFmpegFor(l, ch)
+		err = InstallFFmpegFor(l, ch)
 	case "node":
-		return InstallNodeFor(l, ch)
+		err = InstallNodeFor(l, ch)
 	default:
 		return fmt.Errorf("unsupported dependency: %s", key)
 	}
+	if err != nil {
+		return err
+	}
+	InvalidateDepsCache()
+	return nil
 }
 
 func extractZipEntry(zf *zip.File, dest string) error {

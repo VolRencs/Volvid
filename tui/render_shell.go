@@ -15,7 +15,9 @@ func (m Model) renderTopBar() string {
 		" "
 
 	var action string
-	if (m.screen == scrDepDl || m.screen == scrUpdateDl) && m.depErr == "" {
+	if m.isAppUpdateScreen() {
+		action = ""
+	} else if m.screen == scrDepDl && m.depErr == "" {
 		action = " " + sWarn.Render(m.spinnerView()+u.TopBarDepsBusy) + " "
 	} else {
 		action = " " + sGray.Render(u.TopBarDeps) + "  " + sDim.Render("Ctrl+U") + " "
