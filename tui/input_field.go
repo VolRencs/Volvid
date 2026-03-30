@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"time"
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
@@ -34,7 +35,7 @@ func (i *inputField) SetPlaceholder(s string) {
 }
 
 func (i *inputField) SetWidth(width int) {
-	i.width = width
+	i.width = max(1, width)
 	i.ensureCursorVisible()
 }
 
@@ -256,7 +257,7 @@ func (i inputField) View() string {
 	if len(i.value) == 0 {
 		placeholder := i.placeholder
 		if i.width > 0 {
-			placeholder = trunc(placeholder, i.width-1)
+			placeholder = trunc(placeholder, max(1, i.width-1))
 		}
 		if i.focused {
 			return i.renderCursor(" ") + sDim.Render(placeholder)
@@ -279,12 +280,24 @@ func (i inputField) View() string {
 	return b.String()
 }
 
+func blinkInputCmd(target inputTarget, tag int) tea.Cmd {
+	return tea.Tick(530*time.Millisecond, func(time.Time) tea.Msg {
+		return cursorBlinkMsg{target: target, tag: tag}
+	})
+}
+
+func pasteClipboardCmd(_ inputTarget) tea.Cmd {
+	return func() tea.Msg {
+		return tea.ReadClipboard()
+	}
+}
+
 func (i inputField) visibleWindow() (int, int) {
 	if i.width <= 0 {
 		return 0, len(i.value)
 	}
 	start := min(i.offset, len(i.value))
-	end := min(len(i.value), start+i.width-1)
+	end := min(len(i.value), start+max(1, i.width-1))
 	return start, max(start, end)
 }
 

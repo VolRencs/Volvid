@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	Version = "6.1.8"
+	Version = "6.2.0"
 
 	ffmpegWinURL        = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ffmpegWinARM64URL   = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-winarm64-gpl.zip"
@@ -32,13 +32,10 @@ var (
 	DepsDir string
 	DlDir   string
 
-	YtdlpBin       string
-	YtdlpResolved  string
-	FFmpegBin      string
-	FFprobeBin     string
-	FFmpegResolved string
-	NodeBin        string
-	NodeResolved   string
+	YtdlpBin   string
+	FFmpegBin  string
+	FFprobeBin string
+	NodeBin    string
 
 	apiClient = &http.Client{Timeout: 8 * time.Second}
 	dlClient  *http.Client

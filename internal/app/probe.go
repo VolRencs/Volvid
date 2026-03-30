@@ -42,10 +42,6 @@ var probeCache sync.Map
 
 var ErrMediaDurationUnavailable = errors.New("media duration unavailable")
 
-func ProbeMedia(target ParsedTarget) (*MediaProbe, error) {
-	return ProbeMediaContext(context.Background(), target)
-}
-
 func ProbeMediaURL(raw string) (*MediaProbe, error) {
 	target, err := ParseTarget(raw)
 	if err != nil {

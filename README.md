@@ -9,7 +9,7 @@
 ![Go](https://img.shields.io/badge/Go-1.26.1%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-6.1.8-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-6.2.0-orange?style=flat-square)
 
 </div>
 
@@ -23,10 +23,10 @@
 
 The project includes:
 
-- a keyboard-driven **TUI** built on [Bubble Tea v2](https://charm.land/bubbletea/v2)
+- a keyboard-driven **stage-based TUI** built on [Bubble Tea v2](https://charm.land/bubbletea/v2)
 - an optional **Telegram bot** for downloading by URL or by YouTube search
 
-The app checks **yt-dlp** and **ffmpeg** on startup and opens a dependency screen if one of them is missing. Managed binaries can be downloaded into `_deps/`, while system-installed binaries are preferred when available. **node** is optional and is used as a **yt-dlp JS runtime** when found. Browser cookies are auto-detected from supported browsers on **Linux** and **Windows**. The interface is available in **English** and **Russian**; press **Tab** in the TUI to switch language.
+The app checks **yt-dlp** and **ffmpeg** on startup and opens a dependency screen if one of them is missing. Managed binaries can be downloaded into `_deps/`, while system-installed binaries are preferred when available. **node** is optional and is used as a **yt-dlp JS runtime** when found. Browser cookies are auto-detected from supported browsers on **Linux** and **Windows**. The TUI uses a clean centered card with aligned menus, consistent notices, flat key hints, and **English / Russian** localization via **Tab**.
 
 ---
 
@@ -34,15 +34,17 @@ The app checks **yt-dlp** and **ffmpeg** on startup and opens a dependency scree
 
 ### TUI
 
+- **Unified staged flow**: update check, dependencies, target, search, playlist, profile, download, summary
+- **Clean single-card layout** with aligned menus, consistent notices, progress blocks and footer hints
 - **Best / Economy video presets** with quality scan via yt-dlp
 - **Audio-only mode** with 5 presets: MP3 320k, MP3 192k, M4A/AAC Best, Opus Best, FLAC
 - **Thumbnail download**
-- **Playlist browser** with Space toggles, manual ranges and multi-worker downloads
+- **Playlist browser** with Space selection, manual ranges and multi-worker downloads
 - **YouTube search** from the main input via `Ctrl+G`
 - **Auto-update** check on startup
 - **Dependency screen** with `yt-dlp`, `ffmpeg`, `node`, browser cookies and JS runtime status
 - **Managed dependency refresh** inside the UI with `Ctrl+U`
-- **Session summary** with per-run history
+- **Session summary** with per-run history and a quick open-folder action
 
 ### Telegram bot
 
@@ -129,12 +131,12 @@ go build -tags bot -trimpath -buildvcs=false -ldflags="-s -w" -o tgbot ./cmd/tgb
 
 ## TUI Flow
 
-1. Paste a YouTube link on the main screen.
-2. Or press `Ctrl+G` and search by video title.
-3. Choose **Video / Audio / Thumbnail**.
-4. For video: choose quality.
-5. For audio: choose one of the available presets.
-6. Start the download.
+1. Start in the **update / dependency** stage.
+2. Paste a YouTube link on the **target** screen or press `Ctrl+G` to search.
+3. If the URL is a playlist, choose items with `Space`, `a` or `/`.
+4. Choose **Video / Audio / Thumbnail**.
+5. For video: choose quality. For audio: choose one of the available presets.
+6. Watch progress in the unified **download** stage, then use **summary** to open the downloads folder with `O` or return to the URL screen.
 
 On startup:
 
@@ -184,15 +186,16 @@ Notes:
 
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` or `k` / `j` | Move in menus |
-| `Enter` | Confirm |
-| `Space` | Toggle item in playlist view |
+| `↑` / `↓` | Move in menus |
+| `Enter` | Continue |
+| `Space` | Select item in playlist view |
 | `/` | Enter playlist indices manually |
 | `Ctrl+G` | Open YouTube search from the main URL screen |
 | `Esc` | Leave search and return to URL input |
 | `a` / `а` | Select all / clear all in playlists |
 | `Tab` | Switch UI language (EN / RU) |
 | `Ctrl+U` | Open dependency management / update managed dependencies |
+| `O` | Open the downloads folder from the summary screen |
 | `Ctrl+C` | Quit |
 
 ---

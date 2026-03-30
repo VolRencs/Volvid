@@ -40,18 +40,19 @@ type downloadResult struct {
 	Err        error
 }
 
-func ffmpegArgs() []string {
-	resolveRuntimeDeps()
-	if strings.TrimSpace(FFmpegResolved) == "" {
+func ffmpegArgs(deps CheckDepsResult) []string {
+	bin := strings.TrimSpace(deps.FFmpeg.Path)
+	if bin == "" {
 		return nil
 	}
-	return []string{"--ffmpeg-location", FFmpegResolved}
+	return []string{"--ffmpeg-location", bin}
 }
 
-func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan<- DlUpdate) downloadResult {
-	cmd, pr, runCtx, cancel, err := startYTDLPMergedOutputCommand(
+func streamYtdlp(ctx context.Context, slot int, l Locale, deps CheckDepsResult, args []string, ch chan<- DlUpdate) downloadResult {
+	cmd, pr, runCtx, cancel, err := startYTDLPMergedOutputCommandFor(
 		ctx,
 		0,
+		deps,
 		slices.Concat(streamProtocolArgs(), []string{"--no-warnings"}, args)...,
 	)
 	if err != nil {
@@ -75,7 +76,7 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan
 			continue
 		}
 		if strings.HasPrefix(strings.ToLower(line), "error:") {
-			result.ErrText = strings.TrimSpace(line[6:])
+			setDownloadErrorText(&result, strings.TrimSpace(line[6:]))
 			continue
 		}
 
@@ -111,24 +112,15 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, args []string, ch chan
 			_ = cmd.Process.Kill()
 		}
 		_ = waitCommand(cmd, runCtx)
-		result.Err = err
-		if result.ErrText == "" {
-			result.ErrText = commandErrorText(err)
-		}
+		setDownloadError(&result, err)
 		return result
 	}
 	if err := waitCommand(cmd, runCtx); err != nil {
-		result.Err = err
-		if result.ErrText == "" {
-			result.ErrText = commandErrorText(err)
-		}
+		setDownloadError(&result, err)
 		return result
 	}
 	if runCtx != nil && runCtx.Err() != nil {
-		result.Err = runCtx.Err()
-		if result.ErrText == "" {
-			result.ErrText = commandErrorText(runCtx.Err())
-		}
+		setDownloadError(&result, runCtx.Err())
 		return result
 	}
 	return result
@@ -186,6 +178,7 @@ func parseProgressUpdate(line string, slot int, l Locale) (DlUpdate, string, boo
 	if pct <= 0 && totalB > 0 && doneB > 0 {
 		pct = float64(doneB) / float64(totalB) * 100
 	}
+	pct = clampProgressPercent(pct)
 	title := parseJSONStringField(parts[5])
 
 	return DlUpdate{
@@ -237,6 +230,36 @@ func postprocessLabel(line string, l Locale) string {
 
 func failedDownload(err error) downloadResult {
 	return downloadResult{Err: err, ErrText: commandErrorText(err)}
+}
+
+func setDownloadError(result *downloadResult, err error) {
+	if result == nil || err == nil {
+		return
+	}
+	result.Err = err
+	setDownloadErrorText(result, commandErrorText(err))
+}
+
+func setDownloadErrorText(result *downloadResult, text string) {
+	if result == nil {
+		return
+	}
+	text = strings.TrimSpace(text)
+	if text == "" || result.ErrText != "" {
+		return
+	}
+	result.ErrText = text
+}
+
+func clampProgressPercent(pct float64) float64 {
+	switch {
+	case pct < 0:
+		return 0
+	case pct > 100:
+		return 100
+	default:
+		return pct
+	}
 }
 
 func commandErrorText(err error) string {

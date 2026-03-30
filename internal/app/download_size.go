@@ -31,7 +31,7 @@ func EstimateDownloadSizeContext(ctx context.Context, req DownloadRequest) (Size
 	}
 	req = preparedReq
 
-	urls := requestSourceURLs(req)
+	urls := downloadRequestSourceURLs(req)
 	if len(urls) == 0 {
 		return SizeEstimate{}, errors.New("download size: empty input")
 	}

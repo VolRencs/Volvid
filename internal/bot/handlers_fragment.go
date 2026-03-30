@@ -10,10 +10,8 @@ func (b *Bot) handleFragmentChoiceCallback(chatID int64, msgID int, sess *Sessio
 
 	switch data {
 	case cbFragmentAll:
-		sess.mutate(func(s *Session) {
-			s.Fragment = nil
-			s.StatusMsgID = msgID
-		})
+		sess.setFragment(nil)
+		sess.setStatusMessage(msgID)
 		b.askMode(chatID, sess)
 		return ""
 	case cbFragmentURL:
@@ -27,20 +25,15 @@ func (b *Bot) handleFragmentChoiceCallback(chatID int64, msgID int, sess *Sessio
 		if err := app.ValidateFragmentDuration(fragment, snap.MediaDuration); err != nil {
 			return app.FragmentURLStartOutOfBoundsText(app.LocaleRU, snap.MediaDuration)
 		}
-		sess.mutate(func(s *Session) {
-			s.Fragment = &fragment
-			s.StatusMsgID = msgID
-		})
+		sess.setFragment(&fragment)
+		sess.setStatusMessage(msgID)
 		b.askMode(chatID, sess)
 		return ""
 	case cbFragmentInput:
 		if snap.MediaDuration <= 0 {
 			return app.FragmentUnavailableText(app.LocaleRU)
 		}
-		sess.mutate(func(s *Session) {
-			s.State = StateAwaitingFragmentInput
-			s.StatusMsgID = msgID
-		})
+		sess.beginFragmentInput(msgID)
 		b.edit(chatID, msgID, b.fragmentInputText(snap.MediaDuration))
 		return ""
 	default:
@@ -55,8 +48,6 @@ func (b *Bot) handleFragmentInput(chatID int64, sess *Session, raw string) {
 		b.send(chatID, "⚠️ "+escapeHTML(app.FragmentInputErrorText(app.LocaleRU, err, snap.MediaDuration))+"\n\n"+b.fragmentInputText(snap.MediaDuration))
 		return
 	}
-	sess.mutate(func(s *Session) {
-		s.Fragment = &fragment
-	})
+	sess.setFragment(&fragment)
 	b.askMode(chatID, sess)
 }

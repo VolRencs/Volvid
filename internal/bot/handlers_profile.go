@@ -9,27 +9,14 @@ import (
 func (b *Bot) handleModeCallback(chatID int64, msgID int, sess *Session, data string) string {
 	switch data {
 	case cbModeVideo:
-		sess.mutate(func(s *Session) {
-			s.State = StateAwaitingMode
-			s.Mode = app.ModeVideo
-			s.Profile = app.OutputProfile{}
-			s.StatusMsgID = msgID
-		})
+		sess.chooseMode(app.ModeVideo, msgID)
 		b.scanAndAskQuality(chatID, sess)
 	case cbModeAudio:
-		sess.mutate(func(s *Session) {
-			s.State = StateAwaitingAudioProfile
-			s.Mode = app.ModeAudio
-			s.Profile = app.OutputProfile{}
-			s.StatusMsgID = msgID
-		})
+		sess.chooseMode(app.ModeAudio, msgID)
 		b.askAudioProfiles(chatID, sess)
 	case cbModeThumb:
-		sess.mutate(func(s *Session) {
-			s.Mode = app.ModeThumbnail
-			s.Profile = app.ThumbnailOutputProfile(app.LocaleRU)
-			s.StatusMsgID = msgID
-		})
+		sess.chooseMode(app.ModeThumbnail, msgID)
+		sess.setProfile(app.ThumbnailOutputProfile(app.LocaleRU), msgID)
 		return b.startConfiguredDownloadText(chatID, sess)
 	}
 	return ""
@@ -46,10 +33,7 @@ func (b *Bot) handleAudioProfileCallback(chatID int64, msgID int, sess *Session,
 		return ""
 	}
 
-	sess.mutate(func(s *Session) {
-		s.Profile = profile
-		s.StatusMsgID = msgID
-	})
+	sess.setProfile(profile, msgID)
 	return b.startConfiguredDownloadText(chatID, sess)
 }
 
@@ -66,10 +50,7 @@ func (b *Bot) handleQualityCallback(chatID int64, msgID int, sess *Session, data
 		return ""
 	}
 
-	sess.mutate(func(s *Session) {
-		s.Profile = choice.Profile(app.LocaleRU)
-		s.StatusMsgID = msgID
-	})
+	sess.setProfile(choice.Profile(app.LocaleRU), msgID)
 	return b.startConfiguredDownloadText(chatID, sess)
 }
 

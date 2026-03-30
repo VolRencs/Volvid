@@ -1,9 +1,9 @@
 package tui
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
-
-	"charm.land/lipgloss/v2"
 )
 
 type menu struct {
@@ -12,8 +12,13 @@ type menu struct {
 }
 
 func (m *menu) SetItems(items []string) {
+	changed := !sameMenuItems(m.items, items)
 	m.items = append(m.items[:0], items...)
 	if len(m.items) == 0 {
+		m.cursor = 0
+		return
+	}
+	if changed {
 		m.cursor = 0
 		return
 	}
@@ -34,25 +39,45 @@ func (m menu) Index() int {
 	return m.cursor
 }
 
-func (m menu) View() string {
+func (m menu) View(width int) string {
+	rowWidth := fitWidth(width, menuW, 24)
+	indexWidth := max(2, len(strconv.Itoa(len(m.items))))
+	labelWidth := max(10, rowWidth-indexWidth-8)
 	lines := make([]string, len(m.items))
-	maxWidth := 0
 	for i, item := range m.items {
+		label := trunc(item, labelWidth)
+		prefix := fmt.Sprintf("%*d", indexWidth, i+1)
+		lead := renderMenuLead(false)
+		indexStyle := sMenuIndex.Width(indexWidth)
+		textStyle := sMenuText
+		rowStyle := sMenuRow
 		if i == m.cursor {
-			lines[i] = sTitle.Render(" > ") + sBold.Render(item)
-		} else {
-			lines[i] = sDim.Render("   " + item)
+			lead = renderMenuLead(true)
+			indexStyle = sMenuIndexAct.Width(indexWidth)
+			textStyle = sMenuTextAct
+			rowStyle = sMenuActive
 		}
-		maxWidth = max(maxWidth, lipgloss.Width(lines[i]))
+		row := lead + indexStyle.Render(prefix) + "  " + textStyle.Render(label)
+		lines[i] = rowStyle.Render(row)
 	}
+	return strings.Join(lines, "\n")
+}
 
-	rowStyle := lipgloss.NewStyle().Width(maxWidth).Align(lipgloss.Left)
-	var b strings.Builder
-	for i, line := range lines {
-		if i > 0 {
-			b.WriteByte('\n')
-		}
-		b.WriteString(rowStyle.Render(line))
+func renderMenuLead(active bool) string {
+	if active {
+		return sMenuLeadAct.Render("› ")
 	}
-	return b.String()
+	return sMenuLead.Render("  ")
+}
+
+func sameMenuItems(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

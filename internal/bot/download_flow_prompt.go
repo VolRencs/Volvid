@@ -9,9 +9,7 @@ import (
 )
 
 func (b *Bot) scanAndAskQuality(chatID int64, sess *Session) {
-	sess.mutate(func(s *Session) {
-		s.State = StateFetchingQuality
-	})
+	sess.beginQualityScan()
 
 	b.upsertSessionText(chatID, sess, b.qualityScanText(sess))
 	urls := b.qualityScanURLs(sess)
@@ -28,10 +26,7 @@ func (b *Bot) runQualityScan(chatID int64, sess *Session, urls []string) {
 
 	snap := sess.snapshot()
 	b.logf("quality choices ready %s count=%d", logChatUser(chatID, snap.UserID), len(choices))
-	sess.mutate(func(s *Session) {
-		s.QualityChoices = choices
-		s.State = StateAwaitingQuality
-	})
+	sess.setQualityChoices(choices)
 	b.upsertSessionKeyboard(chatID, sess, b.qualityPromptText(sess), kbQuality(choices))
 }
 
@@ -56,25 +51,13 @@ func (b *Bot) askMode(chatID int64, sess *Session) {
 }
 
 func (b *Bot) askModeWithNotice(chatID int64, sess *Session, notice string) {
-	sess.mutate(func(s *Session) {
-		s.State = StateAwaitingMode
-		s.Mode = app.DefaultDownloadMode()
-		s.Profile = app.DefaultVideoProfile(app.LocaleRU)
-		s.QualityChoices = nil
-		if s.PlInfo != nil && !s.ForceSingle {
-			s.Fragment = nil
-		}
-	})
+	sess.beginModeSelection()
 
 	b.upsertSessionKeyboard(chatID, sess, b.fragmentModeNoticeText(notice, sess), kbMode())
 }
 
 func (b *Bot) probeAndAskFragment(chatID int64, sess *Session) {
-	sess.mutate(func(s *Session) {
-		s.State = StateFetchingFragmentMetadata
-		s.MediaDuration = 0
-		s.Fragment = nil
-	})
+	sess.beginFragmentProbe()
 	b.upsertSessionText(chatID, sess, "⏳ Определяю длительность видео…")
 	go b.runFragmentProbe(chatID, sess)
 }
@@ -107,17 +90,12 @@ func (b *Bot) runFragmentProbe(chatID int64, sess *Session) {
 		if err != nil {
 			b.logError(fmt.Sprintf("fragment probe %s", logChatUser(chatID, snap.UserID)), err)
 		}
-		sess.mutate(func(s *Session) {
-			s.MediaDuration = 0
-			s.Fragment = nil
-		})
+		sess.beginFragmentProbe()
 		b.askModeWithNotice(chatID, sess, app.FragmentUnavailableText(app.LocaleRU))
 		return
 	}
 
-	sess.mutate(func(s *Session) {
-		s.MediaDuration = duration
-	})
+	sess.setMediaDuration(duration)
 	b.askFragmentChoice(chatID, sess)
 }
 
@@ -128,10 +106,7 @@ func (b *Bot) askFragmentChoice(chatID int64, sess *Session) {
 		return
 	}
 
-	sess.mutate(func(s *Session) {
-		s.State = StateAwaitingFragmentChoice
-		s.Fragment = nil
-	})
+	sess.beginFragmentChoice()
 
 	snap = sess.snapshot()
 	b.upsertSessionKeyboard(chatID, sess, b.fragmentPromptText(sess), kbFragmentChoice(b.allowURLStartFragment(snap)))
@@ -139,10 +114,7 @@ func (b *Bot) askFragmentChoice(chatID int64, sess *Session) {
 
 func (b *Bot) askAudioProfiles(chatID int64, sess *Session) {
 	profiles := app.AudioOutputProfiles(app.LocaleRU)
-	sess.mutate(func(s *Session) {
-		s.State = StateAwaitingAudioProfile
-		s.Profile = app.OutputProfile{}
-	})
+	sess.beginAudioSelection()
 	b.upsertSessionKeyboard(chatID, sess, b.audioPromptText(sess), kbAudioProfiles(profiles))
 }
 
@@ -156,18 +128,8 @@ func (b *Bot) upsertSessionKeyboard(chatID int64, sess *Session, text string, kb
 
 func (b *Bot) upsertSessionMessage(chatID int64, sess *Session, text string, kb *models.InlineKeyboardMarkup) {
 	snap := sess.snapshot()
-	if snap.StatusMsgID == 0 {
-		msg, _ := b.sendWithKeyboard(chatID, text, kb)
-		if msg.ID != 0 {
-			sess.mutate(func(s *Session) {
-				s.StatusMsgID = msg.ID
-			})
-		}
-		return
+	msg, _ := b.replaceWithKeyboard(chatID, snap.StatusMsgID, text, kb)
+	if snap.StatusMsgID == 0 && msg.ID != 0 {
+		sess.setStatusMessage(msg.ID)
 	}
-	if kb == nil {
-		b.edit(chatID, snap.StatusMsgID, text)
-		return
-	}
-	b.editWithKeyboard(chatID, snap.StatusMsgID, text, kb)
 }

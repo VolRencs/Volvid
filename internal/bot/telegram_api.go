@@ -26,6 +26,10 @@ func (b *Bot) sendKb(chatID int64, text string, kb models.InlineKeyboardMarkup) 
 	return b.sendWithKeyboard(chatID, text, &kb)
 }
 
+func (b *Bot) replace(chatID int64, msgID int, text string) (models.Message, error) {
+	return b.replaceWithKeyboard(chatID, msgID, text, nil)
+}
+
 func (b *Bot) sendWithKeyboard(chatID int64, text string, kb *models.InlineKeyboardMarkup) (models.Message, error) {
 	ctx, cancel := b.apiCtx()
 	defer cancel()
@@ -46,6 +50,18 @@ func (b *Bot) sendWithKeyboard(chatID int64, text string, kb *models.InlineKeybo
 		return models.Message{}, err
 	}
 	return *msg, nil
+}
+
+func (b *Bot) replaceWithKeyboard(chatID int64, msgID int, text string, kb *models.InlineKeyboardMarkup) (models.Message, error) {
+	if msgID == 0 {
+		return b.sendWithKeyboard(chatID, text, kb)
+	}
+	if kb == nil {
+		b.edit(chatID, msgID, text)
+	} else {
+		b.editWithKeyboard(chatID, msgID, text, kb)
+	}
+	return models.Message{ID: msgID}, nil
 }
 
 func (b *Bot) edit(chatID int64, msgID int, text string) {

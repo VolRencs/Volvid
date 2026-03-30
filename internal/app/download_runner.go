@@ -12,8 +12,9 @@ import (
 )
 
 func runDownloadRequest(ctx context.Context, slot int, req DownloadRequest, url, outputTemplate string, extra []string, ch chan<- DlUpdate) downloadResult {
+	deps := resolveRuntimeDeps()
 	if fragmentDownloadStrategy(req) == fragmentAudio {
-		return runAudioFragmentDownload(ctx, slot, req, url, outputTemplate, extra, ch)
+		return runAudioFragmentDownload(ctx, slot, req, deps, url, outputTemplate, extra, ch)
 	}
 
 	strs := StringsFor(req.Locale)
@@ -32,11 +33,11 @@ func runDownloadRequest(ctx context.Context, slot int, req DownloadRequest, url,
 			}
 		}
 
-		args, err := buildPreparedDownloadArgs(req, url, outputTemplate, format, extra)
+		args, err := buildDownloadCommandArgs(req, deps, url, outputTemplate, format, extra)
 		if err != nil {
 			return failedDownload(err)
 		}
-		result = streamYtdlp(ctx, slot, req.Locale, args, ch)
+		result = streamYtdlp(ctx, slot, req.Locale, deps, args, ch)
 		if result.Err == nil {
 			return result
 		}
@@ -91,13 +92,13 @@ func StartDownloadRequestContext(ctx context.Context, req DownloadRequest, ch ch
 		}
 		req = preparedReq
 
-		if !requestUsesPlaylist(req) {
+		if !downloadRequestUsesPlaylist(req) {
 			result := runSingleDownload(ctx, req, ch)
 			ch <- DlUpdate{Type: EvDone, OK: result.Err == nil, ErrText: result.ErrText}
 			return
 		}
 
-		entries := requestEntries(req)
+		entries := downloadRequestEntries(req)
 		runPlaylistDownloads(ctx, req, entries, ch, &wg)
 	}()
 }
@@ -193,6 +194,7 @@ func runAudioFragmentDownload(
 	ctx context.Context,
 	slot int,
 	req DownloadRequest,
+	deps CheckDepsResult,
 	url string,
 	outputTemplate string,
 	extra []string,
@@ -208,7 +210,8 @@ func runAudioFragmentDownload(
 		ctx,
 		slot,
 		req.Locale,
-		audioFragmentSourceArgs(url, filepath.Join(tempDir, "%(title)s.%(ext)s"), extra),
+		deps,
+		audioFragmentSourceArgs(deps, url, filepath.Join(tempDir, "%(title)s.%(ext)s"), extra),
 		ch,
 	)
 	if sourceResult.Err != nil {
@@ -231,7 +234,7 @@ func runAudioFragmentDownload(
 	ch <- DlUpdate{Type: EvProc, Slot: slot, Text: StringsFor(req.Locale).MP3Proc}
 
 	trimmedPath := filepath.Join(tempDir, "fragment."+audioOutputExtension(req.Profile))
-	if err := trimAudioFragment(ctx, sourcePath, trimmedPath, *req.Fragment, req.Profile); err != nil {
+	if err := trimAudioFragment(ctx, deps, sourcePath, trimmedPath, *req.Fragment, req.Profile); err != nil {
 		return failedDownload(err)
 	}
 	if err := replaceFile(trimmedPath, finalPath); err != nil {
@@ -241,9 +244,9 @@ func runAudioFragmentDownload(
 	return downloadResult{OutputPath: finalPath}
 }
 
-func audioFragmentSourceArgs(url, outputTemplate string, extra []string) []string {
+func audioFragmentSourceArgs(deps CheckDepsResult, url, outputTemplate string, extra []string) []string {
 	args := make([]string, 0, 12+len(extra))
-	args = append(args, ffmpegArgs()...)
+	args = append(args, ffmpegArgs(deps)...)
 	args = append(args,
 		"-f", "bestaudio/best",
 		"-o", outputTemplate,
@@ -255,8 +258,14 @@ func audioFragmentSourceArgs(url, outputTemplate string, extra []string) []strin
 }
 
 func resolveDownloadedMediaPath(dir, printedPath string) (string, error) {
+	printedPath = strings.TrimSpace(printedPath)
 	if pathExists(printedPath) {
 		return printedPath, nil
+	}
+	if printedPath != "" {
+		if directPath := filepath.Join(dir, filepath.Base(printedPath)); pathExists(directPath) {
+			return directPath, nil
+		}
 	}
 
 	entries, err := os.ReadDir(dir)
@@ -291,13 +300,18 @@ func audioFragmentOutputPath(outputTemplate, sourcePath string, profile OutputPr
 	return filepath.Join(filepath.Dir(outputTemplate), stem+"."+audioOutputExtension(profile)), nil
 }
 
-func trimAudioFragment(ctx context.Context, sourcePath, outputPath string, fragment DownloadFragment, profile OutputProfile) error {
+func trimAudioFragment(ctx context.Context, deps CheckDepsResult, sourcePath, outputPath string, fragment DownloadFragment, profile OutputProfile) error {
 	args, err := audioFragmentFFmpegArgs(sourcePath, outputPath, fragment, profile)
 	if err != nil {
 		return err
 	}
 
-	output, err := commandCombinedOutput(ctx, 0, FFmpegResolved, args...)
+	ffmpegBin := strings.TrimSpace(deps.FFmpeg.Path)
+	if ffmpegBin == "" {
+		return errors.New("ffmpeg is required")
+	}
+
+	output, err := commandCombinedOutput(ctx, 0, ffmpegBin, args...)
 	if err == nil {
 		return nil
 	}

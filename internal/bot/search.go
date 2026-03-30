@@ -23,15 +23,11 @@ func (b *Bot) handleSearch(chatID, userID int64, query string) {
 	}
 
 	searchSess := newSession(userID, "", "")
-	searchSess.mutate(func(s *Session) {
-		s.SearchQuery = query
-	})
+	searchSess.beginSearch(query)
 	b.sessions.set(chatID, searchSess)
 
 	statusMsg, _ := b.send(chatID, "🔎 Ищу видео на YouTube…")
-	searchSess.mutate(func(s *Session) {
-		s.StatusMsgID = statusMsg.ID
-	})
+	searchSess.setStatusMessage(statusMsg.ID)
 
 	go func() {
 		results, err := app.SearchYouTubeContext(context.Background(), query)
@@ -47,11 +43,7 @@ func (b *Bot) handleSearch(chatID, userID int64, query string) {
 		}
 		b.logf("search results %s query=%q count=%d", logChatUser(chatID, userID), logSnippet(query, 120), len(results))
 
-		searchSess.mutate(func(s *Session) {
-			s.State = StateAwaitingSearchSelection
-			s.SearchResults = results
-			s.SearchQuery = query
-		})
+		searchSess.storeSearchResults(query, results)
 		b.editKb(chatID, statusMsg.ID, b.searchResultsText(searchSess), kbSearchResults(searchSess))
 	}()
 }

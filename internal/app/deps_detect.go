@@ -64,7 +64,6 @@ func DetectDeps() CheckDepsResult {
 	if depsCacheReady {
 		deps := depsCache
 		depsCacheMu.RUnlock()
-		applyDetectedPaths(deps)
 		return deps
 	}
 	depsCacheMu.RUnlock()
@@ -77,7 +76,6 @@ func RefreshDeps() CheckDepsResult {
 	depsCache = deps
 	depsCacheReady = true
 	depsCacheMu.Unlock()
-	applyDetectedPaths(deps)
 	return deps
 }
 
@@ -131,12 +129,6 @@ func detectDeps(withVersions bool) CheckDepsResult {
 	deps.Cookies = detectBrowserCookies(currentUserHome(), currentGOOS())
 	deps.Runtime = detectJSRuntime(node)
 	return deps
-}
-
-func applyDetectedPaths(deps CheckDepsResult) {
-	YtdlpResolved = deps.YTDLP.Path
-	FFmpegResolved = deps.FFmpeg.Path
-	NodeResolved = deps.Node.Path
 }
 
 func detectExecutableDependency(
@@ -617,9 +609,7 @@ func uniquePaths(paths []string) []string {
 }
 
 func resolveRuntimeDeps() CheckDepsResult {
-	deps := detectDeps(false)
-	applyDetectedPaths(deps)
-	return deps
+	return detectDeps(false)
 }
 
 func ytdlpCommandArgsFor(deps CheckDepsResult, base []string) []string {
@@ -710,11 +700,7 @@ func firefoxUAPlatform() string {
 }
 
 func ytdlpOutput(ctx context.Context, timeout time.Duration, args ...string) ([]byte, error) {
-	deps := resolveRuntimeDeps()
-	if strings.TrimSpace(YtdlpResolved) == "" {
-		return nil, fmt.Errorf("yt-dlp is required")
-	}
-	return commandOutput(ctx, timeout, YtdlpResolved, ytdlpCommandArgsFor(deps, args)...)
+	return ytdlpOutputFor(ctx, timeout, resolveRuntimeDeps(), args...)
 }
 
 func startYTDLPMergedOutputCommand(
@@ -722,11 +708,28 @@ func startYTDLPMergedOutputCommand(
 	timeout time.Duration,
 	args ...string,
 ) (*exec.Cmd, io.ReadCloser, context.Context, context.CancelFunc, error) {
-	deps := resolveRuntimeDeps()
-	if strings.TrimSpace(YtdlpResolved) == "" {
+	return startYTDLPMergedOutputCommandFor(ctx, timeout, resolveRuntimeDeps(), args...)
+}
+
+func ytdlpOutputFor(ctx context.Context, timeout time.Duration, deps CheckDepsResult, args ...string) ([]byte, error) {
+	bin := strings.TrimSpace(deps.YTDLP.Path)
+	if bin == "" {
+		return nil, fmt.Errorf("yt-dlp is required")
+	}
+	return commandOutput(ctx, timeout, bin, ytdlpCommandArgsFor(deps, args)...)
+}
+
+func startYTDLPMergedOutputCommandFor(
+	ctx context.Context,
+	timeout time.Duration,
+	deps CheckDepsResult,
+	args ...string,
+) (*exec.Cmd, io.ReadCloser, context.Context, context.CancelFunc, error) {
+	bin := strings.TrimSpace(deps.YTDLP.Path)
+	if bin == "" {
 		return nil, nil, nil, nil, fmt.Errorf("yt-dlp is required")
 	}
-	return startMergedOutputCommand(ctx, timeout, YtdlpResolved, ytdlpCommandArgsFor(deps, args)...)
+	return startMergedOutputCommand(ctx, timeout, bin, ytdlpCommandArgsFor(deps, args)...)
 }
 
 func commandVersionLine(bin string, args ...string) string {
@@ -832,10 +835,6 @@ func YtdlpURL() string {
 	default:
 		return ytdlpBase + "yt-dlp_linux"
 	}
-}
-
-func InstallYtDlp(ch chan<- FileProgress) error {
-	return InstallYtDlpFor(LoadLocale(), ch)
 }
 
 func InstallYtDlpFor(l Locale, ch chan<- FileProgress) error {

@@ -7,22 +7,13 @@ import (
 )
 
 func (b *Bot) fetchAndAskPlaylist(chatID int64, sess *Session) {
-	b.startPlaylistFetch(sess)
+	sess.beginPlaylistFetch()
 
 	snap := sess.snapshot()
 	b.logf("fetch playlist %s url=%q", logChatUser(chatID, snap.UserID), logSnippet(snap.URL, 200))
 	b.upsertSessionText(chatID, sess, "⏳ Загружаю список плейлиста…")
 
 	go b.runPlaylistFetch(chatID, sess)
-}
-
-func (b *Bot) startPlaylistFetch(sess *Session) {
-	sess.mutate(func(s *Session) {
-		s.State = StateFetchingPlaylist
-		s.ForceSingle = false
-		s.MediaDuration = 0
-		s.Fragment = nil
-	})
 }
 
 func (b *Bot) runPlaylistFetch(chatID int64, sess *Session) {
@@ -39,31 +30,15 @@ func (b *Bot) runPlaylistFetch(chatID int64, sess *Session) {
 	}
 
 	b.logf("playlist loaded %s title=%q entries=%d", logChatUser(chatID, snap.UserID), logSnippet(info.Title, 80), len(info.Entries))
-	b.storeFetchedPlaylist(sess, info)
+	sess.storePlaylist(info)
 
 	state := sess.snapshot()
 	b.openPlaylistSelection(chatID, state.StatusMsgID, sess)
 }
 
-func (b *Bot) storeFetchedPlaylist(sess *Session, info *app.PlaylistInfo) {
-	sess.mutate(func(s *Session) {
-		s.PlInfo = info
-		s.SelectedIndices = nil
-		s.PlaylistPage = 0
-		s.QualityChoices = nil
-		s.Profile = app.OutputProfile{}
-		s.MediaDuration = 0
-		s.Fragment = nil
-	})
-}
-
 func (b *Bot) failPlaylistSelection(chatID int64, sess *Session) {
 	snap := sess.snapshot()
 	text := "⚠️ Не удалось загрузить список плейлиста. Пришли ссылку заново."
-	if snap.StatusMsgID != 0 {
-		b.edit(chatID, snap.StatusMsgID, text)
-	} else {
-		b.send(chatID, text)
-	}
+	b.replace(chatID, snap.StatusMsgID, text)
 	b.sessions.reset(chatID)
 }

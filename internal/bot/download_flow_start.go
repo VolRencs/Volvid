@@ -47,9 +47,7 @@ func (b *Bot) checkDownloadSizeLimit(chatID int64, sess *Session, req app.Downlo
 }
 
 func (b *Bot) beginConfiguredDownload(chatID int64, sess *Session, req app.DownloadRequest) {
-	sess.mutate(func(s *Session) {
-		s.State = StateDownloading
-	})
+	sess.beginDownload()
 
 	snap := sess.snapshot()
 	b.logf(

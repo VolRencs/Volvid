@@ -73,11 +73,7 @@ func (b *Bot) createDownloadSession(chatID, userID int64, rawURL string, target 
 	}
 
 	sess := newSession(userID, rawURL, workDir)
-	sess.mutate(func(s *Session) {
-		s.Target = target
-		s.MediaDuration = 0
-		s.Fragment = nil
-	})
+	sess.setTarget(target)
 	b.sessions.set(chatID, sess)
 	return sess, true
 }
@@ -85,9 +81,7 @@ func (b *Bot) createDownloadSession(chatID, userID int64, rawURL string, target 
 func (b *Bot) openDownloadTargetFlow(chatID int64, sess *Session, target app.ParsedTarget) {
 	switch {
 	case target.Kind == app.TargetMixed:
-		sess.mutate(func(s *Session) {
-			s.State = StateAwaitingPlaylistOp
-		})
+		sess.startPlaylistChoice()
 		b.sendKb(chatID, "⚠️ Ссылка содержит и видео, и плейлист. Что скачать?", kbPlaylistChoice())
 	case target.IsPlaylist():
 		b.fetchAndAskPlaylist(chatID, sess)

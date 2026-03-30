@@ -26,10 +26,6 @@ type PlaylistInfo struct {
 	Entries []PlaylistEntry
 }
 
-func FetchPlaylistInfo(url string) (*PlaylistInfo, error) {
-	return FetchPlaylistInfoFor(context.Background(), url, LoadLocale())
-}
-
 func FetchPlaylistInfoFor(ctx context.Context, url string, l Locale) (*PlaylistInfo, error) {
 	var (
 		entries []PlaylistEntry
@@ -135,10 +131,6 @@ var (
 	sepRE   = regexp.MustCompile(`[,;\s]+`)
 	rangeRE = regexp.MustCompile(`^(\d+)\s*[-–]\s*(\d+)$`)
 )
-
-func ParseSelection(raw string, maxIdx int) ([]int, error) {
-	return ParseSelectionFor(raw, maxIdx, LoadLocale())
-}
 
 func ParseSelectionFor(raw string, maxIdx int, l Locale) ([]int, error) {
 	strs := StringsFor(l)

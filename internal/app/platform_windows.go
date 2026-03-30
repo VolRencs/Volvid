@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -57,6 +58,26 @@ func applyUpdatePlatform(tmp, dest string) error {
 		_ = os.Remove(tmp)
 		_ = os.Remove(bat)
 		return fmt.Errorf("запуск update-bat: %w", err)
+	}
+	if cmd.Process != nil {
+		_ = cmd.Process.Release()
+	}
+	return nil
+}
+
+func OpenInFileManager(path string) error {
+	path = filepath.Clean(path)
+	if !filepath.IsAbs(path) {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("resolve path: %w", err)
+		}
+		path = abs
+	}
+
+	cmd := exec.Command("explorer.exe", path)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("open explorer: %w", err)
 	}
 	if cmd.Process != nil {
 		_ = cmd.Process.Release()

@@ -49,10 +49,6 @@ func extractZipEntry(zf *zip.File, dest string) error {
 	return err
 }
 
-func InstallFFmpeg(ch chan<- FileProgress) error {
-	return InstallFFmpegFor(LoadLocale(), ch)
-}
-
 func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
 	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
@@ -89,15 +85,10 @@ func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
 		}
 	}
 
-	FFmpegResolved = FFmpegBin
 	if detectExecutableDependency("ffmpeg", "ffmpeg", false, true, nil, FFmpegBin, []string{"-version"}, ffmpegVersionFromLine, true).Version == "" {
 		return fmt.Errorf("бинарник ffmpeg скачан, но не запускается")
 	}
 	return nil
-}
-
-func InstallNode(ch chan<- FileProgress) error {
-	return InstallNodeFor(LoadLocale(), ch)
 }
 
 func InstallNodeFor(l Locale, ch chan<- FileProgress) error {
@@ -138,19 +129,10 @@ func InstallNodeFor(l Locale, ch chan<- FileProgress) error {
 		}
 	}
 
-	NodeResolved = NodeBin
 	if detectExecutableDependency("node", "node", false, true, nil, NodeBin, []string{"--version"}, firstNonEmptyLine, true).Version == "" {
 		return fmt.Errorf("бинарник node скачан, но не запускается")
 	}
 	return nil
-}
-
-func InstallAllDeps(ch chan<- FileProgress) error {
-	return UpdateManagedDeps(ch)
-}
-
-func InstallAllDepsFor(l Locale, ch chan<- FileProgress) error {
-	return UpdateManagedDepsFor(l, ch)
 }
 
 func ffmpegArchiveURL() string {
