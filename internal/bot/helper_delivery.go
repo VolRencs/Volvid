@@ -70,14 +70,14 @@ func (b *Bot) sendDownloadedFiles(chatID int64, paths []string) deliveryStats {
 func (b *Bot) singleSendSummary(stats deliveryStats) string {
 	switch {
 	case stats.Sent > 0 && !stats.hasIssues():
-		return "✅ Готово! Файл удалён с сервера."
+		return "Готово. Файл удалён с сервера."
 	case stats.Sent > 0 || stats.TooLarge > 0:
 		return fmt.Sprintf(
-			"✅ Скачано!\n\n%s\n\n%s",
+			"Скачивание завершено.\n\n%s\n\n%s",
 			b.deliveryBreakdownText(stats), stats.cleanupText(),
 		)
 	default:
-		return "✅ Скачано!\n\nНе удалось отправить файл в Telegram.\nФайл удалён с сервера."
+		return "Скачивание завершено.\n\nНе удалось отправить файл в Telegram.\nФайл удалён с сервера."
 	}
 }
 
@@ -88,16 +88,16 @@ func (b *Bot) playlistSendSummary(icon string, summary doneSummary, stats delive
 	}
 
 	return fmt.Sprintf(
-		"%s <b>Плейлист завершён</b>\n\n✔ Успешно: %d\n✘ Ошибок: %d\nИтого: %d%s",
+		"%s<b>Плейлист завершён</b>\n\nУспешно: %d\nОшибок: %d\nИтого: %d%s",
 		icon, summary.OK, summary.Failed, summary.Total, extra,
 	)
 }
 
 func (b *Bot) deliveryBreakdownText(stats deliveryStats) string {
 	lines := []string{
-		fmt.Sprintf("📤 Отправлено: %d", stats.Sent),
-		fmt.Sprintf("📦 Слишком большие для %s: %d", b.backendLabel(), stats.TooLarge),
-		fmt.Sprintf("⚠️ Не удалось отправить: %d", stats.Failed),
+		fmt.Sprintf("Отправлено: %d", stats.Sent),
+		fmt.Sprintf("Слишком большие для %s: %d", b.backendLabel(), stats.TooLarge),
+		fmt.Sprintf("Не удалось отправить: %d", stats.Failed),
 	}
 	if stats.TooLarge > 0 {
 		lines = append(lines, "", b.sendLimitNotice())

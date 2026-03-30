@@ -136,10 +136,6 @@ func (m Model) handleQualityScanned(msg msgQualityScanned) (tea.Model, tea.Cmd) 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 
-	if k == "ctrl+c" {
-		return m, tea.Quit
-	}
-
 	if k == "tab" {
 		m.locale = app.NextLocale(m.locale)
 		_ = app.SaveLocale(m.locale)

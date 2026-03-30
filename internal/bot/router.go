@@ -79,13 +79,13 @@ func (b *Bot) handleCommand(msg *models.Message) {
 			b.send(chatID, "Нечего отменять.")
 			return
 		}
-		b.send(chatID, "❌ Отменено.")
+		b.send(chatID, "Отменено.")
 	case "status":
 		if !b.ensureAdminCommand(msg) {
 			return
 		}
 		deps := app.DetectDeps()
-		b.send(chatID, "⚙️ <b>Зависимости</b>\n\n"+
+		b.send(chatID, "<b>Зависимости</b>\n\n"+
 			depLine(deps.YTDLP)+"\n"+
 			depLine(deps.FFmpeg)+"\n"+
 			depLine(deps.Node)+"\n"+
@@ -138,7 +138,7 @@ func (b *Bot) handleCallback(cq *models.CallbackQuery) {
 	case cbCancel:
 		b.answer(cq, "")
 		b.cancelSession(meta.chatID, b.sessions.get(meta.chatID))
-		b.edit(meta.chatID, meta.msgID, "❌ Отменено.")
+		b.edit(meta.chatID, meta.msgID, "Отменено.")
 		return
 	case cbNoop:
 		b.answer(cq, "")
@@ -242,7 +242,6 @@ func (b *Bot) cancelSession(chatID int64, sess *Session) {
 }
 
 func (b *Bot) resetStaleSession(chatID int64, msgID int) {
-	text := "⚠️ " + staleSessionAlert
-	b.replace(chatID, msgID, text)
+	b.replace(chatID, msgID, staleSessionAlert)
 	b.sessions.reset(chatID)
 }

@@ -11,7 +11,7 @@ func (b *Bot) fetchAndAskPlaylist(chatID int64, sess *Session) {
 
 	snap := sess.snapshot()
 	b.logf("fetch playlist %s url=%q", logChatUser(chatID, snap.UserID), logSnippet(snap.URL, 200))
-	b.upsertSessionText(chatID, sess, "⏳ Загружаю список плейлиста…")
+	b.upsertSessionText(chatID, sess, "Загружаю список плейлиста…")
 
 	go b.runPlaylistFetch(chatID, sess)
 }
@@ -38,7 +38,6 @@ func (b *Bot) runPlaylistFetch(chatID int64, sess *Session) {
 
 func (b *Bot) failPlaylistSelection(chatID int64, sess *Session) {
 	snap := sess.snapshot()
-	text := "⚠️ Не удалось загрузить список плейлиста. Пришли ссылку заново."
-	b.replace(chatID, snap.StatusMsgID, text)
+	b.replace(chatID, snap.StatusMsgID, "Не удалось загрузить список плейлиста. Пришли ссылку заново.")
 	b.sessions.reset(chatID)
 }

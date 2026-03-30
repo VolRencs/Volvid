@@ -70,7 +70,7 @@ func (b *Bot) runDownload(chatID int64, sess *Session, req app.DownloadRequest) 
 	if cancelled || sess.isCancelled() {
 		b.logf("download cancelled %s", logChatUser(chatID, snap.UserID))
 		cleanupBotWorkDir(snap.WorkDir)
-		b.edit(chatID, msgID, "❌ Скачивание отменено.")
+		b.edit(chatID, msgID, "Скачивание отменено.")
 		b.sessions.reset(chatID)
 	}
 }
@@ -94,7 +94,7 @@ func (b *Bot) handleDownloadUpdate(
 		}
 	case app.EvProc:
 		if editor.Allow(time.Now()) {
-			b.edit(chatID, msgID, "⚙️ "+escapeHTML(update.Text))
+			b.edit(chatID, msgID, escapeHTML(update.Text))
 		}
 	case app.EvDone:
 		if update.OK {
@@ -147,18 +147,18 @@ func (b *Bot) singleDownloadCompletionText(chatID int64, msgID int, newFiles []s
 	failed := summary.Failed > 0 || summary.OK == 0
 	if failed {
 		if summary.ErrText != "" {
-			return "❌ Не удалось скачать видео.\n\n" + escapeHTML(summary.ErrText)
+			return "Не удалось скачать видео.\n\n" + escapeHTML(summary.ErrText)
 		}
 		if len(newFiles) > 0 {
-			return "❌ Не удалось скачать видео. Временные файлы удалены."
+			return "Не удалось скачать видео. Временные файлы удалены."
 		}
-		return "❌ Не удалось скачать видео."
+		return "Не удалось скачать видео."
 	}
 	if len(newFiles) == 0 {
-		return "✅ Скачано!"
+		return "Скачивание завершено."
 	}
 
-	b.edit(chatID, msgID, "✅ Готово! Отправляю файл…")
+	b.edit(chatID, msgID, "Скачивание завершено. Отправляю файл…")
 	stats := b.sendDownloadedFiles(chatID, newFiles)
 	b.logf("single send summary chat=%d sent=%d too_large=%d send_err=%d", chatID, stats.Sent, stats.TooLarge, stats.Failed)
 	return b.singleSendSummary(stats)
@@ -168,7 +168,7 @@ func (b *Bot) playlistDownloadCompletionText(chatID int64, msgID int, newFiles [
 	icon := playlistResultIcon(summary.OK, summary.Failed)
 	if len(newFiles) == 0 {
 		text := fmt.Sprintf(
-			"%s <b>Плейлист завершён</b>\n\n✔ Успешно: %d\n✘ Ошибок: %d\nИтого: %d",
+			"%s<b>Плейлист завершён</b>\n\nУспешно: %d\nОшибок: %d\nИтого: %d",
 			icon, summary.OK, summary.Failed, summary.Total,
 		)
 		if summary.ErrText != "" {
@@ -178,7 +178,7 @@ func (b *Bot) playlistDownloadCompletionText(chatID int64, msgID int, newFiles [
 	}
 
 	b.edit(chatID, msgID, fmt.Sprintf(
-		"%s <b>Плейлист завершён</b>\n\n✔ Успешно: %d\n✘ Ошибок: %d\nИтого: %d\n\n📤 Отправляю файлы в Telegram…",
+		"%s<b>Плейлист завершён</b>\n\nУспешно: %d\nОшибок: %d\nИтого: %d\n\nОтправляю файлы в Telegram…",
 		icon, summary.OK, summary.Failed, summary.Total,
 	))
 	stats := b.sendDownloadedFiles(chatID, newFiles)

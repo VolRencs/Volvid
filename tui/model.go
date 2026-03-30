@@ -841,26 +841,20 @@ func (m Model) returnFromDependencyScreen() (tea.Model, tea.Cmd) {
 func (m Model) depActions() []depAction {
 	actions := make([]depAction, 0, 5)
 	for _, dep := range m.deps.ActionableDependencies() {
-		label := dep.Name
-		switch {
-		case dep.Available && dep.Source == app.DepManaged:
-			label = m.depActionLabel("update", dep.Name)
-		default:
-			label = m.depActionLabel("download", dep.Name)
-		}
+		label := m.depActionLabel(depActionInstall, dep.Name, dep.Available && dep.Source == app.DepManaged)
 		actions = append(actions, depAction{Kind: depActionInstall, Key: dep.Key, Label: label})
 	}
 
 	if !m.depRefreshing {
-		actions = append(actions, depAction{Kind: depActionRefresh, Label: m.depActionLabel("refresh", "")})
+		actions = append(actions, depAction{Kind: depActionRefresh, Label: m.depActionLabel(depActionRefresh, "", false)})
 	}
 	if m.depMode == depModeStartup && !m.deps.MissingRequired() {
-		actions = append(actions, depAction{Kind: depActionContinue, Label: m.depActionLabel("continue", "")})
+		actions = append(actions, depAction{Kind: depActionContinue, Label: m.depActionLabel(depActionContinue, "", false)})
 	}
 	if m.depMode == depModeManage {
-		actions = append(actions, depAction{Kind: depActionBack, Label: m.depActionLabel("back", "")})
+		actions = append(actions, depAction{Kind: depActionBack, Label: m.depActionLabel(depActionBack, "", false)})
 	} else if m.deps.MissingRequired() {
-		actions = append(actions, depAction{Kind: depActionExit, Label: m.depActionLabel("exit", "")})
+		actions = append(actions, depAction{Kind: depActionExit, Label: m.depActionLabel(depActionExit, "", false)})
 	}
 	return actions
 }
@@ -881,46 +875,28 @@ func (m Model) startDependencyDownload(
 	return m, cmd
 }
 
-func (m Model) depActionLabel(kind, name string) string {
-	if m.locale == app.LocaleRU {
-		switch kind {
-		case "download":
-			return fmt.Sprintf("Скачать %s", name)
-		case "update":
-			return fmt.Sprintf("Обновить %s", name)
-		case "refresh":
-			return "Обновить статус"
-		case "continue":
-			return "Продолжить"
-		case "back":
-			return "Назад"
-		case "exit":
-			return "Выход"
-		}
-	}
-
+func (m Model) depActionLabel(kind depActionKind, name string, isUpdate bool) string {
+	u := m.u()
 	switch kind {
-	case "download":
-		return fmt.Sprintf("Download %s", name)
-	case "update":
-		return fmt.Sprintf("Update %s", name)
-	case "refresh":
-		return "Refresh status"
-	case "continue":
-		return "Continue"
-	case "back":
-		return "Back"
-	case "exit":
-		return "Exit"
+	case depActionInstall:
+		if isUpdate {
+			return fmt.Sprintf(u.DepActionUpdateFmt, name)
+		}
+		return fmt.Sprintf(u.DepActionDownloadFmt, name)
+	case depActionRefresh:
+		return u.DepActionRefresh
+	case depActionContinue:
+		return u.DepActionContinue
+	case depActionBack:
+		return u.DepActionBack
+	case depActionExit:
+		return u.DepActionExit
 	}
 	return name
 }
 
 func (m Model) depRequirementText(name string) string {
-	if m.locale == app.LocaleRU {
-		return fmt.Sprintf("%s требуется для этого режима.", name)
-	}
-	return fmt.Sprintf("%s is required for this mode.", name)
+	return fmt.Sprintf(m.u().DepRequirementFmt, name)
 }
 
 func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {

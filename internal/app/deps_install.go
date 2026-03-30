@@ -137,8 +137,6 @@ func InstallNodeFor(l Locale, ch chan<- FileProgress) error {
 
 func ffmpegArchiveURL() string {
 	switch {
-	case IsWindows && Arch == "arm64":
-		return ffmpegWinARM64URL
 	case IsWindows:
 		return ffmpegWinURL
 	case Arch == "arm64":

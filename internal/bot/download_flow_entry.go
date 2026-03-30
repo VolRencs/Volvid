@@ -27,7 +27,7 @@ func (b *Bot) parseURLTarget(chatID, userID int64, rawURL string) (app.ParsedTar
 	target, err := app.ParseTarget(rawURL)
 	if err != nil {
 		b.logf("bad url %s url=%q", logChatUser(chatID, userID), logSnippet(rawURL, 200))
-		b.send(chatID, "⚠️ Не удалось распознать YouTube-ссылку.")
+		b.send(chatID, "Не удалось распознать YouTube-ссылку.")
 		return app.ParsedTarget{}, false
 	}
 
@@ -58,7 +58,7 @@ func (b *Bot) canStartDownloadFlow(chatID, userID int64) bool {
 	}
 	b.logf("dependencies unavailable %s missing=%q", logChatUser(chatID, userID), missing)
 	b.send(chatID,
-		"⚠️ <b>Недоступны обязательные зависимости.</b>\n\n"+
+		"<b>Недоступны обязательные зависимости.</b>\n\n"+
 			"Не найдены: <code>"+escapeHTML(missing)+"</code>\n\n"+
 			"Бот не смог автоматически подготовить зависимости на сервере.")
 	return false
@@ -68,7 +68,7 @@ func (b *Bot) createDownloadSession(chatID, userID int64, rawURL string, target 
 	workDir, err := createBotWorkDir(userID)
 	if err != nil {
 		b.logError("create bot workdir", err)
-		b.send(chatID, "⚠️ Не удалось подготовить временную папку для загрузки.")
+		b.send(chatID, "Не удалось подготовить временную папку для загрузки.")
 		return nil, false
 	}
 
@@ -82,7 +82,7 @@ func (b *Bot) openDownloadTargetFlow(chatID int64, sess *Session, target app.Par
 	switch {
 	case target.Kind == app.TargetMixed:
 		sess.startPlaylistChoice()
-		b.sendKb(chatID, "⚠️ Ссылка содержит и видео, и плейлист. Что скачать?", kbPlaylistChoice())
+		b.sendKb(chatID, "Ссылка содержит и видео, и плейлист. Что скачать?", kbPlaylistChoice())
 	case target.IsPlaylist():
 		b.fetchAndAskPlaylist(chatID, sess)
 	default:

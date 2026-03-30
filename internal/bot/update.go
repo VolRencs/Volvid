@@ -12,19 +12,19 @@ func (b *Bot) startDepsUpdate(chatID int64) {
 	b.mu.Lock()
 	if b.depsUpdating {
 		b.mu.Unlock()
-		b.send(chatID, "⏳ Обновление зависимостей уже запущено.")
+		b.send(chatID, "Обновление зависимостей уже запущено.")
 		return
 	}
 	if b.sessions.hasBusy() {
 		b.mu.Unlock()
-		b.send(chatID, "⚠️ Сейчас есть активные загрузки. Останови их и повтори /update.")
+		b.send(chatID, "Сейчас есть активные загрузки. Останови их и повтори /update.")
 		return
 	}
 	b.depsUpdating = true
 	b.mu.Unlock()
 
 	b.logf("deps update start chat=%d", chatID)
-	b.send(chatID, "⏳ Обновляю зависимости бота…")
+	b.send(chatID, "Обновляю зависимости бота…")
 
 	go func() {
 		defer func() {
@@ -36,7 +36,7 @@ func (b *Bot) startDepsUpdate(chatID int64) {
 		before := app.DetectDeps()
 		if err := app.UpdateManagedDepsFor(app.LocaleRU, nil); err != nil {
 			log.Printf("bot deps update: %v", err)
-			b.send(chatID, "⚠️ Не удалось обновить зависимости:\n<code>"+escapeHTML(err.Error())+"</code>")
+			b.send(chatID, "Не удалось обновить зависимости:\n<code>"+escapeHTML(err.Error())+"</code>")
 			return
 		}
 
@@ -46,7 +46,7 @@ func (b *Bot) startDepsUpdate(chatID int64) {
 		b.deps = deps
 		b.mu.Unlock()
 
-		text := "✅ Зависимости обновлены.\n\n" +
+		text := "<b>Зависимости обновлены.</b>\n\n" +
 			depLine(deps.YTDLP) + "\n" +
 			depLine(deps.FFmpeg) + "\n" +
 			depLine(deps.Node) + "\n" +
@@ -79,12 +79,12 @@ func systemDepsNotice(deps app.CheckDepsResult) string {
 	if !hasSystem {
 		return ""
 	}
-	return "ℹ️ System-зависимости через /update не обновляются. Их нужно обновлять в самой системе."
+	return "System-зависимости через /update не обновляются. Их нужно обновлять в самой системе."
 }
 
 func (b *Bot) helpText(msg *models.Message) string {
 	lines := []string{
-		"👋 <b>VolRen Downloader Bot</b> v" + app.Version,
+		"<b>VolRen Downloader Bot</b> v" + app.Version,
 		"",
 		"Пришли ссылку на YouTube или просто название видео — скачаю видео, аудио или превью.",
 		"Есть выбор качества видео и 5 аудио-пресетов.",

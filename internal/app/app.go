@@ -9,10 +9,9 @@ import (
 )
 
 const (
-	Version = "6.2.0"
+	Version = "6.2.1"
 
 	ffmpegWinURL        = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-	ffmpegWinARM64URL   = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-winarm64-gpl.zip"
 	ffmpegLinuxAMD64URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
 	ffmpegLinuxARM64URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
 	nodeLatestV22URL    = "https://nodejs.org/download/release/latest-v22.x/"

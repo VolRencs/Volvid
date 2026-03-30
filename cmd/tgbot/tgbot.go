@@ -53,7 +53,7 @@ func main() {
 		b.Stop()
 	}()
 
-	log.Println("Бот запущен. Ctrl+C для остановки.")
+	log.Println("Бот запущен.")
 	b.Run()
 }
 

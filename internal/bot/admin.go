@@ -42,7 +42,7 @@ func (b *Bot) handleBroadcastCommand(msg *models.Message) {
 	b.logf("broadcast start %s type=%s audience=%d", logChatUser(chatID, senderID(msg)), payload.Type, len(b.users.List()))
 	sent, failed := b.broadcastAll(payload)
 	b.logf("broadcast done %s sent=%d failed=%d", logChatUser(chatID, senderID(msg)), sent, failed)
-	b.send(chatID, fmt.Sprintf("📣 Рассылка завершена.\n\n✔ Отправлено: %d\n✘ Ошибок: %d", sent, failed))
+	b.send(chatID, fmt.Sprintf("<b>Рассылка завершена.</b>\n\nОтправлено: %d\nОшибок: %d", sent, failed))
 }
 
 func (b *Bot) handleScheduleCommand(msg *models.Message) {
@@ -59,7 +59,7 @@ func (b *Bot) handleScheduleCommand(msg *models.Message) {
 
 	interval, err := time.ParseDuration(args[0])
 	if err != nil || interval <= 0 {
-		b.send(chatID, "⚠️ Неверный интервал. Пример: 30m, 2h, 1h30m")
+		b.send(chatID, "Неверный интервал. Пример: 30m, 2h, 1h30m")
 		return
 	}
 
@@ -81,12 +81,12 @@ func (b *Bot) handleScheduleCommand(msg *models.Message) {
 	}
 	if err := b.scheduler.Add(entry); err != nil {
 		b.logError(fmt.Sprintf("schedule add %s id=%s", logChatUser(chatID, senderID(msg)), entry.ID), err)
-		b.send(chatID, "⚠️ Не удалось создать таймер.")
+		b.send(chatID, "Не удалось создать таймер.")
 		return
 	}
 	b.logf("timer created %s id=%s interval=%s type=%s", logChatUser(chatID, senderID(msg)), entry.ID, entry.Interval, entry.Type)
 
-	b.send(chatID, fmt.Sprintf("⏰ Таймер создан.\n\nID: <code>%s</code>\nИнтервал: <code>%s</code>\nСледующий запуск: <code>%s</code>", entry.ID, entry.Interval, entry.NextRun.Format(time.RFC3339)))
+	b.send(chatID, fmt.Sprintf("<b>Таймер создан.</b>\n\nID: <code>%s</code>\nИнтервал: <code>%s</code>\nСледующий запуск: <code>%s</code>", entry.ID, entry.Interval, entry.NextRun.Format(time.RFC3339)))
 }
 
 func (b *Bot) handleTimersCommand(msg *models.Message) {
@@ -100,7 +100,7 @@ func (b *Bot) handleTimersCommand(msg *models.Message) {
 		return
 	}
 
-	lines := []string{"⏰ <b>Активные таймеры</b>", ""}
+	lines := []string{"<b>Активные таймеры</b>", ""}
 	for _, entry := range items {
 		lines = append(lines, fmt.Sprintf("• <code>%s</code> · %s · %s · %s", entry.ID, escapeHTML(entry.Interval), escapeHTML(entry.Type), escapeHTML(entry.NextRun.Format(time.RFC3339))))
 	}
@@ -119,11 +119,11 @@ func (b *Bot) handleDelTimerCommand(msg *models.Message) {
 	}
 	if err := b.scheduler.Remove(id); err != nil {
 		b.logError(fmt.Sprintf("timer delete %s id=%s", logChatUser(msg.Chat.ID, senderID(msg)), id), err)
-		b.send(msg.Chat.ID, "⚠️ Не удалось удалить таймер.")
+		b.send(msg.Chat.ID, "Не удалось удалить таймер.")
 		return
 	}
 	b.logf("timer deleted %s id=%s", logChatUser(msg.Chat.ID, senderID(msg)), id)
-	b.send(msg.Chat.ID, "🗑 Таймер удалён.")
+	b.send(msg.Chat.ID, "Таймер удалён.")
 }
 
 func (b *Bot) executeTimer(entry TimerEntry) error {

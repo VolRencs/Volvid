@@ -54,9 +54,8 @@ func (m Model) screenView() screenView {
 	switch m.screen {
 	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch, scrSearchFetch, scrFragmentProbe:
 		return screenView{
-			title:    m.stageTitle(),
-			body:     m.renderSpinnerScreen(m.spinnerScreenText()),
-			bindings: []binding{m.kbQuit()},
+			title: m.stageTitle(),
+			body:  m.renderSpinnerScreen(m.spinnerScreenText()),
 		}
 
 	case scrUpdateReady:
@@ -85,7 +84,6 @@ func (m Model) screenView() screenView {
 			title:    m.stageTitle(),
 			subtitle: strings.TrimSpace(label),
 			body:     m.viewDependencyProgress(),
-			bindings: []binding{m.kbQuit()},
 		}
 
 	case scrUpdateDone:
@@ -123,7 +121,7 @@ func (m Model) screenView() screenView {
 			body:       renderInputField(m.urlInput),
 			notice:     m.urlErr,
 			noticeKind: noticeError,
-			bindings:   []binding{m.kbEnter(), m.kbSearch(), m.kbQuit()},
+			bindings:   []binding{m.kbEnter(), m.kbSearch()},
 		}
 
 	case scrSearchInput:
@@ -133,7 +131,7 @@ func (m Model) screenView() screenView {
 			body:       renderInputField(m.searchInput),
 			notice:     m.searchErr,
 			noticeKind: noticeError,
-			bindings:   []binding{m.kbEnter(), m.kbEsc(), m.kbQuit()},
+			bindings:   []binding{m.kbEnter(), m.kbEsc()},
 		}
 
 	case scrSearchResults:
@@ -181,7 +179,7 @@ func (m Model) screenView() screenView {
 			body:       m.renderInputWithHint(m.fragmentIn, app.FragmentInputHintFor(m.locale, m.mediaDuration)),
 			notice:     m.fragmentErr,
 			noticeKind: noticeError,
-			bindings:   []binding{m.kbEnter(), m.kbEsc(), m.kbQuit()},
+			bindings:   []binding{m.kbEnter(), m.kbEsc()},
 		}
 
 	case scrMode:
@@ -198,7 +196,6 @@ func (m Model) screenView() screenView {
 			title:    strings.TrimSpace(m.downloadTitle()),
 			subtitle: m.downloadSubtitle(),
 			body:     m.viewDownload(),
-			bindings: []binding{m.kbQuit()},
 		}
 
 	case scrSummary:
@@ -222,9 +219,8 @@ func (m Model) screenView() screenView {
 	}
 
 	return screenView{
-		title:    "VolRen Downloader",
-		body:     m.renderSpinnerScreen(m.spinnerScreenText()),
-		bindings: []binding{m.kbQuit()},
+		title: "VolRen Downloader",
+		body:  m.renderSpinnerScreen(m.spinnerScreenText()),
 	}
 }
 
@@ -325,15 +321,14 @@ func (m Model) renderInputWithHint(field inputField, hint string) string {
 
 func (m Model) menuBindings(extra ...binding) []binding {
 	bindings := []binding{m.kbMove(), m.kbEnter()}
-	bindings = append(bindings, extra...)
-	return append(bindings, m.kbQuit())
+	return append(bindings, extra...)
 }
 
 func (m Model) playlistBindings() []binding {
 	if m.plInputMode {
-		return []binding{m.kbEnter(), m.kbEsc(), m.kbQuit()}
+		return []binding{m.kbEnter(), m.kbEsc()}
 	}
-	return []binding{m.kbMove(), m.kbSpace(), m.kbEnter(), m.kbAll(), m.kbSlash(), m.kbQuit()}
+	return []binding{m.kbMove(), m.kbSpace(), m.kbEnter(), m.kbAll(), m.kbSlash()}
 }
 
 func (m Model) summaryBindings() []binding {
@@ -341,7 +336,6 @@ func (m Model) summaryBindings() []binding {
 	if m.singleOK || m.dlDone > 0 {
 		bindings = append(bindings, m.kbOpenFolder())
 	}
-	bindings = append(bindings, m.kbQuit())
 	return bindings
 }
 
@@ -354,7 +348,6 @@ func (m Model) depBindings() []binding {
 
 func (m Model) kbMove() binding   { return binding{key: "↑/↓", help: m.u().HelpMove} }
 func (m Model) kbEnter() binding  { return binding{key: "Enter", help: m.u().HelpEnter} }
-func (m Model) kbQuit() binding   { return binding{key: "Ctrl+C", help: m.u().HelpQuit} }
 func (m Model) kbSpace() binding  { return binding{key: "Space", help: m.u().HelpSpace} }
 func (m Model) kbAll() binding    { return binding{key: "A", help: m.u().HelpAll} }
 func (m Model) kbSlash() binding  { return binding{key: "/", help: m.u().HelpSlash} }
@@ -379,7 +372,7 @@ func (m Model) renderNotice(text string, kind noticeKind) string {
 	if text == "" {
 		return ""
 	}
-	tag := noticeTag(kind)
+	tag := noticeTag(m.u(), kind)
 	switch kind {
 	case noticeInfo:
 		return sNoticeInfo.Render(tag + sBody.Render(text))
@@ -431,17 +424,14 @@ func (m Model) fragmentChoiceSubtitle() string {
 }
 
 func (m Model) depScreenTitle() string {
-	if m.locale == app.LocaleRU {
-		return "Зависимости"
-	}
-	return "Dependencies"
+	return strings.TrimSpace(m.u().DepTitle)
 }
 
 func (m Model) depScreenSubtitle() string {
 	if m.depRefreshing {
 		return strings.TrimSpace(m.u().DepsRefreshing)
 	}
-	return "yt-dlp · ffmpeg · node · cookies · js runtime"
+	return strings.TrimSpace(m.u().DepSubtitle)
 }
 
 func (m Model) renderUpdateDone() string {
@@ -463,11 +453,7 @@ func (m Model) renderDepsUpdateScreen() string {
 
 	parts := []string{m.renderSectionBlock("", m.renderDepStatusRows(rows))}
 	if systemCount := m.systemDepsCount(); systemCount > 0 {
-		note := "System dependencies are not updated here."
-		if m.locale == app.LocaleRU {
-			note = "Системные зависимости здесь не обновляются."
-		}
-		parts = append(parts, m.renderSectionBlock("", sMeta.Render(note)))
+		parts = append(parts, m.renderSectionBlock("", sMeta.Render(strings.TrimSpace(m.u().DepSystemNote))))
 	}
 	if len(m.menu.items) > 0 {
 		parts = append(parts, m.menu.View(m.menuWidth()))
@@ -547,32 +533,18 @@ func (m Model) depAccessValue(status, detail string) string {
 }
 
 func (m Model) depText(kind string) string {
-	if m.locale == app.LocaleRU {
-		switch kind {
-		case "active":
-			return "активно"
-		case "missing":
-			return "не найден"
-		case "not_active":
-			return "не активно"
-		case "available":
-			return "доступно"
-		case "checking":
-			return "проверяю..."
-		}
-		return kind
-	}
+	u := m.u()
 	switch kind {
 	case "active":
-		return "active"
+		return u.DepStatusActive
 	case "missing":
-		return "missing"
+		return u.DepStatusMissing
 	case "not_active":
-		return "not active"
+		return u.DepStatusNotActive
 	case "available":
-		return "available"
+		return u.DepStatusAvailable
 	case "checking":
-		return "checking..."
+		return u.DepStatusChecking
 	}
 	return kind
 }
@@ -596,29 +568,17 @@ func (m Model) runtimeAccessDetail() string {
 
 func (m Model) depRoleText(dep app.DependencyInfo) string {
 	if dep.Required {
-		if m.locale == app.LocaleRU {
-			return "обязательно"
-		}
-		return "required"
+		return m.u().DepRoleRequired
 	}
-	if m.locale == app.LocaleRU {
-		return "опционально"
-	}
-	return "optional"
+	return m.u().DepRoleOptional
 }
 
 func (m Model) depSourceText(source app.DependencySource) string {
 	switch source {
 	case app.DepManaged:
-		if m.locale == app.LocaleRU {
-			return "в комплекте"
-		}
-		return "bundled"
+		return m.u().DepSourceBundled
 	case app.DepSystem:
-		if m.locale == app.LocaleRU {
-			return "система"
-		}
-		return "system"
+		return m.u().DepSourceSystem
 	default:
 		return string(source)
 	}
@@ -924,16 +884,16 @@ func versionBadgeValue(value string) string {
 	return value
 }
 
-func noticeTag(kind noticeKind) string {
+func noticeTag(u *app.UIStrings, kind noticeKind) string {
 	switch kind {
 	case noticeInfo:
-		return sNoticeTag.Copy().Foreground(cInfo).Render("INFO")
+		return sNoticeTag.Copy().Foreground(cInfo).Render(u.NoticeInfo)
 	case noticeSuccess:
-		return sNoticeTag.Copy().Foreground(cSuccess).Render("OK")
+		return sNoticeTag.Copy().Foreground(cSuccess).Render(u.NoticeSuccess)
 	case noticeWarn:
-		return sNoticeTag.Copy().Foreground(cWarn).Render("WARN")
+		return sNoticeTag.Copy().Foreground(cWarn).Render(u.NoticeWarn)
 	case noticeError:
-		return sNoticeTag.Copy().Foreground(cError).Render("ERROR")
+		return sNoticeTag.Copy().Foreground(cError).Render(u.NoticeError)
 	default:
 		return ""
 	}
@@ -949,13 +909,6 @@ func (m Model) renderSectionBlock(title, body string) string {
 	}
 	parts = append(parts, sSectionBox.Render(strings.Trim(body, "\n")))
 	return strings.Join(parts, "\n")
-}
-
-func verOrDash(value string) string {
-	if value != "" {
-		return sOk.Render(value)
-	}
-	return sDim.Render("—")
 }
 
 func sep(width int) string {

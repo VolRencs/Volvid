@@ -3,9 +3,7 @@ package app
 import "fmt"
 
 type UIStrings struct {
-	HeaderPowered string
-
-	HelpMove, HelpUp, HelpDown, HelpEnter, HelpQuit, HelpDeps, HelpSpace, HelpAll, HelpSlash, HelpSearch, HelpBack, HelpOpenFolder string
+	HelpMove, HelpEnter, HelpDeps, HelpSpace, HelpAll, HelpSlash, HelpSearch, HelpBack, HelpOpenFolder string
 
 	QBest, QEcon string
 
@@ -16,9 +14,7 @@ type UIStrings struct {
 
 	DepsUpdating, DepsRefreshing                          string
 	UpdateAppliedWin, UpdateAppliedUnix, UpdateDonePrefix string
-	HelpAnyKey, HelpExit, DepsOK, ErrPrefix               string
-
-	AppSubtitle, TopBarDeps, TopBarDepsBusy string
+	HelpAnyKey, HelpExit, DepsOK                          string
 
 	PasteURL, URLErrEmpty, URLErrBad, URLHints                                                            string
 	SearchTitle, SearchPrompt, SearchPlaceholder, SearchErrEmpty, SearchErrFailed, SearchNoResults        string
@@ -47,17 +43,25 @@ type UIStrings struct {
 	MenuAgainY, MenuAgainN, WorkerSeq, WorkerNFmt     string
 	MenuFullVideo, MenuFromURLStart, MenuManualRange  string
 
-	DepLabelFmt string
-	LangTab     string
+	DepLabelFmt, DepTitle, DepSubtitle, DepSystemNote  string
+	DepActionDownloadFmt, DepActionUpdateFmt           string
+	DepActionRefresh, DepActionContinue                string
+	DepActionBack, DepActionExit                       string
+	DepRequirementFmt                                  string
+	DepStatusActive, DepStatusMissing                  string
+	DepStatusNotActive, DepStatusAvailable             string
+	DepStatusChecking                                  string
+	DepRoleRequired, DepRoleOptional                   string
+	DepSourceBundled, DepSourceSystem                  string
+	NoticeInfo, NoticeSuccess, NoticeWarn, NoticeError string
+	LangTab                                            string
 
 	FallbackFmt string
 	PlaylistTag string
 }
 
 var strEN = UIStrings{
-	HeaderPowered: "v%s powered by yt-dlp",
-
-	HelpMove: "move", HelpUp: "up", HelpDown: "down", HelpEnter: "continue", HelpQuit: "quit",
+	HelpMove: "move", HelpEnter: "continue",
 	HelpDeps: "dependencies", HelpSpace: "select", HelpAll: "all", HelpSlash: "manual",
 	HelpSearch: "search", HelpBack: "back", HelpOpenFolder: "open folder",
 
@@ -74,10 +78,7 @@ var strEN = UIStrings{
 	UpdateAppliedWin:  "The app will close and replace the executable in the background.",
 	UpdateAppliedUnix: "Binary replaced. Restart the app.",
 	UpdateDonePrefix:  "Update applied",
-	HelpAnyKey:        "Any key", HelpExit: "exit", DepsOK: "Dependencies updated.", ErrPrefix: "Error: ",
-
-	AppSubtitle: "Video / Audio Downloader",
-	TopBarDeps:  "Update dependencies", TopBarDepsBusy: "Updating…",
+	HelpAnyKey:        "Any key", HelpExit: "exit", DepsOK: "Dependencies updated.",
 
 	PasteURL: "Paste a YouTube video or playlist URL", URLErrEmpty: "URL cannot be empty",
 	URLErrBad: "Does not look like a YouTube URL", URLHints: "youtube.com/watch · youtube.com/playlist · youtu.be",
@@ -122,17 +123,38 @@ var strEN = UIStrings{
 	WorkerSeq: "Sequential · 1 worker", WorkerNFmt: "%d workers",
 	MenuFullVideo: "Full media", MenuFromURLStart: "From URL timestamp", MenuManualRange: "Custom range",
 
-	DepLabelFmt: "Updating %s",
-	LangTab:     "Tab language",
+	DepLabelFmt:          "Updating %s",
+	DepTitle:             "Dependencies",
+	DepSubtitle:          "yt-dlp · ffmpeg · node · cookies · js runtime",
+	DepSystemNote:        "System dependencies are not updated here.",
+	DepActionDownloadFmt: "Download %s",
+	DepActionUpdateFmt:   "Update %s",
+	DepActionRefresh:     "Refresh status",
+	DepActionContinue:    "Continue",
+	DepActionBack:        "Back",
+	DepActionExit:        "Exit",
+	DepRequirementFmt:    "%s is required for this mode.",
+	DepStatusActive:      "active",
+	DepStatusMissing:     "missing",
+	DepStatusNotActive:   "not active",
+	DepStatusAvailable:   "available",
+	DepStatusChecking:    "checking...",
+	DepRoleRequired:      "required",
+	DepRoleOptional:      "optional",
+	DepSourceBundled:     "bundled",
+	DepSourceSystem:      "system",
+	NoticeInfo:           "INFO",
+	NoticeSuccess:        "OK",
+	NoticeWarn:           "WARN",
+	NoticeError:          "ERROR",
+	LangTab:              "Tab language",
 
 	FallbackFmt: "Fallback format #%d: %s",
 	PlaylistTag: " [pl/%d]",
 }
 
 var strRU = UIStrings{
-	HeaderPowered: "v%s powered by yt-dlp",
-
-	HelpMove: "движение", HelpUp: "вверх", HelpDown: "вниз", HelpEnter: "продолжить", HelpQuit: "выход",
+	HelpMove: "движение", HelpEnter: "продолжить",
 	HelpDeps: "зависимости", HelpSpace: "выбрать", HelpAll: "все", HelpSlash: "вручную",
 	HelpSearch: "поиск", HelpBack: "назад", HelpOpenFolder: "открыть папку",
 
@@ -149,10 +171,7 @@ var strRU = UIStrings{
 	UpdateAppliedWin:  "Приложение закроется и заменит исполняемый файл в фоне.",
 	UpdateAppliedUnix: "Бинарный файл обновлён. Перезапустите приложение.",
 	UpdateDonePrefix:  "Обновление применено",
-	HelpAnyKey:        "Любая клавиша", HelpExit: "выйти", DepsOK: "Зависимости обновлены.", ErrPrefix: "Ошибка: ",
-
-	AppSubtitle: "Загрузчик видео / аудио",
-	TopBarDeps:  "Обновить зависимости", TopBarDepsBusy: "Обновление…",
+	HelpAnyKey:        "Любая клавиша", HelpExit: "выйти", DepsOK: "Зависимости обновлены.",
 
 	PasteURL: "Вставь ссылку на видео или плейлист YouTube", URLErrEmpty: "Ссылка не может быть пустой",
 	URLErrBad: "Не похоже на YouTube-ссылку", URLHints: "youtube.com/watch · youtube.com/playlist · youtu.be",
@@ -197,8 +216,31 @@ var strRU = UIStrings{
 	WorkerSeq: "Последовательно · 1 поток", WorkerNFmt: "%d потоков",
 	MenuFullVideo: "Полностью", MenuFromURLStart: "С таймкода из URL", MenuManualRange: "Свой диапазон",
 
-	DepLabelFmt: "Обновление %s",
-	LangTab:     "Tab язык",
+	DepLabelFmt:          "Обновление %s",
+	DepTitle:             "Зависимости",
+	DepSubtitle:          "yt-dlp · ffmpeg · node · cookies · js runtime",
+	DepSystemNote:        "Системные зависимости здесь не обновляются.",
+	DepActionDownloadFmt: "Скачать %s",
+	DepActionUpdateFmt:   "Обновить %s",
+	DepActionRefresh:     "Обновить статус",
+	DepActionContinue:    "Продолжить",
+	DepActionBack:        "Назад",
+	DepActionExit:        "Выход",
+	DepRequirementFmt:    "%s требуется для этого режима.",
+	DepStatusActive:      "активно",
+	DepStatusMissing:     "не найден",
+	DepStatusNotActive:   "не активно",
+	DepStatusAvailable:   "доступно",
+	DepStatusChecking:    "проверяю...",
+	DepRoleRequired:      "обязательно",
+	DepRoleOptional:      "опционально",
+	DepSourceBundled:     "в комплекте",
+	DepSourceSystem:      "система",
+	NoticeInfo:           "ИНФО",
+	NoticeSuccess:        "OK",
+	NoticeWarn:           "ВНИМ",
+	NoticeError:          "ОШИБКА",
+	LangTab:              "Tab язык",
 
 	FallbackFmt: "Запасной формат #%d: %s",
 	PlaylistTag: " [плейлист/%d]",

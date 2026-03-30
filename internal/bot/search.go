@@ -13,7 +13,7 @@ import (
 func (b *Bot) handleSearch(chatID, userID int64, query string) {
 	query = strings.TrimSpace(query)
 	if query == "" {
-		b.send(chatID, "⚠️ Введи название видео для поиска.")
+		b.send(chatID, "Введи название видео для поиска.")
 		return
 	}
 	b.logf("search request %s query=%q", logChatUser(chatID, userID), logSnippet(query, 120))
@@ -26,7 +26,7 @@ func (b *Bot) handleSearch(chatID, userID int64, query string) {
 	searchSess.beginSearch(query)
 	b.sessions.set(chatID, searchSess)
 
-	statusMsg, _ := b.send(chatID, "🔎 Ищу видео на YouTube…")
+	statusMsg, _ := b.send(chatID, "Ищу видео на YouTube…")
 	searchSess.setStatusMessage(statusMsg.ID)
 
 	go func() {
@@ -37,7 +37,7 @@ func (b *Bot) handleSearch(chatID, userID int64, query string) {
 			} else {
 				b.logf("search no results %s query=%q", logChatUser(chatID, userID), logSnippet(query, 120))
 			}
-			b.edit(chatID, statusMsg.ID, "⚠️ Не удалось найти видео по запросу.\n\nПопробуй уточнить название.")
+			b.edit(chatID, statusMsg.ID, "Не удалось найти видео по запросу.\n\nПопробуй уточнить название.")
 			b.sessions.reset(chatID)
 			return
 		}
@@ -84,7 +84,7 @@ func kbSearchResults(sess *Session) models.InlineKeyboardMarkup {
 func (b *Bot) searchResultsText(sess *Session) string {
 	snap := sess.snapshot()
 	lines := []string{
-		fmt.Sprintf("🔎 <b>Результаты для:</b> %s", escapeHTML(snap.SearchQuery)),
+		fmt.Sprintf("<b>Результаты для:</b> %s", escapeHTML(snap.SearchQuery)),
 		"",
 	}
 

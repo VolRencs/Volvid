@@ -45,7 +45,7 @@ func (b *Bot) handleFragmentInput(chatID int64, sess *Session, raw string) {
 	snap := sess.snapshot()
 	fragment, err := app.ParseBoundedFragmentRange(raw, snap.MediaDuration)
 	if err != nil {
-		b.send(chatID, "⚠️ "+escapeHTML(app.FragmentInputErrorText(app.LocaleRU, err, snap.MediaDuration))+"\n\n"+b.fragmentInputText(snap.MediaDuration))
+		b.send(chatID, escapeHTML(app.FragmentInputErrorText(app.LocaleRU, err, snap.MediaDuration))+"\n\n"+b.fragmentInputText(snap.MediaDuration))
 		return
 	}
 	sess.setFragment(&fragment)

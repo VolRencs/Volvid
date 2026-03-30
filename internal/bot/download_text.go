@@ -20,7 +20,7 @@ func playlistResultIcon(done, failed int) string {
 
 func (b *Bot) fragmentPromptText(sess *Session) string {
 	snap := sess.snapshot()
-	lines := []string{"✂️ <b>Фрагмент</b>", "", "Выбери вариант загрузки:"}
+	lines := []string{"<b>Фрагмент</b>", "", "Выбери вариант загрузки:"}
 	if durationText := app.FragmentDurationText(app.LocaleRU, snap.MediaDuration); durationText != "" {
 		lines = append(lines, "", escapeHTML(durationText))
 	}
@@ -38,7 +38,7 @@ func (b *Bot) fragmentModeNoticeText(notice string, sess *Session) string {
 	if strings.TrimSpace(notice) == "" {
 		return b.modePromptText(sess)
 	}
-	return "⚠️ " + escapeHTML(notice) + "\n\n" + b.modePromptText(sess)
+	return escapeHTML(notice) + "\n\n" + b.modePromptText(sess)
 }
 
 func (b *Bot) allowURLStartFragment(snap SessionSnapshot) bool {
@@ -50,7 +50,7 @@ func playlistPromptText(snap SessionSnapshot, body, fallback string) string {
 		return fallback
 	}
 	return fmt.Sprintf(
-		"📋 <b>%s</b>\n%d видео\n\n%s",
+		"<b>%s</b>\n%d видео\n\n%s",
 		escapeHTML(snap.PlInfo.Title),
 		playlistSelectionCount(snap),
 		body,
@@ -61,7 +61,7 @@ func (b *Bot) downloadProgressText(done, failed, total int, dlStem string, updat
 	if total > 0 {
 		completed := done + failed
 		return fmt.Sprintf(
-			"⬇️ Плейлист: %s\n%d / %d  (%.1f%%)\n%s  %s",
+			"Плейлист: %s\n%d / %d  (%.1f%%)\n%s  %s",
 			progressBar(completed, total), completed, total,
 			float64(completed)/float64(total)*100,
 			app.FmtBytesFor(update.DoneB, app.LocaleRU), update.Speed,
@@ -71,7 +71,7 @@ func (b *Bot) downloadProgressText(done, failed, total int, dlStem string, updat
 		dlStem = "Скачивание"
 	}
 	return fmt.Sprintf(
-		"⬇️ <b>%s</b>\n%.1f%%  %s  %s",
+		"<b>%s</b>\n%.1f%%  %s  %s",
 		escapeHTML(dlStem), update.Pct,
 		app.FmtBytesFor(update.DoneB, app.LocaleRU), update.Speed,
 	)
@@ -82,19 +82,19 @@ func (b *Bot) qualityScanText(sess *Session) string {
 	if snap.PlInfo != nil && !snap.ForceSingle {
 		count := playlistSelectionCount(snap)
 		if count == 0 {
-			return "🔍 Сканирую качества и размер…"
+			return "Сканирую качества и размер…"
 		}
 		if !app.ShouldScanQualityChoices(count) {
-			return fmt.Sprintf("⚡ Готовлю быстрый выбор качества для %d видео…", count)
+			return fmt.Sprintf("Готовлю быстрый выбор качества для %d видео…", count)
 		}
-		return fmt.Sprintf("🔍 Сканирую качества и размер для %d видео…", count)
+		return fmt.Sprintf("Сканирую качества и размер для %d видео…", count)
 	}
-	return "🔍 Сканирую качества и размер…"
+	return "Сканирую качества и размер…"
 }
 
 func (b *Bot) qualityPromptText(sess *Session) string {
 	snap := sess.snapshot()
-	return playlistPromptText(snap, "Выбери качество видео:", "🎬 Выбери качество видео:")
+	return playlistPromptText(snap, "Выбери качество видео:", "<b>Выбери качество видео</b>")
 }
 
 func (b *Bot) qualityScanURLs(sess *Session) []string {
@@ -109,11 +109,11 @@ func (b *Bot) qualityScanURLs(sess *Session) []string {
 }
 
 func (b *Bot) modePromptText(sess *Session) string {
-	return playlistPromptText(sess.snapshot(), "Что скачать?", "🎛 <b>Выбери режим</b>\n\nЧто скачать?")
+	return playlistPromptText(sess.snapshot(), "Что скачать?", "<b>Выбери режим</b>\n\nЧто скачать?")
 }
 
 func (b *Bot) audioPromptText(sess *Session) string {
-	return playlistPromptText(sess.snapshot(), "Выбери аудио:", "🎵 Выбери аудио:")
+	return playlistPromptText(sess.snapshot(), "Выбери аудио:", "<b>Выбери аудио</b>")
 }
 
 func (b *Bot) downloadStartText(sess *Session) string {
@@ -124,7 +124,7 @@ func (b *Bot) downloadStartText(sess *Session) string {
 	if snap.PlInfo != nil && !snap.ForceSingle {
 		count := playlistSelectionCount(snap)
 		return fmt.Sprintf(
-			"📋 <b>%s</b>\n%d видео\n🎛 Режим: %s\n\n⬇️ Начинаю скачивание…",
+			"<b>%s</b>\n%d видео\nРежим: %s\n\nНачинаю скачивание…",
 			escapeHTML(snap.PlInfo.Title),
 			count,
 			escapeHTML(modeLabel),
@@ -132,9 +132,9 @@ func (b *Bot) downloadStartText(sess *Session) string {
 	}
 	fragment := app.FormatFragmentLabel(snap.Fragment)
 	if fragment != "" && profile.Mode != app.ModeThumbnail {
-		return fmt.Sprintf("%s %s\n✂️ Фрагмент: <code>%s</code>\n\n⬇️ Начинаю скачивание…", modeIcon, escapeHTML(modeLabel), escapeHTML(fragment))
+		return fmt.Sprintf("%s %s\nФрагмент: <code>%s</code>\n\nНачинаю скачивание…", modeIcon, escapeHTML(modeLabel), escapeHTML(fragment))
 	}
-	return fmt.Sprintf("%s %s\n\n⬇️ Начинаю скачивание…", modeIcon, escapeHTML(modeLabel))
+	return fmt.Sprintf("%s %s\n\nНачинаю скачивание…", modeIcon, escapeHTML(modeLabel))
 }
 
 func downloadModeDisplay(profile app.OutputProfile) (string, string) {
