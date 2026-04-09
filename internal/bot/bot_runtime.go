@@ -62,7 +62,7 @@ func disabledPreview() *models.LinkPreviewOptions {
 }
 
 func createBotWorkDir(userID int64) (string, error) {
-	userRoot := filepath.Join(botWorkRoot, "users", fmt.Sprintf("%d", userID))
+	userRoot := filepath.Join(botWorkRoot, fmt.Sprintf("%d", userID))
 	if err := os.MkdirAll(userRoot, 0o755); err != nil {
 		return "", err
 	}

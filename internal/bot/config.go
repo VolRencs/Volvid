@@ -48,13 +48,13 @@ func (c Config) normalized() Config {
 		}
 	}
 	if strings.TrimSpace(c.PremiumUsersPath) == "" {
-		c.PremiumUsersPath = filepath.Join(app.AppDir, "premium_users.json")
+		c.PremiumUsersPath = filepath.Join(app.DataDir, "bot", "premium_users.json")
 	}
 	if strings.TrimSpace(c.KnownUsersPath) == "" {
-		c.KnownUsersPath = filepath.Join(app.AppDir, "bot_users.json")
+		c.KnownUsersPath = filepath.Join(app.DataDir, "bot", "bot_users.json")
 	}
 	if strings.TrimSpace(c.TimersPath) == "" {
-		c.TimersPath = filepath.Join(app.AppDir, "bot_timers.json")
+		c.TimersPath = filepath.Join(app.DataDir, "bot", "bot_timers.json")
 	}
 	if c.PremiumStarsPrice <= 0 {
 		c.PremiumStarsPrice = 250

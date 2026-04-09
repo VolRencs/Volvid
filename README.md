@@ -44,6 +44,7 @@ The app checks **yt-dlp** and **ffmpeg** on startup and opens a dependency scree
 - **Auto-update** check on startup
 - **Dependency screen** with `yt-dlp`, `ffmpeg`, `node`, browser cookies and JS runtime status
 - **Managed dependency refresh** inside the UI with `Ctrl+U`
+- **Downloads folder quick-open** from the main URL screen and the session summary
 - **Session summary** with per-run history and a quick open-folder action
 
 ### Telegram bot
@@ -112,13 +113,27 @@ GOARCH=amd64 ./scripts/build-windows-downloader.sh VolRenDownloader.exe
 
 ### Build The Telegram Bot
 
-Edit [cmd/tgbot/tgbot.go](cmd/tgbot/tgbot.go) and fill in:
+Configure the bot through environment variables or an optional JSON config file.
 
-- `BotToken`
-- `BotUseLocalServer`
-- `BotAPIURL`
-- `BotAdminIDs`
-- `BotOwnerIDs`
+Environment variables:
+
+- `VOLREN_BOT_TOKEN`
+- `VOLREN_BOT_LOCAL_SERVER`
+- `VOLREN_BOT_API_URL`
+- `VOLREN_BOT_ADMIN_IDS`
+- `VOLREN_BOT_OWNER_IDS`
+- `VOLREN_BOT_PREMIUM_STARS_PRICE`
+- `VOLREN_BOT_CONFIG` for an optional JSON config path
+
+Minimal example:
+
+```bash
+export VOLREN_BOT_TOKEN="123456:token"
+export VOLREN_BOT_LOCAL_SERVER=true
+export VOLREN_BOT_API_URL="http://127.0.0.1:8081"
+export VOLREN_BOT_ADMIN_IDS="123456789"
+export VOLREN_BOT_OWNER_IDS="123456789"
+```
 
 Then build the bot with the `bot` build tag:
 
@@ -136,7 +151,7 @@ go build -tags bot -trimpath -buildvcs=false -ldflags="-s -w" -o tgbot ./cmd/tgb
 3. If the URL is a playlist, choose items with `Space`, `a` or `/`.
 4. Choose **Video / Audio / Thumbnail**.
 5. For video: choose quality. For audio: choose one of the available presets.
-6. Watch progress in the unified **download** stage, then use **summary** to open the downloads folder with `O` or return to the URL screen.
+6. Watch progress in the unified **download** stage, then use **summary** to open the downloads folder with `O` or return to the URL screen. You can also open the downloads folder from the main URL screen with `O`.
 
 On startup:
 
@@ -195,28 +210,35 @@ Notes:
 | `a` / `а` | Select all / clear all in playlists |
 | `Tab` | Switch UI language (EN / RU) |
 | `Ctrl+U` | Open dependency management / update managed dependencies |
-| `O` | Open the downloads folder from the summary screen |
+| `O` | Open the downloads folder from the main URL or summary screen |
 
 ---
 
 ## Folder Layout
 
-Typical layout next to the binary:
+Default runtime layout now uses OS-standard directories, with automatic fallback to legacy next-to-binary folders if they already exist.
+
+Typical locations:
 
 ```text
-next to the binary/
-├── VolRenDownloader / VolRenDownloader.exe / tgbot
-├── .volren_locale          ← saved TUI language
-├── _deps/                  ← managed yt-dlp / ffmpeg / node binaries
-├── downloads/              ← downloaded TUI files
-│   └── .bot/
-│       └── users/          ← temporary bot job folders
-├── premium_users.json      ← premium Telegram user IDs, hot-reloaded
-├── bot_users.json          ← known private bot users, hot-reloaded
-└── bot_timers.json         ← scheduled broadcasts, live-synced
+Config dir:
+├── .volren_locale or bot.json
+
+Data dir:
+├── deps/                   ← managed yt-dlp / ffmpeg / node binaries
+├── bot/
+│   ├── premium_users.json
+│   ├── bot_users.json
+│   └── bot_timers.json
+
+Downloads dir:
+└── VolRen Downloader/      ← downloaded TUI files
+
+Cache dir:
+└── bot/jobs/<chat_id>/job-* ← temporary bot job folders
 ```
 
-Bot temporary files are created under `downloads/.bot/users/<chat_id>/job-*` and are cleaned up after completion.
+If legacy `_deps/`, `downloads/`, `.volren_locale`, `premium_users.json`, `bot_users.json`, or `bot_timers.json` already exist next to the binary, the app keeps using them.
 
 ---
 

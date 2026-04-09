@@ -48,7 +48,10 @@ var (
 		Padding(1, 2)
 
 	sSectionTitle = lipgloss.NewStyle().Bold(true).Foreground(cWhite)
-	sSectionBox   = lipgloss.NewStyle().Padding(0, 1)
+	sSectionBox   = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(cBorderSoft).
+			Padding(0, 1)
 	sRule         = lipgloss.NewStyle().Foreground(cBorderSoft)
 	sSubtitle     = lipgloss.NewStyle().Foreground(cGray)
 	sMeta         = lipgloss.NewStyle().Foreground(cDim)

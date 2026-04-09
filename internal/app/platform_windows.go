@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -14,6 +13,7 @@ import (
 
 var (
 	kernel32           = syscall.NewLazyDLL("kernel32.dll")
+	ole32              = syscall.NewLazyDLL("ole32.dll")
 	procGetConsoleMode = kernel32.NewProc("GetConsoleMode")
 	procSetConsoleMode = kernel32.NewProc("SetConsoleMode")
 )
@@ -66,13 +66,10 @@ func applyUpdatePlatform(tmp, dest string) error {
 }
 
 func OpenInFileManager(path string) error {
-	path = filepath.Clean(path)
-	if !filepath.IsAbs(path) {
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return fmt.Errorf("resolve path: %w", err)
-		}
-		path = abs
+	var err error
+	path, err = prepareDir(path)
+	if err != nil {
+		return fmt.Errorf("prepare folder: %w", err)
 	}
 
 	cmd := exec.Command("explorer.exe", path)

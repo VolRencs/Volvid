@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	charm.land/bubbletea/v2 v2.0.2
 	charm.land/lipgloss/v2 v2.0.2
+	github.com/godbus/dbus/v5 v5.2.0
 	github.com/go-telegram/bot v1.20.0
 )
 

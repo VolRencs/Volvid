@@ -2,7 +2,6 @@ package tui
 
 import (
 	"time"
-	"unicode"
 
 	app "YouTubeBuild/internal/app"
 
@@ -80,8 +79,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleDlUpdate(msg.update)
 
 	case msgOpenDownloadsDirDone:
-		if msg.err != nil && m.downloadErr == "" {
+		if msg.err == nil {
+			return m, nil
+		}
+		if m.screen == scrURL {
+			m.urlErr = msg.err.Error()
+			return m, nil
+		}
+		if m.downloadErr == "" {
 			m.downloadErr = msg.err.Error()
+		}
+		return m, nil
+
+	case msgPickDownloadsDirDone:
+		switch {
+		case msg.err == nil && msg.path == "":
+			return m, nil
+		case app.IsFolderPickerCancelled(msg.err):
+			return m, nil
+		case msg.err != nil:
+			m.urlErr = m.u().PickDownloadsFailed + ": " + msg.err.Error()
+			return m, nil
+		}
+
+		if err := app.SetDownloadsDir(msg.path); err != nil {
+			if err == app.ErrDownloadsDirLocked {
+				m.urlErr = m.u().DownloadsDirLocked
+				return m, nil
+			}
+			m.urlErr = err.Error()
+			return m, nil
 		}
 		return m, nil
 	}
@@ -148,8 +175,16 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.startDepUpdate()
 	}
 
-	if m.screen == scrSummary && isOpenFolderKey(msg) && (m.singleOK || m.dlDone > 0) {
-		return m, openDownloadsDirCmd(app.DlDir)
+	if isPickFolderKey(msg) && m.canPickDownloadsFolder() {
+		if app.DownloadsDirLocked() {
+			m.urlErr = m.u().DownloadsDirLocked
+			return m, nil
+		}
+		return m.startPickDownloadsDir()
+	}
+
+	if isOpenFolderKey(msg) && m.canOpenDownloadsFolder() {
+		return m.startOpenDownloadsDir()
 	}
 
 	if k == "esc" {
@@ -200,16 +235,17 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func isOpenFolderKey(msg tea.KeyPressMsg) bool {
-	key := msg.Key()
-	if key.BaseCode != 0 {
-		return unicode.ToLower(key.BaseCode) == 'o'
+	switch msg.String() {
+	case "o", "O", "щ", "Щ":
+		return true
+	default:
+		return false
 	}
-	return isOpenFolderRune(key.Code)
 }
 
-func isOpenFolderRune(r rune) bool {
-	switch unicode.ToLower(r) {
-	case 'o', 'щ':
+func isPickFolderKey(msg tea.KeyPressMsg) bool {
+	switch msg.String() {
+	case "ctrl+o", "ctrl+O", "ctrl+щ", "ctrl+Щ":
 		return true
 	default:
 		return false

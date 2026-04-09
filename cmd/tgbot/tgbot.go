@@ -15,27 +15,8 @@ import (
 	"YouTubeBuild/internal/bot"
 )
 
-var (
-	// Telegram bot token from BotFather.
-	BotToken = ""
-
-	// Local Bot API Server settings.
-	BotUseLocalServer = true
-	BotAPIURL         = "http://127.0.0.1:8081"
-
-	// Comma-separated Telegram user IDs.
-	BotAdminIDs = ""
-	BotOwnerIDs = ""
-)
-
 func main() {
-	token := strings.TrimSpace(BotToken)
-	if token == "" {
-		fmt.Fprintln(os.Stderr, "BotToken не задан в cmd/tgbot/tgbot.go")
-		os.Exit(1)
-	}
-
-	cfg, err := loadBotConfig()
+	token, cfg, err := loadBotBootstrapConfig()
 	if err != nil {
 		log.Fatalf("bot config: %v", err)
 	}
@@ -55,22 +36,6 @@ func main() {
 
 	log.Println("Бот запущен.")
 	b.Run()
-}
-
-func loadBotConfig() (bot.Config, error) {
-	cfg := bot.Config{
-		ServerURL:   strings.TrimSpace(BotAPIURL),
-		LocalServer: BotUseLocalServer,
-	}
-
-	var err error
-	if cfg.AdminIDs, err = parseIDSet(BotAdminIDs); err != nil {
-		return bot.Config{}, fmt.Errorf("admins: %w", err)
-	}
-	if cfg.OwnerIDs, err = parseIDSet(BotOwnerIDs); err != nil {
-		return bot.Config{}, fmt.Errorf("owners: %w", err)
-	}
-	return cfg, nil
 }
 
 func parseIDSet(raw string) (map[int64]struct{}, error) {

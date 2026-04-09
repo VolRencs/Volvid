@@ -91,6 +91,11 @@ func StartDownloadRequestContext(ctx context.Context, req DownloadRequest, ch ch
 			return
 		}
 		req = preparedReq
+		req.OutputDir, err = prepareDir(req.OutputDir)
+		if err != nil {
+			ch <- DlUpdate{Type: EvDone, OK: false, ErrText: err.Error()}
+			return
+		}
 
 		if !downloadRequestUsesPlaylist(req) {
 			result := runSingleDownload(ctx, req, ch)

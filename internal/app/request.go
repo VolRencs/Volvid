@@ -105,6 +105,8 @@ func validateDownloadRequest(req DownloadRequest, deps CheckDepsResult) error {
 		return errors.New("download target is required")
 	case req.Profile.Mode == 0:
 		return errors.New("download profile is required")
+	case req.PlaylistInfo != nil && !req.ForceSingle && len(req.Entries) == 0:
+		return errors.New("playlist entries are required")
 	case !deps.YTDLP.Available:
 		return errors.New("yt-dlp is required")
 	}

@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	Version = "6.2.1"
+	Version = "6.2.2"
 
 	ffmpegWinURL        = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ffmpegLinuxAMD64URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
@@ -26,7 +26,10 @@ var (
 	IsWindows = runtime.GOOS == "windows"
 	Arch      = runtime.GOARCH
 
-	AppDir string
+	AppDir    string
+	ConfigDir string
+	DataDir   string
+	CacheDir  string
 
 	DepsDir string
 	DlDir   string
@@ -59,9 +62,7 @@ func init() {
 		}
 	}
 	base := filepath.Dir(exe)
-	AppDir = base
-	DepsDir = filepath.Join(base, "_deps")
-	DlDir = filepath.Join(base, "downloads")
+	initRuntimePaths(base)
 	if IsWindows {
 		YtdlpBin = filepath.Join(DepsDir, "yt-dlp.exe")
 		FFmpegBin = filepath.Join(DepsDir, "ffmpeg.exe")

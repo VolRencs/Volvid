@@ -1,0 +1,54 @@
+//go:build linux
+
+package app
+
+import (
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+)
+
+func systemDownloadsDirPlatform() string {
+	configDir := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME"))
+	if configDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			return ""
+		}
+		configDir = filepath.Join(home, ".config")
+	}
+
+	b, err := os.ReadFile(filepath.Join(configDir, "user-dirs.dirs"))
+	if err != nil {
+		return ""
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+
+	for _, rawLine := range strings.Split(string(b), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if !strings.HasPrefix(line, "XDG_DOWNLOAD_DIR=") {
+			continue
+		}
+
+		value := strings.TrimSpace(strings.TrimPrefix(line, "XDG_DOWNLOAD_DIR="))
+		if value == "" {
+			return ""
+		}
+
+		unquoted, err := strconv.Unquote(value)
+		if err != nil {
+			return ""
+		}
+
+		path := strings.ReplaceAll(unquoted, "${HOME}", home)
+		path = strings.ReplaceAll(path, "$HOME", home)
+		return cleanAbsPath(path)
+	}
+
+	return ""
+}

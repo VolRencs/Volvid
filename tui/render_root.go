@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +39,8 @@ type screenView struct {
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func (m Model) View() tea.View {
 	content := m.buildScreen(m.renderCard(m.screenView()))
@@ -118,10 +121,10 @@ func (m Model) screenView() screenView {
 		return screenView{
 			title:      strings.TrimSpace(u.PasteURL),
 			subtitle:   strings.TrimSpace(u.URLHints),
-			body:       renderInputField(m.urlInput),
+			body:       m.renderURLScreenBody(),
 			notice:     m.urlErr,
 			noticeKind: noticeError,
-			bindings:   []binding{m.kbEnter(), m.kbSearch()},
+			bindings:   []binding{m.kbEnter(), m.kbSearch(), m.kbPickFolder(), m.kbOpenFolder()},
 		}
 
 	case scrSearchInput:
@@ -239,6 +242,141 @@ func (m Model) choiceScreen(title, subtitle, notice string) screenView {
 	}
 }
 
+func (m Model) renderURLScreenBody() string {
+	parts := []string{
+		m.renderHomeInput(),
+		m.renderDownloadsLocation(),
+	}
+	if section := m.renderHomeSession(); section != "" {
+		parts = append(parts, section)
+	}
+	return strings.Join(compactSections(parts...), m.sectionGap())
+}
+
+func (m Model) renderHomeInput() string {
+	title := sSectionTitle.Render(strings.TrimSpace(m.u().HomeInputTitle))
+	return title + "\n" + renderInputField(m.urlInput)
+}
+
+func (m Model) renderDownloadsLocation() string {
+	pathWidth := max(18, m.cardBodyWidth()-10)
+	body := renderFileLink(trunc(app.DlDir, pathWidth))
+	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeOutputTitle), body)
+}
+
+func (m Model) renderHomeActions() string {
+	actions := []string{
+		renderActionBadge("Enter", m.u().HelpEnter),
+		renderActionBadge("Ctrl+G", m.u().HelpSearch),
+		renderActionBadge("O", m.u().HelpOpenFolder),
+		renderActionBadge("Tab", m.u().LangTab),
+	}
+	if m.canOpenDependencyScreen() {
+		actions = append(actions, renderActionBadge("Ctrl+U", m.u().HelpDeps))
+	}
+	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeActionsTitle), joinFittedParts(m.sectionBodyWidth(), actions, "  "))
+}
+
+func (m Model) renderHomeRuntime() string {
+	rows := []depStatusRow{
+		{Label: "yt-dlp", Value: m.homeDepSummary(m.deps.YTDLP)},
+		{Label: "ffmpeg", Value: m.homeDepSummary(m.deps.FFmpeg)},
+		{Label: "node", Value: m.homeDepSummary(m.deps.Node)},
+		{Label: "cookies", Value: m.homeAccessSummary(m.deps.Cookies.Status, m.cookiesAccessDetail())},
+		{Label: "js", Value: m.homeAccessSummary(m.deps.Runtime.Status, m.runtimeAccessDetail())},
+	}
+	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeRuntimeTitle), m.renderDepStatusRows(rows))
+}
+
+func (m Model) renderHomeSession() string {
+	if m.compactHomeLayout() && len(m.session.Items) == 0 {
+		return ""
+	}
+
+	stats := renderBadge(m.u().HomeStatSuccess, strconv.Itoa(m.session.Success)) + "  " +
+		renderBadge(m.u().HomeStatFailed, strconv.Itoa(m.session.Failed))
+	if len(m.session.Items) == 0 {
+		return m.renderSectionBlock(strings.TrimSpace(m.u().HomeSessionTitle), stats+"\n"+sMeta.Render(strings.TrimSpace(m.u().HomeSessionEmpty)))
+	}
+
+	items := m.session.Items
+	if len(items) > 3 {
+		items = items[len(items)-3:]
+	}
+
+	width := max(18, m.cardBodyWidth()/2)
+	rows := make([]string, 0, len(items)+1)
+	rows = append(rows, stats)
+	for _, item := range items {
+		icon := sOk.Render("✔")
+		if !item.OK {
+			icon = sErr.Render("✘")
+		}
+		rows = append(rows, icon+"  "+sValue.Render(trunc(item.Label, width))+"\n"+sMeta.Render(trunc(item.URL, width+14)))
+	}
+	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeSessionTitle), strings.Join(rows, "\n\n"))
+}
+
+func (m Model) renderHomeOverview() string {
+	width := m.sectionBodyWidth()
+	lines := []string{
+		sTableLabel.Render(strings.TrimSpace(m.u().HomeOutputTitle)+": ") + renderFileLink(trunc(app.DlDir, max(18, width-14))),
+	}
+
+	session := []string{
+		renderBadge(m.u().HomeStatSuccess, strconv.Itoa(m.session.Success)),
+		renderBadge(m.u().HomeStatFailed, strconv.Itoa(m.session.Failed)),
+	}
+	if item := m.lastSessionItem(); item != nil {
+		icon := sOk.Render("✔")
+		if !item.OK {
+			icon = sErr.Render("✘")
+		}
+		session = append(session, icon+" "+sValue.Render(trunc(item.Label, max(10, width-18))))
+	}
+	lines = append(lines, joinFittedParts(width, session, "  "))
+
+	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeOverviewTitle), strings.Join(compactSections(lines...), "\n"))
+}
+
+func (m Model) homeDepSummary(dep app.DependencyInfo) string {
+	switch {
+	case !dep.Available:
+		return sErr.Render(m.depText("missing"))
+	case strings.TrimSpace(dep.Version) != "":
+		return sOk.Render(dep.Version)
+	default:
+		return sOk.Render(m.depText("available"))
+	}
+}
+
+func (m Model) homeAccessSummary(status, detail string) string {
+	switch strings.TrimSpace(status) {
+	case "active":
+		if strings.TrimSpace(detail) != "" {
+			return sOk.Render(detail)
+		}
+		return sOk.Render(m.depText("active"))
+	case "", "browser not found", "not found":
+		return sDim.Render(m.depText("not_active"))
+	default:
+		if strings.TrimSpace(detail) != "" {
+			return sWarn.Render(detail)
+		}
+		return sWarn.Render(status)
+	}
+}
+
+func compactSections(parts ...string) []string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
 func (m Model) renderCard(view screenView) string {
 	parts := []string{m.renderHeader(view.title, view.subtitle)}
 	if strings.TrimSpace(view.notice) != "" && view.noticeKind != noticeNone {
@@ -250,7 +388,7 @@ func (m Model) renderCard(view screenView) string {
 	if len(view.bindings) > 0 {
 		parts = append(parts, m.renderFooterHelp(view.bindings...))
 	}
-	return sCard.Width(m.cardWidth()).Render(strings.Join(parts, "\n\n"))
+	return m.cardStyle().Width(m.cardWidth()).Render(strings.Join(parts, m.sectionGap()))
 }
 
 func (m Model) renderHeader(title, subtitle string) string {
@@ -273,6 +411,12 @@ func (m Model) renderSubtitle(text string) string {
 func (m Model) renderTopBar() string {
 	left := sBold.Render("VolRen Downloader") + sMeta.Render(" · v"+app.Version)
 	right := m.depBadge()
+	if right == "" {
+		return left
+	}
+	if m.width > 0 && lipgloss.Width(left)+2+lipgloss.Width(right) > m.width {
+		return left
+	}
 	if m.width == 0 {
 		return left + "  " + right
 	}
@@ -281,9 +425,19 @@ func (m Model) renderTopBar() string {
 }
 
 func (m Model) depBadge() string {
+	if m.width > 0 && m.width < 72 {
+		if m.canOpenDependencyScreen() {
+			return renderActionBadge("Ctrl+U", m.u().HelpDeps)
+		}
+		return ""
+	}
+
 	parts := []string{
 		renderBadge("yt-dlp", versionBadgeValue(m.deps.YTDLP.Version)),
 		renderBadge("ffmpeg", versionBadgeValue(m.deps.FFmpeg.Version)),
+	}
+	if m.width > 0 && m.width < 90 {
+		return strings.Join(parts, " ")
 	}
 	if m.canOpenDependencyScreen() {
 		parts = append(parts, renderActionBadge("Ctrl+U", m.u().HelpDeps))
@@ -307,7 +461,11 @@ func (m Model) buildScreen(body string) string {
 	}
 
 	mainH := max(1, m.height-3)
-	content := lipgloss.Place(m.width, mainH, lipgloss.Center, lipgloss.Center, body)
+	vertical := lipgloss.Center
+	if lipgloss.Height(body) >= mainH {
+		vertical = lipgloss.Top
+	}
+	content := lipgloss.Place(m.width, mainH, lipgloss.Center, vertical, body)
 	return topBar + "\n" + content + "\n" + footer
 }
 
@@ -352,8 +510,11 @@ func (m Model) kbSpace() binding  { return binding{key: "Space", help: m.u().Hel
 func (m Model) kbAll() binding    { return binding{key: "A", help: m.u().HelpAll} }
 func (m Model) kbSlash() binding  { return binding{key: "/", help: m.u().HelpSlash} }
 func (m Model) kbSearch() binding { return binding{key: "Ctrl+G", help: m.u().HelpSearch} }
-func (m Model) kbEsc() binding    { return binding{key: "Esc", help: m.u().HelpBack} }
-func (m Model) kbAny() binding    { return binding{key: m.u().HelpAnyKey, help: m.u().HelpExit} }
+func (m Model) kbPickFolder() binding {
+	return binding{key: "Ctrl+O", help: m.u().HelpPickFolder}
+}
+func (m Model) kbEsc() binding { return binding{key: "Esc", help: m.u().HelpBack} }
+func (m Model) kbAny() binding { return binding{key: m.u().HelpAnyKey, help: m.u().HelpExit} }
 func (m Model) kbOpenFolder() binding {
 	return binding{key: "O", help: m.u().HelpOpenFolder}
 }
@@ -364,7 +525,7 @@ func (m Model) renderFooterHelp(bindings ...binding) string {
 	for _, item := range bindings {
 		parts = append(parts, sHelpKey.Render(item.key)+" "+sHelpText.Render(item.help))
 	}
-	return strings.Join(parts, "  ")
+	return joinFittedParts(m.cardBodyWidth(), parts, "  ")
 }
 
 func (m Model) renderNotice(text string, kind noticeKind) string {
@@ -876,6 +1037,13 @@ func openDownloadsDirCmd(path string) tea.Cmd {
 	}
 }
 
+func pickDownloadsDirCmd(path string, locale app.Locale) tea.Cmd {
+	return func() tea.Msg {
+		dir, err := app.PickDownloadsDir(path, locale)
+		return msgPickDownloadsDirDone{path: dir, err: err}
+	}
+}
+
 func versionBadgeValue(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -907,8 +1075,36 @@ func (m Model) renderSectionBlock(title, body string) string {
 	if title = strings.TrimSpace(title); title != "" {
 		parts = append(parts, sSectionTitle.Render(title))
 	}
-	parts = append(parts, sSectionBox.Render(strings.Trim(body, "\n")))
+	parts = append(parts, sSectionBox.Width(m.sectionBodyWidth()).Render(strings.Trim(body, "\n")))
 	return strings.Join(parts, "\n")
+}
+
+func (m Model) compactHomeLayout() bool {
+	return (m.height > 0 && m.height < 31) || (m.width > 0 && m.width < 78)
+}
+
+func (m Model) sectionGap() string {
+	if m.height > 0 && m.height < 31 {
+		return "\n"
+	}
+	return "\n\n"
+}
+
+func (m Model) sectionBodyWidth() int {
+	return max(1, m.cardBodyWidth()-4)
+}
+
+func (m Model) cardStyle() lipgloss.Style {
+	py, px := m.cardPadding()
+	return sCard.Copy().Padding(py, px)
+}
+
+func (m Model) lastSessionItem() *app.SessionItem {
+	if len(m.session.Items) == 0 {
+		return nil
+	}
+	item := m.session.Items[len(m.session.Items)-1]
+	return &item
 }
 
 func sep(width int) string {
@@ -962,6 +1158,38 @@ func speedSuffix(speed string) string {
 		return ""
 	}
 	return "  " + sTitle.Render(speed)
+}
+
+func joinFittedParts(width int, parts []string, sep string) string {
+	parts = compactSections(parts...)
+	if len(parts) == 0 {
+		return ""
+	}
+	if width <= 0 {
+		return strings.Join(parts, sep)
+	}
+
+	lines := make([]string, 0, len(parts))
+	current := parts[0]
+	for _, part := range parts[1:] {
+		candidate := current + sep + part
+		if lipgloss.Width(candidate) <= width {
+			current = candidate
+			continue
+		}
+		lines = append(lines, current)
+		current = part
+	}
+	lines = append(lines, current)
+	return strings.Join(lines, "\n")
+}
+
+func plainStatusText(value string) string {
+	value = strings.TrimSpace(ansiEscapeRE.ReplaceAllString(value, ""))
+	if value == "" {
+		return "—"
+	}
+	return value
 }
 
 func formatElapsed(d time.Duration) string {

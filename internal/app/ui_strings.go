@@ -3,7 +3,7 @@ package app
 import "fmt"
 
 type UIStrings struct {
-	HelpMove, HelpEnter, HelpDeps, HelpSpace, HelpAll, HelpSlash, HelpSearch, HelpBack, HelpOpenFolder string
+	HelpMove, HelpEnter, HelpDeps, HelpSpace, HelpAll, HelpSlash, HelpSearch, HelpBack, HelpOpenFolder, HelpPickFolder string
 
 	QBest, QEcon string
 
@@ -15,12 +15,16 @@ type UIStrings struct {
 	DepsUpdating, DepsRefreshing                          string
 	UpdateAppliedWin, UpdateAppliedUnix, UpdateDonePrefix string
 	HelpAnyKey, HelpExit, DepsOK                          string
+	DownloadsDirLocked, PickDownloadsFailed               string
 
-	PasteURL, URLErrEmpty, URLErrBad, URLHints                                                            string
+	PasteURL, URLErrEmpty, URLErrBad, URLHints, PickDownloadsTitle                                        string
 	SearchTitle, SearchPrompt, SearchPlaceholder, SearchErrEmpty, SearchErrFailed, SearchNoResults        string
 	FragmentTitle, FragmentHint, FragmentFromURLFmt, FragmentInputTitle, FragmentInputPrompt              string
 	FragmentInputHint, FragmentInputHintWithDurationFmt, FragmentInputBadFormat, FragmentInputBadRange    string
 	FragmentDurationFmt, FragmentUnavailable, FragmentInputOutOfBoundsFmt, FragmentURLStartOutOfBoundsFmt string
+
+	HomeInputTitle, HomeOutputTitle, HomeActionsTitle, HomeRuntimeTitle, HomeSessionTitle, HomeOverviewTitle string
+	HomeSessionEmpty, HomeStatSuccess, HomeStatFailed                                                        string
 
 	PlVideosFmt, PlEnterNums, PlSelectedFmt string
 	ErrPickOne                              string
@@ -63,7 +67,7 @@ type UIStrings struct {
 var strEN = UIStrings{
 	HelpMove: "move", HelpEnter: "continue",
 	HelpDeps: "dependencies", HelpSpace: "select", HelpAll: "all", HelpSlash: "manual",
-	HelpSearch: "search", HelpBack: "back", HelpOpenFolder: "open folder",
+	HelpSearch: "search", HelpBack: "back", HelpOpenFolder: "open folder", HelpPickFolder: "choose folder",
 
 	QBest: "Best quality (HD·4K)", QEcon: "Economy quality (360p)",
 
@@ -79,9 +83,16 @@ var strEN = UIStrings{
 	UpdateAppliedUnix: "Binary replaced. Restart the app.",
 	UpdateDonePrefix:  "Update applied",
 	HelpAnyKey:        "Any key", HelpExit: "exit", DepsOK: "Dependencies updated.",
+	DownloadsDirLocked:  "Download location is fixed by VOLREN_DOWNLOADS_DIR.",
+	PickDownloadsFailed: "Failed to choose download folder",
 
 	PasteURL: "Paste a YouTube video or playlist URL", URLErrEmpty: "URL cannot be empty",
 	URLErrBad: "Does not look like a YouTube URL", URLHints: "youtube.com/watch · youtube.com/playlist · youtu.be",
+	PickDownloadsTitle: "Choose download folder",
+	HomeInputTitle:     "Target", HomeOutputTitle: "Download location", HomeActionsTitle: "Quick actions",
+	HomeRuntimeTitle: "Environment", HomeSessionTitle: "Recent session", HomeSessionEmpty: "No downloads yet in this session.",
+	HomeOverviewTitle: "Overview",
+	HomeStatSuccess:   "ok", HomeStatFailed: "failed",
 	SearchTitle: "YouTube search", SearchPrompt: "Enter a video title or keywords",
 	SearchPlaceholder: "lofi hip hop mix", SearchErrEmpty: "Search query cannot be empty",
 	SearchErrFailed: "Search failed", SearchNoResults: "Nothing found",
@@ -156,7 +167,7 @@ var strEN = UIStrings{
 var strRU = UIStrings{
 	HelpMove: "движение", HelpEnter: "продолжить",
 	HelpDeps: "зависимости", HelpSpace: "выбрать", HelpAll: "все", HelpSlash: "вручную",
-	HelpSearch: "поиск", HelpBack: "назад", HelpOpenFolder: "открыть папку",
+	HelpSearch: "поиск", HelpBack: "назад", HelpOpenFolder: "открыть папку", HelpPickFolder: "выбрать папку",
 
 	QBest: "Лучшее качество (HD·4K)", QEcon: "Экономичное качество (360p)",
 
@@ -172,9 +183,16 @@ var strRU = UIStrings{
 	UpdateAppliedUnix: "Бинарный файл обновлён. Перезапустите приложение.",
 	UpdateDonePrefix:  "Обновление применено",
 	HelpAnyKey:        "Любая клавиша", HelpExit: "выйти", DepsOK: "Зависимости обновлены.",
+	DownloadsDirLocked:  "Папка загрузки зафиксирована через VOLREN_DOWNLOADS_DIR.",
+	PickDownloadsFailed: "Не удалось выбрать папку загрузки",
 
 	PasteURL: "Вставь ссылку на видео или плейлист YouTube", URLErrEmpty: "Ссылка не может быть пустой",
 	URLErrBad: "Не похоже на YouTube-ссылку", URLHints: "youtube.com/watch · youtube.com/playlist · youtu.be",
+	PickDownloadsTitle: "Выбери папку загрузки",
+	HomeInputTitle:     "Источник", HomeOutputTitle: "Папка загрузки", HomeActionsTitle: "Быстрые действия",
+	HomeRuntimeTitle: "Окружение", HomeSessionTitle: "Текущая сессия", HomeSessionEmpty: "В этой сессии ещё не было загрузок.",
+	HomeOverviewTitle: "Сводка",
+	HomeStatSuccess:   "успешно", HomeStatFailed: "ошибки",
 	SearchTitle: "Поиск YouTube", SearchPrompt: "Введи название видео или ключевые слова",
 	SearchPlaceholder: "lofi hip hop mix", SearchErrEmpty: "Поисковый запрос не может быть пустым",
 	SearchErrFailed: "Не удалось выполнить поиск", SearchNoResults: "Ничего не найдено",

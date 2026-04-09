@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 )
 
@@ -23,13 +22,10 @@ func applyUpdatePlatform(tmp, dest string) error {
 }
 
 func OpenInFileManager(path string) error {
-	path = filepath.Clean(path)
-	if !filepath.IsAbs(path) {
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return fmt.Errorf("resolve path: %w", err)
-		}
-		path = abs
+	var err error
+	path, err = prepareDir(path)
+	if err != nil {
+		return fmt.Errorf("prepare folder: %w", err)
 	}
 
 	name := "xdg-open"

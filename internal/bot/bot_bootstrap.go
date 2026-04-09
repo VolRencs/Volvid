@@ -88,7 +88,7 @@ func newTelegramHTTPClient() *http.Client {
 }
 
 func ensureBotDirectories() error {
-	for _, dir := range []string{app.DepsDir, app.DlDir, botWorkRoot} {
+	for _, dir := range []string{app.ConfigDir, app.DataDir, app.CacheDir, app.DepsDir, app.DlDir, botWorkRoot} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("создание директории %s: %w", dir, err)
 		}

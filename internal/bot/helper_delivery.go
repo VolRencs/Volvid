@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	app "YouTubeBuild/internal/app"
 )
 
 func filesInDir(dir string) []string {
@@ -113,7 +111,7 @@ func cleanupBotWorkDir(dir string) {
 		return
 	}
 	parent := filepath.Dir(dir)
-	if parent != "" && parent != "." && parent != app.DlDir {
+	if parent != "" && parent != "." && parent != botWorkRoot {
 		_ = os.Remove(parent)
 	}
 }

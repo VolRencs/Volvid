@@ -111,6 +111,10 @@ type (
 	}
 	msgDlUpdate             struct{ update app.DlUpdate }
 	msgOpenDownloadsDirDone struct{ err error }
+	msgPickDownloadsDirDone struct {
+		path string
+		err  error
+	}
 
 	spinnerTickMsg struct{}
 	timerTickMsg   time.Time
@@ -250,11 +254,23 @@ func (m Model) cardWidth() int {
 	return fitWidth(m.width-4, cardW, 38)
 }
 
-func (m Model) cardBodyWidth() int {
-	if m.width <= 0 {
-		return cardW - 6
+func (m Model) cardPadding() (int, int) {
+	switch {
+	case m.height > 0 && m.height < 28:
+		return 0, 1
+	case m.height > 0 && m.height < 34:
+		return 0, 2
+	default:
+		return 1, 2
 	}
-	return max(1, m.cardWidth()-6)
+}
+
+func (m Model) cardBodyWidth() int {
+	_, px := m.cardPadding()
+	if m.width <= 0 {
+		return max(1, cardW-(px*2)-2)
+	}
+	return max(1, m.cardWidth()-(px*2)-2)
 }
 
 func (m Model) menuWidth() int {
@@ -323,6 +339,29 @@ func (m Model) isAppUpdateScreen() bool {
 
 func (m Model) canOpenDependencyScreen() bool {
 	return !m.uiBusy() && !m.isAppUpdateScreen()
+}
+
+func (m Model) canOpenDownloadsFolder() bool {
+	if m.screen == scrURL {
+		return true
+	}
+	return m.screen == scrSummary && (m.singleOK || m.dlDone > 0)
+}
+
+func (m Model) canPickDownloadsFolder() bool {
+	return m.screen == scrURL
+}
+
+func (m Model) startOpenDownloadsDir() (tea.Model, tea.Cmd) {
+	if m.screen == scrURL {
+		m.urlErr = ""
+	}
+	return m, openDownloadsDirCmd(app.DlDir)
+}
+
+func (m Model) startPickDownloadsDir() (tea.Model, tea.Cmd) {
+	m.urlErr = ""
+	return m, pickDownloadsDirCmd(app.DlDir, m.locale)
 }
 
 func (m Model) restoreActiveScreen() (tea.Model, tea.Cmd) {

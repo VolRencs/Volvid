@@ -81,7 +81,7 @@ func resolveDownloadHTTPClient(client *http.Client) *http.Client {
 }
 
 func ensureDownloadDir(dest string) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	if _, err := prepareDir(filepath.Dir(dest)); err != nil {
 		return fmt.Errorf("создание директории: %w", err)
 	}
 	return nil

@@ -14,7 +14,7 @@ import (
 var errTelegramFileTooLarge = errors.New("telegram file too large")
 var errDownloadLimitExceeded = errors.New("download limit exceeded")
 
-var botWorkRoot = filepath.Join(app.DlDir, ".bot")
+var botWorkRoot = filepath.Join(app.CacheDir, "bot", "jobs")
 
 type Bot struct {
 	api       *tg.Bot
