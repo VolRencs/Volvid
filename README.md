@@ -214,34 +214,6 @@ Notes:
 
 ---
 
-## Folder Layout
-
-Default runtime layout now uses OS-standard directories, with automatic fallback to legacy next-to-binary folders if they already exist.
-
-Typical locations:
-
-```text
-Config dir:
-├── .volren_locale or bot.json
-
-Data dir:
-├── deps/                   ← managed yt-dlp / ffmpeg / node binaries
-├── bot/
-│   ├── premium_users.json
-│   ├── bot_users.json
-│   └── bot_timers.json
-
-Downloads dir:
-└── VolRen Downloader/      ← downloaded TUI files
-
-Cache dir:
-└── bot/jobs/<chat_id>/job-* ← temporary bot job folders
-```
-
-If legacy `_deps/`, `downloads/`, `.volren_locale`, `premium_users.json`, `bot_users.json`, or `bot_timers.json` already exist next to the binary, the app keeps using them.
-
----
-
 ## Platforms
 
 | OS | Arch | yt-dlp | ffmpeg | node | App update |
