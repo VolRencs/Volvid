@@ -6,7 +6,6 @@ PKG_DIR="$ROOT_DIR/cmd/downloader"
 ICON_FILE="$ROOT_DIR/assets/icon/icon.ico"
 SYSO_FILE="$PKG_DIR/zz_build_windows_icon.syso"
 
-ARCH="${GOARCH:-amd64}"
 OUTPUT_PATH="${1:-$ROOT_DIR/VolRenDownloader.exe}"
 
 require_tool() {
@@ -80,6 +79,6 @@ fi
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 
-"$RSRC_TOOL" -ico "$ICON_FILE" -arch "$ARCH" -o "$SYSO_FILE"
+"$RSRC_TOOL" -ico "$ICON_FILE" -arch amd64 -o "$SYSO_FILE"
 
-GOOS=windows GOARCH="$ARCH" go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$OUTPUT_PATH" ./cmd/downloader
+GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$OUTPUT_PATH" ./cmd/downloader

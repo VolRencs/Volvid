@@ -117,7 +117,8 @@ func UpdateManagedDeps(ch chan<- FileProgress) error {
 
 func UpdateManagedDepsFor(l Locale, ch chan<- FileProgress) error {
 	deps := RefreshDeps()
-	for _, dep := range deps.ActionableDependencies() {
+	actionable := deps.ActionableDependencies()
+	for _, dep := range actionable {
 		if dep.Source == DepSystem {
 			continue
 		}
@@ -125,7 +126,7 @@ func UpdateManagedDepsFor(l Locale, ch chan<- FileProgress) error {
 			return fmt.Errorf("%s: %w", dep.Name, err)
 		}
 	}
-	if len(deps.ActionableDependencies()) > 0 {
+	if len(actionable) > 0 {
 		RefreshDeps()
 	}
 	return nil

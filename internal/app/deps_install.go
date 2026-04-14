@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -60,8 +59,12 @@ func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
 	}
 	defer os.RemoveAll(tmp)
 
-	archive := filepath.Join(tmp, ffmpegArchiveFilename())
-	if err := DownloadFile(ffmpegArchiveURL(), archive, l, ch); err != nil {
+	archiveURL, archiveName, err := ffmpegArchiveAsset()
+	if err != nil {
+		return err
+	}
+	archive := filepath.Join(tmp, archiveName)
+	if err := DownloadFile(archiveURL, archive, l, ch); err != nil {
 		return err
 	}
 
@@ -135,20 +138,16 @@ func InstallNodeFor(l Locale, ch chan<- FileProgress) error {
 	return nil
 }
 
-func ffmpegArchiveURL() string {
-	switch {
-	case IsWindows:
-		return ffmpegWinURL
-	case Arch == "arm64":
-		return ffmpegLinuxARM64URL
-	default:
-		return ffmpegLinuxAMD64URL
+func ffmpegArchiveAsset() (string, string, error) {
+	platform, err := currentPlatform()
+	if err != nil {
+		return "", "", err
 	}
-}
-
-func ffmpegArchiveFilename() string {
-	url := ffmpegArchiveURL()
-	return filepath.Base(strings.TrimSpace(url))
+	url := strings.TrimSpace(platform.FFmpegURL)
+	if url == "" {
+		return "", "", fmt.Errorf("ffmpeg asset URL is empty")
+	}
+	return url, filepath.Base(url), nil
 }
 
 func nodeDownloadAsset() (string, string, error) {
@@ -156,43 +155,42 @@ func nodeDownloadAsset() (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	return nodeLatestV22URL + filename, filename, nil
+	return nodeLatestURL + filename, filename, nil
 }
 
 func nodeAssetFilename() (string, error) {
-	manifest, err := downloadText(nodeLatestV22URL + "SHASUMS256.txt")
+	manifest, err := downloadText(nodeLatestURL + "SHASUMS256.txt")
 	if err != nil {
 		return "", fmt.Errorf("node manifest: %w", err)
 	}
 
-	suffixes := nodeAssetSuffixes()
+	suffix, err := nodeAssetSuffix()
+	if err != nil {
+		return "", err
+	}
 	for _, line := range strings.Split(strings.ReplaceAll(manifest, "\r\n", "\n"), "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) < 2 {
 			continue
 		}
 		name := fields[len(fields)-1]
-		for _, suffix := range suffixes {
-			if strings.HasSuffix(name, suffix) {
-				return name, nil
-			}
+		if strings.HasSuffix(name, suffix) {
+			return name, nil
 		}
 	}
 
-	return "", fmt.Errorf("node asset for %s/%s not found", runtime.GOOS, Arch)
+	return "", fmt.Errorf("node asset with suffix %s not found", suffix)
 }
 
-func nodeAssetSuffixes() []string {
-	switch {
-	case IsWindows && Arch == "arm64":
-		return []string{"-win-arm64.zip"}
-	case IsWindows:
-		return []string{"-win-x64.zip"}
-	case Arch == "arm64":
-		return []string{"-linux-arm64.tar.gz"}
-	default:
-		return []string{"-linux-x64.tar.gz"}
+func nodeAssetSuffix() (string, error) {
+	platform, err := currentPlatform()
+	if err != nil {
+		return "", err
 	}
+	if platform.NodeAssetSuffix == "" {
+		return "", fmt.Errorf("node asset suffix is empty")
+	}
+	return platform.NodeAssetSuffix, nil
 }
 
 func downloadText(url string) (string, error) {

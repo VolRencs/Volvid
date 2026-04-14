@@ -221,8 +221,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch m.screen {
 	case scrUpdateDone:
 		return m, tea.Quit
-	case scrDepUpdate:
-		return m, nil
 	case scrURL:
 		return m.handleURLKey(msg)
 	case scrSearchInput:

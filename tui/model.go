@@ -342,10 +342,7 @@ func (m Model) canOpenDependencyScreen() bool {
 }
 
 func (m Model) canOpenDownloadsFolder() bool {
-	if m.screen == scrURL {
-		return true
-	}
-	return m.screen == scrSummary && (m.singleOK || m.dlDone > 0)
+	return m.screen == scrURL || (m.screen == scrSummary && (m.singleOK || m.dlDone > 0))
 }
 
 func (m Model) canPickDownloadsFolder() bool {

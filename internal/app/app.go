@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,22 +10,28 @@ import (
 )
 
 const (
-	Version = "6.2.2"
+	Version = "6.2.3"
 
-	ffmpegWinURL        = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-	ffmpegLinuxAMD64URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
-	ffmpegLinuxARM64URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"
-	nodeLatestV22URL    = "https://nodejs.org/download/release/latest-v22.x/"
-	ytdlpBase           = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
+	ffmpegWinURL   = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+	ffmpegLinuxURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
+	nodeLatestURL  = "https://nodejs.org/download/release/latest/"
+	ytdlpBase      = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
 
 	githubAPIURL = "https://api.github.com/repos/VolRencs/YouTubeDownloader/releases/latest"
 
 	slotResetDelay = 300 * time.Millisecond
 )
 
+type runtimePlatform struct {
+	UpdateAsset       string
+	YTDLPAsset        string
+	FFmpegURL         string
+	NodeAssetSuffix   string
+	FirefoxUAPlatform string
+}
+
 var (
 	IsWindows = runtime.GOOS == "windows"
-	Arch      = runtime.GOARCH
 
 	AppDir    string
 	ConfigDir string
@@ -42,6 +49,29 @@ var (
 	apiClient = &http.Client{Timeout: 8 * time.Second}
 	dlClient  *http.Client
 )
+
+func currentPlatform() (runtimePlatform, error) {
+	switch runtime.GOOS + "/" + runtime.GOARCH {
+	case "windows/amd64":
+		return runtimePlatform{
+			UpdateAsset:       "VolRenDownloader.exe",
+			YTDLPAsset:        "yt-dlp.exe",
+			FFmpegURL:         ffmpegWinURL,
+			NodeAssetSuffix:   "-win-x64.zip",
+			FirefoxUAPlatform: "",
+		}, nil
+	case "linux/amd64":
+		return runtimePlatform{
+			UpdateAsset:       "VolRenDownloader_linux_amd64",
+			YTDLPAsset:        "yt-dlp_linux",
+			FFmpegURL:         ffmpegLinuxURL,
+			NodeAssetSuffix:   "-linux-x64.tar.gz",
+			FirefoxUAPlatform: "X11; Linux x86_64",
+		}, nil
+	default:
+		return runtimePlatform{}, fmt.Errorf("unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+}
 
 func optimalParallelism(items, hardLimit int) int {
 	if items <= 1 {

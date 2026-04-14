@@ -18,15 +18,15 @@ type UpdateInfo struct {
 	DlURL  string
 }
 
-func assetName() string {
-	switch {
-	case IsWindows:
-		return "VolRenDownloader.exe"
-	case Arch == "arm64":
-		return "VolRenDownloader_linux_arm64"
-	default:
-		return "VolRenDownloader_linux_amd64"
+func assetName() (string, error) {
+	platform, err := currentPlatform()
+	if err != nil {
+		return "", err
 	}
+	if platform.UpdateAsset == "" {
+		return "", fmt.Errorf("release asset name is empty")
+	}
+	return platform.UpdateAsset, nil
 }
 
 func CheckUpdate() *UpdateInfo {
@@ -58,7 +58,10 @@ func CheckUpdateContext(ctx context.Context) *UpdateInfo {
 		return nil
 	}
 	assets, _ := data["assets"].([]any)
-	want := assetName()
+	want, err := assetName()
+	if err != nil {
+		return nil
+	}
 	for _, a := range assets {
 		asset, ok := a.(map[string]any)
 		if !ok {
@@ -79,6 +82,10 @@ func ApplyUpdate(info *UpdateInfo, ch chan<- FileProgress) error {
 }
 
 func ApplyUpdateFor(l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
+	if info == nil || strings.TrimSpace(info.DlURL) == "" {
+		return fmt.Errorf("update info is empty")
+	}
+
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("путь к исполняемому файлу: %w", err)

@@ -220,7 +220,7 @@ func currentUserHome() string {
 }
 
 func currentGOOS() string {
-	return strings.ToLower(strings.TrimSpace(runtime.GOOS))
+	return runtime.GOOS
 }
 
 func detectBrowserCookies(home, goos string) BrowserCookiesInfo {
@@ -724,12 +724,11 @@ func firefoxVersionFromLine(line string) string {
 }
 
 func firefoxUAPlatform() string {
-	switch Arch {
-	case "arm64":
-		return "X11; Linux aarch64"
-	default:
+	platform, err := currentPlatform()
+	if err != nil || platform.FirefoxUAPlatform == "" {
 		return "X11; Linux x86_64"
 	}
+	return platform.FirefoxUAPlatform
 }
 
 func ytdlpOutput(ctx context.Context, timeout time.Duration, args ...string) ([]byte, error) {
@@ -850,22 +849,26 @@ func parseDownloadFloat(raw string) float64 {
 	return n
 }
 
-func YtdlpURL() string {
-	switch {
-	case IsWindows:
-		return ytdlpBase + "yt-dlp.exe"
-	case Arch == "arm64":
-		return ytdlpBase + "yt-dlp_linux_aarch64"
-	default:
-		return ytdlpBase + "yt-dlp_linux"
+func YtdlpURL() (string, error) {
+	platform, err := currentPlatform()
+	if err != nil {
+		return "", err
 	}
+	if platform.YTDLPAsset == "" {
+		return "", fmt.Errorf("yt-dlp asset name is empty")
+	}
+	return ytdlpBase + platform.YTDLPAsset, nil
 }
 
 func InstallYtDlpFor(l Locale, ch chan<- FileProgress) error {
 	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
 	}
-	if err := DownloadFile(YtdlpURL(), YtdlpBin, l, ch); err != nil {
+	url, err := YtdlpURL()
+	if err != nil {
+		return err
+	}
+	if err := DownloadFile(url, YtdlpBin, l, ch); err != nil {
 		return err
 	}
 	if !IsWindows {
