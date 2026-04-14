@@ -47,9 +47,7 @@ type CheckDepsResult struct {
 }
 
 const (
-	versionProbeAttempts = 1
-	versionProbeDelay    = 0
-	versionProbeTimeout  = 1500 * time.Millisecond
+	versionProbeTimeout = 1500 * time.Millisecond
 )
 
 type DepsLogger func(format string, args ...any)

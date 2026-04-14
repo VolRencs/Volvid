@@ -51,30 +51,62 @@ type cookieCandidate struct {
 	ModTime    time.Time
 }
 
+type depsDetectCall struct {
+	done       chan struct{}
+	result     CheckDepsResult
+	generation uint64
+}
+
 var (
 	firefoxUserAgentOnce  sync.Once
 	firefoxUserAgentCache string
-	depsCacheMu           sync.RWMutex
+	depsCacheMu           sync.Mutex
 	depsCache             CheckDepsResult
 	depsCacheReady        bool
+	depsCacheFlight       *depsDetectCall
+	depsCacheGeneration   uint64
 )
 
 func DetectDeps() CheckDepsResult {
-	depsCacheMu.RLock()
-	if depsCacheReady {
-		deps := depsCache
-		depsCacheMu.RUnlock()
-		return deps
-	}
-	depsCacheMu.RUnlock()
-	return RefreshDeps()
+	return loadDeps(false)
 }
 
 func RefreshDeps() CheckDepsResult {
-	deps := detectDeps(true)
+	return loadDeps(true)
+}
+
+func loadDeps(force bool) CheckDepsResult {
 	depsCacheMu.Lock()
-	depsCache = deps
-	depsCacheReady = true
+	if depsCacheReady && !force {
+		deps := depsCache
+		depsCacheMu.Unlock()
+		return deps
+	}
+	if call := depsCacheFlight; call != nil && (!force || call.generation == depsCacheGeneration) {
+		depsCacheMu.Unlock()
+		<-call.done
+		return call.result
+	}
+
+	call := &depsDetectCall{
+		done:       make(chan struct{}),
+		generation: depsCacheGeneration,
+	}
+	depsCacheFlight = call
+	depsCacheMu.Unlock()
+
+	deps := detectDeps(true)
+
+	depsCacheMu.Lock()
+	if depsCacheFlight == call {
+		depsCacheFlight = nil
+	}
+	if depsCacheGeneration == call.generation {
+		depsCache = deps
+		depsCacheReady = true
+	}
+	call.result = deps
+	close(call.done)
 	depsCacheMu.Unlock()
 	return deps
 }
@@ -83,6 +115,7 @@ func InvalidateDepsCache() {
 	depsCacheMu.Lock()
 	depsCache = CheckDepsResult{}
 	depsCacheReady = false
+	depsCacheGeneration++
 	depsCacheMu.Unlock()
 }
 
@@ -736,17 +769,8 @@ func commandVersionLine(bin string, args ...string) string {
 	if strings.TrimSpace(bin) == "" {
 		return ""
 	}
-	for attempt := 0; attempt < versionProbeAttempts; attempt++ {
-		out, _ := commandCombinedOutput(context.Background(), versionProbeTimeout, bin, args...)
-		line := firstNonEmptyLine(string(out))
-		if line != "" {
-			return line
-		}
-		if attempt+1 < versionProbeAttempts {
-			time.Sleep(versionProbeDelay)
-		}
-	}
-	return ""
+	out, _ := commandCombinedOutput(context.Background(), versionProbeTimeout, bin, args...)
+	return firstNonEmptyLine(string(out))
 }
 
 func firstNonEmptyLine(text string) string {

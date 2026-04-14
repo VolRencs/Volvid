@@ -38,7 +38,17 @@ type probePayload struct {
 	Formats      []MediaFormat `json:"formats"`
 }
 
-var probeCache sync.Map
+type probeCall struct {
+	done  chan struct{}
+	probe *MediaProbe
+	err   error
+}
+
+var (
+	probeCacheMu sync.RWMutex
+	probeCache   = make(map[string]*MediaProbe)
+	probeFlight  = make(map[string]*probeCall)
+)
 
 var ErrMediaDurationUnavailable = errors.New("media duration unavailable")
 
@@ -70,11 +80,57 @@ func ProbeMediaContext(ctx context.Context, target ParsedTarget) (*MediaProbe, e
 		return nil, errors.New("probe requires video target")
 	}
 
-	key := target.CanonicalURL
-	if cached, ok := probeCache.Load(key); ok {
-		return cloneMediaProbe(cached.(*MediaProbe)), nil
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	key := probeCacheKey(target)
+
+	if cached, ok := loadCachedProbe(key); ok {
+		return cached, nil
 	}
 
+	probeCacheMu.Lock()
+	if cached, ok := cloneCachedProbeLocked(key); ok {
+		probeCacheMu.Unlock()
+		return cached, nil
+	}
+	if call, ok := probeFlight[key]; ok {
+		probeCacheMu.Unlock()
+		select {
+		case <-call.done:
+			if call.err != nil {
+				return nil, call.err
+			}
+			return cloneMediaProbe(call.probe), nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	call := &probeCall{done: make(chan struct{})}
+	probeFlight[key] = call
+	probeCacheMu.Unlock()
+
+	probe, err := probeMediaUncached(ctx, target)
+	cached := cloneMediaProbe(probe)
+
+	probeCacheMu.Lock()
+	delete(probeFlight, key)
+	if err == nil && cached != nil {
+		probeCache[key] = cached
+	}
+	call.probe = cached
+	call.err = err
+	close(call.done)
+	probeCacheMu.Unlock()
+
+	if err != nil {
+		return nil, err
+	}
+	return cloneMediaProbe(cached), nil
+}
+
+func probeMediaUncached(ctx context.Context, target ParsedTarget) (*MediaProbe, error) {
 	out, err := ytdlpOutput(
 		ctx,
 		qualityScanTimeout,
@@ -112,9 +168,29 @@ func ProbeMediaContext(ctx context.Context, target ParsedTarget) (*MediaProbe, e
 	if !probe.HasVideo {
 		return nil, fmt.Errorf("probe: no video streams found")
 	}
-
-	probeCache.Store(key, cloneMediaProbe(probe))
 	return probe, nil
+}
+
+func probeCacheKey(target ParsedTarget) string {
+	key := strings.TrimSpace(target.CanonicalURL)
+	if key != "" {
+		return key
+	}
+	return strings.TrimSpace(target.DownloadURL(false))
+}
+
+func loadCachedProbe(key string) (*MediaProbe, bool) {
+	probeCacheMu.RLock()
+	defer probeCacheMu.RUnlock()
+	return cloneCachedProbeLocked(key)
+}
+
+func cloneCachedProbeLocked(key string) (*MediaProbe, bool) {
+	probe, ok := probeCache[key]
+	if !ok {
+		return nil, false
+	}
+	return cloneMediaProbe(probe), true
 }
 
 func detectThumbnailExt(ext, thumbURL string) string {

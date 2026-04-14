@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 )
 
 type SizeEstimate struct {
@@ -15,10 +16,24 @@ type SizeEstimate struct {
 	UnknownItems int
 }
 
+const maxParallelSizeEstimates = 6
+
 var (
 	heightExactRE = regexp.MustCompile(`height=(\d+)`)
 	heightMaxRE   = regexp.MustCompile(`height<=?(\d+)`)
 )
+
+type sizeEstimateJob struct {
+	target      ParsedTarget
+	occurrences int
+}
+
+type sizeEstimateResult struct {
+	size        int64
+	known       bool
+	occurrences int
+	err         error
+}
 
 func EstimateDownloadSize(req DownloadRequest) (SizeEstimate, error) {
 	return EstimateDownloadSizeContext(context.Background(), req)
@@ -36,7 +51,56 @@ func EstimateDownloadSizeContext(ctx context.Context, req DownloadRequest) (Size
 		return SizeEstimate{}, errors.New("download size: empty input")
 	}
 
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return SizeEstimate{}, err
+	}
+
+	jobs, estimate := buildSizeEstimateJobs(urls)
+	if len(jobs) == 0 {
+		return estimate, nil
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var firstErr error
+	for result := range runSizeEstimateJobs(runCtx, req, jobs) {
+		if result.err != nil {
+			if firstErr == nil {
+				firstErr = result.err
+				cancel()
+			}
+			continue
+		}
+		if !result.known {
+			estimate.Known = false
+			estimate.UnknownItems += result.occurrences
+			continue
+		}
+
+		estimate.TotalBytes += result.size * int64(result.occurrences)
+		estimate.KnownItems += result.occurrences
+	}
+
+	if firstErr != nil {
+		return estimate, firstErr
+	}
+	if err := runCtx.Err(); err != nil {
+		return estimate, err
+	}
+	return estimate, nil
+}
+
+func buildSizeEstimateJobs(urls []string) ([]sizeEstimateJob, SizeEstimate) {
 	estimate := SizeEstimate{Known: true}
+	counts := make(map[string]int, len(urls))
+	targets := make(map[string]ParsedTarget, len(urls))
+	order := make([]string, 0, len(urls))
+
+	// Probe each canonical URL once and scale the result back by its occurrences.
 	for _, rawURL := range urls {
 		target, err := ParseTarget(rawURL)
 		if err != nil || !target.IsVideo() {
@@ -45,29 +109,104 @@ func EstimateDownloadSizeContext(ctx context.Context, req DownloadRequest) (Size
 			continue
 		}
 
-		size, ok, err := estimateTargetSize(ctx, req, target)
-		if err != nil {
-			return estimate, err
+		key := strings.TrimSpace(target.CanonicalURL)
+		if key == "" {
+			key = strings.TrimSpace(rawURL)
 		}
-		if !ok {
-			estimate.Known = false
-			estimate.UnknownItems++
-			continue
+		if counts[key] == 0 {
+			order = append(order, key)
+			targets[key] = target
 		}
-
-		estimate.TotalBytes += size
-		estimate.KnownItems++
+		counts[key]++
 	}
-	return estimate, nil
+
+	jobs := make([]sizeEstimateJob, 0, len(order))
+	for _, key := range order {
+		jobs = append(jobs, sizeEstimateJob{
+			target:      targets[key],
+			occurrences: counts[key],
+		})
+	}
+	return jobs, estimate
+}
+
+func runSizeEstimateJobs(ctx context.Context, req DownloadRequest, jobs []sizeEstimateJob) <-chan sizeEstimateResult {
+	jobCh := make(chan sizeEstimateJob)
+	resultCh := make(chan sizeEstimateResult, min(len(jobs), maxParallelSizeEstimates))
+	workers := optimalParallelism(len(jobs), maxParallelSizeEstimates)
+
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case job, ok := <-jobCh:
+					if !ok {
+						return
+					}
+
+					size, known, err := estimateTargetSize(ctx, req, job.target)
+					result := sizeEstimateResult{
+						size:        size,
+						known:       known,
+						occurrences: job.occurrences,
+						err:         err,
+					}
+
+					if err != nil {
+						select {
+						case resultCh <- result:
+						case <-ctx.Done():
+						}
+						return
+					}
+
+					select {
+					case resultCh <- result:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		}()
+	}
+
+	go func() {
+		defer close(jobCh)
+		for _, job := range jobs {
+			select {
+			case <-ctx.Done():
+				return
+			case jobCh <- job:
+			}
+		}
+	}()
+
+	go func() {
+		wg.Wait()
+		close(resultCh)
+	}()
+
+	return resultCh
 }
 
 func estimateTargetSize(ctx context.Context, req DownloadRequest, target ParsedTarget) (int64, bool, error) {
 	probe, err := ProbeMediaContext(ctx, target)
 	if err != nil {
+		if err := estimateTargetContextError(ctx, err); err != nil {
+			return 0, false, err
+		}
 		return 0, false, nil
 	}
 	info, err := videoQualityInfoFromProbe(probe)
 	if err != nil {
+		if err := estimateTargetContextError(ctx, err); err != nil {
+			return 0, false, err
+		}
 		return 0, false, nil
 	}
 
@@ -83,6 +222,19 @@ func estimateTargetSize(ctx context.Context, req DownloadRequest, target ParsedT
 		size, ok := estimateVideoProfileSize(info, req.Profile)
 		return size, ok, nil
 	}
+}
+
+func estimateTargetContextError(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return nil
 }
 
 func estimateVideoProfileSize(info videoQualityInfo, profile OutputProfile) (int64, bool) {

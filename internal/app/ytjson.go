@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,22 +16,24 @@ func scanYTDLPJSONLines(ctx context.Context, timeout time.Duration, args []strin
 	defer cancel()
 	defer stdout.Close()
 
-	sc := bufio.NewScanner(stdout)
-	sc.Buffer(make([]byte, 64<<10), 1<<20)
-
-	for sc.Scan() {
+	if err := readCommandLines(stdout, func(line []byte) error {
+		if len(line) == 0 {
+			return nil
+		}
 		var entry map[string]any
-		if err := json.Unmarshal(sc.Bytes(), &entry); err != nil {
-			continue
+		if err := json.Unmarshal(line, &entry); err != nil {
+			return nil
 		}
 		if handle != nil {
 			handle(entry)
 		}
-	}
-
-	if err := sc.Err(); err != nil {
+		return nil
+	}); err != nil {
+		cancel()
+		_ = waitCommand(cmd, runCtx)
 		return fmt.Errorf("yt-dlp output: %w", err)
 	}
+
 	if err := waitCommand(cmd, runCtx); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			return err

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -53,6 +54,10 @@ func ShouldScanQualityChoices(n int) bool {
 }
 
 func ResolveQualityChoices(urls []string) ([]QualityChoice, error) {
+	return ResolveQualityChoicesContext(context.Background(), urls)
+}
+
+func ResolveQualityChoicesContext(ctx context.Context, urls []string) ([]QualityChoice, error) {
 	urls = compactQualityURLs(urls)
 	if len(urls) == 0 {
 		return nil, errors.New("quality scan: empty input")
@@ -61,7 +66,7 @@ func ResolveQualityChoices(urls []string) ([]QualityChoice, error) {
 		return DefaultQualityChoices(), nil
 	}
 
-	choices, err := ScanQualityChoices(urls)
+	choices, err := ScanQualityChoicesContext(ctx, urls)
 	if err != nil || len(choices) == 0 {
 		return DefaultQualityChoices(), err
 	}
@@ -142,13 +147,28 @@ type qualityScanResult struct {
 }
 
 func ScanQualityChoices(urls []string) ([]QualityChoice, error) {
+	return ScanQualityChoicesContext(context.Background(), urls)
+}
+
+func ScanQualityChoicesContext(ctx context.Context, urls []string) ([]QualityChoice, error) {
 	urls = compactQualityURLs(urls)
 	if len(urls) == 0 {
 		return nil, errors.New("quality scan: empty input")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
-	results := runQualityScan(urls)
+	results := runQualityScan(ctx, urls)
 	heights, counts, videos, scanned, firstErr := collectQualityScanResults(results, len(urls))
+	if err := ctx.Err(); err != nil {
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
 	if scanned == 0 {
 		if firstErr != nil {
 			return nil, firstErr
@@ -223,7 +243,16 @@ func estimateVideoSize(video videoQualityInfo, heights []int) (int64, bool) {
 }
 
 func scanVideoInfo(url string) (videoQualityInfo, error) {
-	probe, err := ProbeMediaURL(url)
+	return scanVideoInfoContext(context.Background(), url)
+}
+
+func scanVideoInfoContext(ctx context.Context, url string) (videoQualityInfo, error) {
+	target, err := ParseTarget(url)
+	if err != nil {
+		return videoQualityInfo{}, err
+	}
+
+	probe, err := ProbeMediaContext(ctx, target)
 	if err != nil {
 		return videoQualityInfo{}, err
 	}
@@ -289,8 +318,8 @@ func qualityFormatSize(format MediaFormat) int64 {
 	return format.FilesizeApprox
 }
 
-func runQualityScan(urls []string) <-chan qualityScanResult {
-	jobs := make(chan string, min(len(urls), maxParallelQualityScans))
+func runQualityScan(ctx context.Context, urls []string) <-chan qualityScanResult {
+	jobs := make(chan string)
 	results := make(chan qualityScanResult, len(urls))
 	workers := optimalParallelism(len(urls), maxParallelQualityScans)
 
@@ -299,18 +328,38 @@ func runQualityScan(urls []string) <-chan qualityScanResult {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for url := range jobs {
-				info, err := scanVideoInfo(url)
-				results <- qualityScanResult{info: info, err: err}
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case url, ok := <-jobs:
+					if !ok {
+						return
+					}
+
+					info, err := scanVideoInfoContext(ctx, url)
+					select {
+					case results <- qualityScanResult{info: info, err: err}:
+					case <-ctx.Done():
+						return
+					}
+				}
 			}
 		}()
 	}
 
 	go func() {
+		defer close(jobs)
 		for _, url := range urls {
-			jobs <- url
+			select {
+			case <-ctx.Done():
+				return
+			case jobs <- url:
+			}
 		}
-		close(jobs)
+	}()
+
+	go func() {
 		wg.Wait()
 		close(results)
 	}()

@@ -1,10 +1,10 @@
 package app
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 )
@@ -64,20 +64,18 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, deps CheckDepsResult, 
 	result := downloadResult{}
 	lastTitle := ""
 
-	sc := bufio.NewScanner(pr)
-	sc.Buffer(make([]byte, 64<<10), 1<<20)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
+	if err := readCommandLines(pr, func(raw []byte) error {
+		line := strings.TrimSpace(string(raw))
 		if line == "" {
-			continue
+			return nil
 		}
 
 		if parseMovedOutputPath(line, &result) {
-			continue
+			return nil
 		}
 		if strings.HasPrefix(strings.ToLower(line), "error:") {
 			setDownloadErrorText(&result, strings.TrimSpace(line[6:]))
-			continue
+			return nil
 		}
 
 		switch {
@@ -91,7 +89,7 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, deps CheckDepsResult, 
 		case strings.HasPrefix(line, ytdlpLineProgress):
 			update, title, ok := parseProgressUpdate(line, slot, l)
 			if !ok {
-				continue
+				return nil
 			}
 			if title != "" && title != lastTitle {
 				lastTitle = title
@@ -105,22 +103,16 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, deps CheckDepsResult, 
 				ch <- DlUpdate{Type: EvProc, Slot: slot, Text: label}
 			}
 		}
+		return nil
+	}); err != nil {
+		cancel()
+		_ = waitCommand(cmd, runCtx)
+		setDownloadError(&result, fmt.Errorf("yt-dlp output: %w", err))
+		return result
 	}
 
-	if err := sc.Err(); err != nil {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		_ = waitCommand(cmd, runCtx)
-		setDownloadError(&result, err)
-		return result
-	}
 	if err := waitCommand(cmd, runCtx); err != nil {
 		setDownloadError(&result, err)
-		return result
-	}
-	if runCtx != nil && runCtx.Err() != nil {
-		setDownloadError(&result, runCtx.Err())
 		return result
 	}
 	return result

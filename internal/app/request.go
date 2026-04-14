@@ -15,14 +15,6 @@ const (
 	ModeThumbnail
 )
 
-type fragmentStrategy uint8
-
-const (
-	fragmentNone fragmentStrategy = iota
-	fragmentVideo
-	fragmentAudio
-)
-
 type OutputProfile struct {
 	Key            string
 	Label          string
@@ -221,32 +213,13 @@ func appendFragmentDownloadArgs(args []string, req DownloadRequest) []string {
 	if req.Fragment == nil {
 		return args
 	}
+
+	// yt-dlp can trim both audio and video natively, so fragments stay on the common download path.
 	if section, ok := req.Fragment.sectionArg(); ok {
 		args = append(args, "--download-sections", section)
-		if fragmentDownloadStrategy(req) == fragmentVideo {
+		if req.Profile.Mode != ModeAudio {
 			args = append(args, "--force-keyframes-at-cuts")
 		}
 	}
 	return args
-}
-
-func fragmentDownloadStrategy(req DownloadRequest) fragmentStrategy {
-	if req.Fragment == nil {
-		return fragmentNone
-	}
-	if req.Profile.Mode == ModeAudio {
-		return fragmentAudio
-	}
-	return fragmentVideo
-}
-
-func audioOutputExtension(profile OutputProfile) string {
-	switch strings.ToLower(strings.TrimSpace(profile.AudioFormat)) {
-	case "", "best":
-		return "mp3"
-	case "aac":
-		return "m4a"
-	default:
-		return strings.ToLower(strings.TrimSpace(profile.AudioFormat))
-	}
 }
