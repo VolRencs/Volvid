@@ -9,7 +9,7 @@
 ![Go](https://img.shields.io/badge/Go-1.26.2%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-6.2.3-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-6.3.0-orange?style=flat-square)
 
 </div>
 
@@ -30,6 +30,7 @@ The application starts with an update and dependency check, then guides the user
 - Best and economy video presets with yt-dlp quality scan
 - Audio presets for MP3 320k, MP3 192k, M4A/AAC Best, Opus Best, and FLAC
 - Optional fragment download for single video or audio jobs
+- Open-ended fragments with `start-` / `start+` and URL timestamp support
 - YouTube search from the main screen with `Ctrl+G`
 - Playlist browser with `Space`, `a`, and manual ranges via `/`
 - Managed dependency refresh inside the UI with `Ctrl+U`
@@ -129,7 +130,7 @@ On startup:
 | `cmd/downloader/` | TUI entrypoint |
 | `tui/` | Bubble Tea model, events, rendering, and widgets |
 | `internal/app/` | runtime helpers: downloads, search, deps, updates, locale, playlists, and HTTP client |
-| `scripts/` | build helpers |
+| `scripts/` | build and verification helpers |
 | `assets/` | icons and screenshots |
 
 ## Troubleshooting

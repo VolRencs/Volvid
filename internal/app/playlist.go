@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -90,13 +91,51 @@ func mapFloat(m map[string]any, key string) float64 {
 }
 
 func mediaEntryURL(entry map[string]any) string {
-	if url := mapString(entry, "url", mapString(entry, "webpage_url", "")); url != "" {
-		return url
+	for _, key := range []string{"webpage_url", "original_url", "url"} {
+		if value := normalizeMediaEntryURL(mapString(entry, key, "")); value != "" {
+			return value
+		}
 	}
-	if id := mapString(entry, "id", ""); id != "" {
-		return "https://youtu.be/" + id
+	if id := cleanMediaEntryID(mapString(entry, "id", "")); id != "" {
+		return "https://youtu.be/" + url.QueryEscape(id)
 	}
 	return ""
+}
+
+func normalizeMediaEntryURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	if target, err := ParseTarget(raw); err == nil {
+		if target.VideoID != "" {
+			return target.VideoURL()
+		}
+		return target.CanonicalURL
+	}
+	if id := cleanMediaEntryID(raw); id != "" {
+		return "https://youtu.be/" + url.QueryEscape(id)
+	}
+	return ""
+}
+
+func cleanMediaEntryID(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if len(raw) < 6 || len(raw) > 128 {
+		return ""
+	}
+	for _, r := range raw {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_':
+		default:
+			return ""
+		}
+	}
+	return raw
 }
 
 func playlistEntryFromMap(entry map[string]any, index int, titleFmt string) (PlaylistEntry, bool) {

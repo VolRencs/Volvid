@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -68,13 +70,33 @@ func CheckUpdateContext(ctx context.Context) *UpdateInfo {
 			continue
 		}
 		if mapString(asset, "name", "") == want {
+			dlURL := mapString(asset, "browser_download_url", "")
+			if !validUpdateDownloadURL(dlURL, want) {
+				continue
+			}
 			return &UpdateInfo{
 				Latest: latest,
-				DlURL:  mapString(asset, "browser_download_url", ""),
+				DlURL:  dlURL,
 			}
 		}
 	}
 	return nil
+}
+
+func validUpdateDownloadURL(raw, assetName string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u == nil {
+		return false
+	}
+	if u.User != nil || !strings.EqualFold(u.Scheme, "https") || !strings.EqualFold(u.Hostname(), "github.com") {
+		return false
+	}
+
+	cleanPath := path.Clean("/" + strings.TrimPrefix(u.EscapedPath(), "/"))
+	if path.Base(cleanPath) != assetName {
+		return false
+	}
+	return strings.HasPrefix(cleanPath, "/VolRencs/YouTubeDownloader/releases/download/")
 }
 
 func ApplyUpdate(info *UpdateInfo, ch chan<- FileProgress) error {

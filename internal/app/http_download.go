@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -88,12 +91,48 @@ func ensureDownloadDir(dest string) error {
 }
 
 func newDownloadRequest(ctx context.Context, url string) (*http.Request, error) {
+	if err := validateDownloadURL(url); err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("создание запроса %s: %w", url, err)
 	}
 	req.Header.Set("User-Agent", "VolRenDownloader/"+Version)
 	return req, nil
+}
+
+func validateDownloadURL(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("invalid download URL: %w", err)
+	}
+	if u.User != nil {
+		return fmt.Errorf("download URL must not contain credentials")
+	}
+	if strings.TrimSpace(u.Hostname()) == "" {
+		return fmt.Errorf("download URL host is empty")
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return nil
+	case "http":
+		if isLocalHTTPHost(u.Hostname()) {
+			return nil
+		}
+		return fmt.Errorf("insecure download URL scheme: %s", u.Scheme)
+	default:
+		return fmt.Errorf("unsupported download URL scheme: %s", u.Scheme)
+	}
+}
+
+func isLocalHTTPHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func validateDownloadResponse(resp *http.Response, url string) error {
@@ -107,28 +146,51 @@ func validateDownloadResponse(resp *http.Response, url string) error {
 }
 
 func createTempDownloadFile(dest string) (string, *os.File, error) {
-	tmp := dest + ".part"
-	_ = os.Remove(tmp)
-
-	file, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	dir := filepath.Dir(dest)
+	pattern := sanitizeTempPattern(filepath.Base(dest)) + ".*.part"
+	file, err := os.CreateTemp(dir, pattern)
 	if err != nil {
-		return "", nil, fmt.Errorf("создание файла %s: %w", tmp, err)
+		return "", nil, fmt.Errorf("создание временного файла для %s: %w", dest, err)
 	}
-	return tmp, file, nil
+	if err := file.Chmod(0o644); err != nil {
+		name := file.Name()
+		_ = file.Close()
+		_ = os.Remove(name)
+		return "", nil, fmt.Errorf("права временного файла %s: %w", name, err)
+	}
+	return file.Name(), file, nil
+}
+
+func sanitizeTempPattern(name string) string {
+	name = strings.TrimSpace(strings.ReplaceAll(name, "*", "_"))
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return "download"
+	}
+	return name
 }
 
 func copyDownloadBody(ctx context.Context, file *os.File, writer *dlWriter, body io.Reader, tmp string) error {
 	_, copyErr := io.CopyBuffer(writer, body, make([]byte, 256<<10))
-	closeErr := file.Close()
-
-	switch {
-	case copyErr != nil:
+	if copyErr != nil {
+		closeErr := file.Close()
 		writer.emit(true, copyErr)
 		_ = os.Remove(tmp)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if closeErr != nil {
+			return errors.Join(copyErr, closeErr)
+		}
 		return copyErr
+	}
+
+	syncErr := file.Sync()
+	closeErr := file.Close()
+	switch {
+	case syncErr != nil:
+		writer.emit(true, syncErr)
+		_ = os.Remove(tmp)
+		return syncErr
 	case closeErr != nil:
 		writer.emit(true, closeErr)
 		_ = os.Remove(tmp)
@@ -143,11 +205,28 @@ func replaceDownloadedFile(tmp, dest string) error {
 	if err := os.Rename(tmp, dest); err == nil {
 		return nil
 	}
-	if err := os.Remove(dest); err != nil && !errors.Is(err, os.ErrNotExist) {
+
+	backup := replacementBackupPath(dest)
+	hadDest := true
+	if err := os.Rename(dest, backup); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("подготовка замены файла %s: %w", dest, err)
+		}
+		hadDest = false
+	}
+
+	if err := os.Rename(tmp, dest); err != nil {
+		if hadDest {
+			_ = os.Rename(backup, dest)
+		}
 		return fmt.Errorf("замена файла %s: %w", dest, err)
 	}
-	if err := os.Rename(tmp, dest); err != nil {
-		return fmt.Errorf("замена файла %s: %w", dest, err)
+	if hadDest {
+		_ = os.Remove(backup)
 	}
 	return nil
+}
+
+func replacementBackupPath(dest string) string {
+	return fmt.Sprintf("%s.bak.%d", dest, time.Now().UnixNano())
 }

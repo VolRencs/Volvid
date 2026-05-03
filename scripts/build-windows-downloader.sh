@@ -8,6 +8,8 @@ SYSO_FILE="$PKG_DIR/zz_build_windows_icon.syso"
 
 OUTPUT_PATH="${1:-$ROOT_DIR/VolRenDownloader.exe}"
 
+source "$ROOT_DIR/scripts/go-env.sh"
+
 require_tool() {
 	local tool="$1"
 	if ! command -v "$tool" >/dev/null 2>&1; then

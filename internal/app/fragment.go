@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -59,6 +60,15 @@ func ParseFragmentRange(raw string) (DownloadFragment, error) {
 	if value == "" {
 		return DownloadFragment{}, ErrFragmentFormat
 	}
+
+	if strings.HasSuffix(value, "+") {
+		startAt, err := parseClockTimestamp(strings.TrimSpace(strings.TrimSuffix(value, "+")))
+		if err != nil {
+			return DownloadFragment{}, fmt.Errorf("%w: %v", ErrFragmentFormat, err)
+		}
+		return DownloadFragment{StartAt: startAt}, nil
+	}
+
 	if strings.Count(value, "-") != 1 {
 		return DownloadFragment{}, ErrFragmentFormat
 	}
@@ -67,6 +77,10 @@ func ParseFragmentRange(raw string) (DownloadFragment, error) {
 	startAt, err := parseClockTimestamp(strings.TrimSpace(startRaw))
 	if err != nil {
 		return DownloadFragment{}, fmt.Errorf("%w: %v", ErrFragmentFormat, err)
+	}
+	endRaw = strings.TrimSpace(endRaw)
+	if endRaw == "" {
+		return DownloadFragment{StartAt: startAt}, nil
 	}
 	endAt, err := parseClockTimestamp(strings.TrimSpace(endRaw))
 	if err != nil {
@@ -312,7 +326,10 @@ func parseDigits(value string) (int, bool) {
 		if r < '0' || r > '9' {
 			return 0, false
 		}
-		n = n*10 + int(r-'0')
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, false
 	}
 	return n, true
 }

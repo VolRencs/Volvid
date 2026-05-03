@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"time"
@@ -69,9 +70,20 @@ func downloadHTTPClientConfig() HTTPClientConfig {
 func newHTTPClient(cfg HTTPClientConfig) *http.Client {
 	cfg = normalizeHTTPClientConfig(cfg)
 	return &http.Client{
-		Timeout:   cfg.Timeout,
-		Transport: buildHTTPTransport(cfg),
+		Timeout:       cfg.Timeout,
+		Transport:     buildHTTPTransport(cfg),
+		CheckRedirect: safeRedirectPolicy,
 	}
+}
+
+func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if req == nil || req.URL == nil {
+		return errors.New("redirect URL is empty")
+	}
+	return validateDownloadURL(req.URL.String())
 }
 
 func normalizeHTTPClientConfig(cfg HTTPClientConfig) HTTPClientConfig {

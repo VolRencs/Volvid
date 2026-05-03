@@ -38,6 +38,12 @@ type DownloadRequest struct {
 	Locale        Locale
 }
 
+const (
+	ytdlpDownloadRetries     = "10"
+	ytdlpFragmentRetries     = "10"
+	ytdlpConcurrentFragments = "4"
+)
+
 func DefaultDownloadMode() DownloadMode {
 	return ModeVideo
 }
@@ -179,11 +185,27 @@ func buildDownloadCommandArgs(req DownloadRequest, deps CheckDepsResult, sourceU
 		return nil, err
 	}
 	args = append(args, modeArgs...)
+	args = append(args, downloadReliabilityArgs(req)...)
 	args = append(args, "-o", outputTemplate, "--windows-filenames")
 	args = appendFragmentDownloadArgs(args, req)
 	args = append(args, extra...)
 	args = append(args, sourceURL)
 	return args, nil
+}
+
+func downloadReliabilityArgs(req DownloadRequest) []string {
+	args := []string{
+		"--continue",
+		"--part",
+		"--retries", ytdlpDownloadRetries,
+		"--fragment-retries", ytdlpFragmentRetries,
+		"--retry-sleep", "linear=1:5:2",
+		"--abort-on-unavailable-fragments",
+	}
+	if req.Profile.Mode != ModeThumbnail {
+		args = append(args, "--concurrent-fragments", ytdlpConcurrentFragments)
+	}
+	return args
 }
 
 func downloadModeArgs(profile OutputProfile, format string) ([]string, error) {

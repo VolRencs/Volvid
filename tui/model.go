@@ -940,7 +940,7 @@ func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if u.Slot < len(m.slots) {
+	if u.Slot >= 0 && u.Slot < len(m.slots) {
 		s := &m.slots[u.Slot]
 		switch u.Type {
 		case app.EvStart:

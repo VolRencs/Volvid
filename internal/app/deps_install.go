@@ -3,10 +3,13 @@ package app
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -32,20 +35,36 @@ func InstallDependencyFor(key string, l Locale, ch chan<- FileProgress) error {
 }
 
 func extractZipEntry(zf *zip.File, dest string) error {
+	if zf == nil {
+		return errors.New("zip entry is nil")
+	}
+	mode := zf.FileInfo().Mode()
+	if zf.FileInfo().IsDir() || mode&os.ModeSymlink != 0 {
+		return fmt.Errorf("unsupported zip entry type: %s", zf.Name)
+	}
 	rc, err := zf.Open()
 	if err != nil {
 		return err
 	}
 	defer rc.Close()
 
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
 	out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 
-	_, err = io.Copy(out, rc)
-	return err
+	if _, err := io.Copy(out, rc); err != nil {
+		_ = out.Close()
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
@@ -76,11 +95,7 @@ func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
 			return err
 		}
 	} else {
-		extractDir := filepath.Join(tmp, "extract")
-		if err := extractArchiveWithTar(archive, extractDir); err != nil {
-			return err
-		}
-		if err := copyExtractedBinaries(extractDir, map[string]string{
+		if err := extractArchiveBinariesWithTar(archive, map[string]string{
 			binaryBaseName(FFmpegBin):  FFmpegBin,
 			binaryBaseName(FFprobeBin): FFprobeBin,
 		}); err != nil {
@@ -95,7 +110,7 @@ func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
 }
 
 func InstallNodeFor(l Locale, ch chan<- FileProgress) error {
-	url, filename, err := nodeDownloadAsset()
+	url, filename, checksum, err := nodeDownloadAsset()
 	if err != nil {
 		return err
 	}
@@ -113,6 +128,11 @@ func InstallNodeFor(l Locale, ch chan<- FileProgress) error {
 	if err := DownloadFile(url, archive, l, ch); err != nil {
 		return err
 	}
+	if checksum != "" {
+		if err := verifyFileSHA256(archive, checksum); err != nil {
+			return err
+		}
+	}
 
 	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
 		if err := extractZipBinaries(archive, map[string]string{
@@ -121,11 +141,7 @@ func InstallNodeFor(l Locale, ch chan<- FileProgress) error {
 			return err
 		}
 	} else {
-		extractDir := filepath.Join(tmp, "extract")
-		if err := extractArchiveWithTar(archive, extractDir); err != nil {
-			return err
-		}
-		if err := copyExtractedBinaries(extractDir, map[string]string{
+		if err := extractArchiveBinariesWithTar(archive, map[string]string{
 			binaryBaseName(NodeBin): NodeBin,
 		}); err != nil {
 			return err
@@ -150,24 +166,28 @@ func ffmpegArchiveAsset() (string, string, error) {
 	return url, filepath.Base(url), nil
 }
 
-func nodeDownloadAsset() (string, string, error) {
-	filename, err := nodeAssetFilename()
+func nodeDownloadAsset() (string, string, string, error) {
+	filename, checksum, err := nodeAssetFilename()
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return nodeLatestURL + filename, filename, nil
+	return nodeLatestURL + filename, filename, checksum, nil
 }
 
-func nodeAssetFilename() (string, error) {
+func nodeAssetFilename() (string, string, error) {
 	manifest, err := downloadText(nodeLatestURL + "SHASUMS256.txt")
 	if err != nil {
-		return "", fmt.Errorf("node manifest: %w", err)
+		return "", "", fmt.Errorf("node manifest: %w", err)
 	}
 
 	suffix, err := nodeAssetSuffix()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
+	return nodeAssetFromManifest(manifest, suffix)
+}
+
+func nodeAssetFromManifest(manifest, suffix string) (string, string, error) {
 	for _, line := range strings.Split(strings.ReplaceAll(manifest, "\r\n", "\n"), "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) < 2 {
@@ -175,11 +195,15 @@ func nodeAssetFilename() (string, error) {
 		}
 		name := fields[len(fields)-1]
 		if strings.HasSuffix(name, suffix) {
-			return name, nil
+			checksum, err := normalizeSHA256(fields[0])
+			if err != nil {
+				return "", "", fmt.Errorf("node checksum for %s: %w", name, err)
+			}
+			return name, checksum, nil
 		}
 	}
 
-	return "", fmt.Errorf("node asset with suffix %s not found", suffix)
+	return "", "", fmt.Errorf("node asset with suffix %s not found", suffix)
 }
 
 func nodeAssetSuffix() (string, error) {
@@ -219,6 +243,40 @@ func downloadText(url string) (string, error) {
 	return string(data), nil
 }
 
+func normalizeSHA256(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if len(value) != sha256.Size*2 {
+		return "", fmt.Errorf("expected %d hex chars", sha256.Size*2)
+	}
+	if _, err := hex.DecodeString(value); err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+func verifyFileSHA256(path, expected string) error {
+	expected, err := normalizeSHA256(expected)
+	if err != nil {
+		return err
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, file); err != nil {
+		return err
+	}
+	actual := hex.EncodeToString(h.Sum(nil))
+	if !strings.EqualFold(actual, expected) {
+		return fmt.Errorf("sha256 mismatch for %s", filepath.Base(path))
+	}
+	return nil
+}
+
 func extractZipBinaries(archive string, targets map[string]string) error {
 	zr, err := zip.OpenReader(archive)
 	if err != nil {
@@ -247,11 +305,116 @@ func extractZipBinaries(archive string, targets map[string]string) error {
 	return nil
 }
 
-func extractArchiveWithTar(archive, destDir string) error {
+func extractArchiveBinariesWithTar(archive string, targets map[string]string) error {
+	entries, err := listTarArchive(archive)
+	if err != nil {
+		return err
+	}
+	selected, err := selectTarBinaryEntries(entries, targets)
+	if err != nil {
+		return err
+	}
+
+	destDir, err := os.MkdirTemp(filepath.Dir(archive), "extract-*")
+	if err != nil {
+		return fmt.Errorf("временная директория распаковки: %w", err)
+	}
+	defer os.RemoveAll(destDir)
+
+	if err := extractTarEntriesWithTar(archive, destDir, selected); err != nil {
+		return err
+	}
+	return copyExtractedBinaries(destDir, targets)
+}
+
+func listTarArchive(archive string) ([]string, error) {
+	output, err := commandCombinedOutput(context.Background(), 2*time.Minute, "tar", "-tf", archive)
+	if err == nil {
+		return parseTarListOutput(string(output))
+	}
+	if line := firstNonEmptyLine(string(output)); line != "" {
+		return nil, errors.New(line)
+	}
+	return nil, err
+}
+
+func parseTarListOutput(output string) ([]string, error) {
+	lines := strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n")
+	entries := make([]string, 0, len(lines))
+	for _, line := range lines {
+		entry, err := validateArchiveMemberPath(line)
+		if err != nil {
+			return nil, err
+		}
+		if entry != "" {
+			entries = append(entries, entry)
+		}
+	}
+	if len(entries) == 0 {
+		return nil, errors.New("archive is empty")
+	}
+	return entries, nil
+}
+
+func selectTarBinaryEntries(entries []string, targets map[string]string) ([]string, error) {
+	selected := make(map[string]string, len(targets))
+	for _, entry := range entries {
+		name := path.Base(entry)
+		if _, ok := targets[name]; !ok {
+			continue
+		}
+		if current := selected[name]; current == "" || betterArchiveBinaryEntry(entry, current) {
+			selected[name] = entry
+		}
+	}
+
+	out := make([]string, 0, len(targets))
+	for name := range targets {
+		entry := selected[name]
+		if entry == "" {
+			return nil, fmt.Errorf("%s не найден в архиве", name)
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+func betterArchiveBinaryEntry(candidate, current string) bool {
+	candidateBin := strings.Contains("/"+candidate, "/bin/")
+	currentBin := strings.Contains("/"+current, "/bin/")
+	switch {
+	case candidateBin != currentBin:
+		return candidateBin
+	default:
+		return len(candidate) < len(current)
+	}
+}
+
+func validateArchiveMemberPath(raw string) (string, error) {
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if raw == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(raw, "/") {
+		return "", fmt.Errorf("unsafe absolute archive path: %s", raw)
+	}
+	clean := path.Clean(raw)
+	if clean == "." {
+		return "", nil
+	}
+	if clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", fmt.Errorf("unsafe archive path: %s", raw)
+	}
+	return clean, nil
+}
+
+func extractTarEntriesWithTar(archive, destDir string, entries []string) error {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return err
 	}
-	output, err := commandCombinedOutput(context.Background(), 2*time.Minute, "tar", "-xf", archive, "-C", destDir)
+	args := []string{"-xf", archive, "-C", destDir, "--no-same-owner", "--no-same-permissions", "--"}
+	args = append(args, entries...)
+	output, err := commandCombinedOutput(context.Background(), 2*time.Minute, "tar", args...)
 	if err == nil {
 		return nil
 	}
@@ -296,6 +459,17 @@ func copyExtractedBinaries(root string, targets map[string]string) error {
 }
 
 func copyExtractedFile(src, dest string) error {
+	info, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing symlink from archive: %s", src)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("refusing non-regular file from archive: %s", src)
+	}
+
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
@@ -310,12 +484,16 @@ func copyExtractedFile(src, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 
 	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
 		return err
 	}
-	return nil
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 func binaryBaseName(path string) string {
