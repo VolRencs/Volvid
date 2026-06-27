@@ -27,9 +27,12 @@ type DependencyInfo struct {
 }
 
 type BrowserCookiesInfo struct {
-	Status  string
-	Browser string
-	Profile string
+	Status       string
+	Browser      string
+	Profile      string
+	ProfileName  string
+	CookiePath   string
+	YTDLPProfile string
 }
 
 type JSRuntimeInfo struct {

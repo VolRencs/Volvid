@@ -1,5 +1,7 @@
 package app
 
+import "strings"
+
 func DefaultProfileForMode(mode DownloadMode, l Locale) OutputProfile {
 	switch mode {
 	case ModeAudio:
@@ -11,6 +13,49 @@ func DefaultProfileForMode(mode DownloadMode, l Locale) OutputProfile {
 		return ThumbnailOutputProfile(l)
 	}
 	return DefaultVideoProfile(l)
+}
+
+func VideoOutputProfiles(base OutputProfile, l Locale) []OutputProfile {
+	u := StringsFor(l)
+	base = normalizeVideoBaseProfile(base, l)
+
+	return []OutputProfile{
+		withVideoOutput(base, "video_original", u.VideoOriginal, "mp4", "", "", "", "", false),
+		withVideoOutput(base, "video_h264", u.VideoH264, "mp4", "libx264", "20", "aac", "192k", false),
+		withVideoOutput(base, "video_h265", u.VideoH265, "mp4", "libx265", "24", "aac", "192k", false),
+		withVideoOutput(base, "video_vp9", u.VideoVP9, "webm", "libvpx-vp9", "31", "libopus", "160k", false),
+		withVideoOutput(base, "video_av1", u.VideoAV1, "mkv", "libsvtav1", "35", "libopus", "160k", false),
+		withVideoOutput(base, "video_mkv_copy", u.VideoMKVCopy, "mkv", "", "", "", "", true),
+	}
+}
+
+func normalizeVideoBaseProfile(base OutputProfile, l Locale) OutputProfile {
+	if base.Mode != ModeVideo {
+		base = DefaultVideoProfile(l)
+	}
+	if strings.TrimSpace(base.Label) == "" {
+		base.Label = StringsFor(l).QBest
+	}
+	if len(base.VideoFmtChain) == 0 {
+		base.VideoFmtChain = QualityChainAt(0)
+	}
+	return base
+}
+
+func withVideoOutput(
+	base OutputProfile,
+	key, label, container, videoCodec, crf, audioCodec, audioBitrate string,
+	remuxOnly bool,
+) OutputProfile {
+	base.Key = strings.TrimSpace(base.Key + "_" + key)
+	base.Label = strings.TrimSpace(base.Label + " · " + label)
+	base.VideoContainer = container
+	base.VideoCodec = videoCodec
+	base.VideoCRF = crf
+	base.AudioCodec = audioCodec
+	base.AudioBitrate = audioBitrate
+	base.RemuxOnly = remuxOnly
+	return base
 }
 
 func AudioOutputProfiles(l Locale) []OutputProfile {

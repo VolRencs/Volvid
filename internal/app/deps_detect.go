@@ -226,17 +226,43 @@ func currentGOOS() string {
 func detectBrowserCookies(home, goos string) BrowserCookiesInfo {
 	candidates, foundRoots := collectCookieCandidates(cookieBrowserSpecs(home, goos))
 	if len(candidates) > 0 {
-		best := newestCookieCandidate(candidates)
-		return BrowserCookiesInfo{
-			Status:  cookiesStatusActive,
-			Browser: best.Browser,
-			Profile: best.Profile,
-		}
+		return browserCookiesInfoFromCandidate(newestCookieCandidate(candidates), goos)
 	}
 	if foundRoots {
 		return BrowserCookiesInfo{Status: cookiesStatusNoProfile}
 	}
 	return BrowserCookiesInfo{Status: cookiesStatusBrowserNotFound}
+}
+
+func browserCookiesInfoFromCandidate(candidate cookieCandidate, goos string) BrowserCookiesInfo {
+	profile := strings.TrimSpace(candidate.Profile)
+	return BrowserCookiesInfo{
+		Status:       cookiesStatusActive,
+		Browser:      strings.TrimSpace(candidate.Browser),
+		Profile:      profile,
+		ProfileName:  cookieProfileName(profile),
+		CookiePath:   strings.TrimSpace(candidate.CookiePath),
+		YTDLPProfile: ytdlpCookieProfileArg(candidate, goos),
+	}
+}
+
+func cookieProfileName(profile string) string {
+	profile = strings.TrimSpace(profile)
+	if profile == "" {
+		return ""
+	}
+	return filepath.Base(profile)
+}
+
+func ytdlpCookieProfileArg(candidate cookieCandidate, goos string) string {
+	profile := strings.TrimSpace(candidate.Profile)
+	if profile == "" {
+		return ""
+	}
+	if goos == "windows" {
+		return filepath.Base(profile)
+	}
+	return profile
 }
 
 func detectJSRuntime(node DependencyInfo) JSRuntimeInfo {
@@ -476,8 +502,10 @@ func linuxCookieBrowserSpecs(home string) []cookieBrowserSpec {
 			Roots: uniquePaths([]string{
 				filepath.Join(configHome, "mozilla", "firefox"),
 				filepath.Join(home, ".mozilla", "firefox"),
+				filepath.Join(home, ".librewolf"),
 				filepath.Join(home, ".var", "app", "org.mozilla.firefox", "config", "mozilla", "firefox"),
 				filepath.Join(home, ".var", "app", "org.mozilla.firefox", ".mozilla", "firefox"),
+				filepath.Join(home, ".var", "app", "io.gitlab.librewolf-community", ".librewolf"),
 				filepath.Join(home, "snap", "firefox", "common", ".mozilla", "firefox"),
 			}),
 		},
@@ -489,6 +517,8 @@ func linuxCookieBrowserSpecs(home string) []cookieBrowserSpec {
 				chromeUserDataDir,
 				filepath.Join(chromeConfigHome, "google-chrome"),
 				filepath.Join(configHome, "google-chrome"),
+				filepath.Join(configHome, "google-chrome-beta"),
+				filepath.Join(configHome, "google-chrome-unstable"),
 				filepath.Join(home, ".var", "app", "com.google.Chrome", "config", "google-chrome"),
 			}),
 		},
@@ -501,13 +531,18 @@ func linuxCookieBrowserSpecs(home string) []cookieBrowserSpec {
 				filepath.Join(chromeConfigHome, "chromium"),
 				filepath.Join(configHome, "chromium"),
 				filepath.Join(home, ".var", "app", "org.chromium.Chromium", "config", "chromium"),
+				filepath.Join(home, "snap", "chromium", "common", "chromium"),
 			}),
 		},
 		{
 			Browser:          "edge",
 			Family:           cookieFamilyChromium,
 			SupportsProfiles: true,
-			Roots:            []string{filepath.Join(configHome, "microsoft-edge")},
+			Roots: uniquePaths([]string{
+				filepath.Join(configHome, "microsoft-edge"),
+				filepath.Join(configHome, "microsoft-edge-beta"),
+				filepath.Join(configHome, "microsoft-edge-dev"),
+			}),
 		},
 		{
 			Browser:          "brave",
@@ -516,6 +551,7 @@ func linuxCookieBrowserSpecs(home string) []cookieBrowserSpec {
 			Roots: uniquePaths([]string{
 				filepath.Join(configHome, "BraveSoftware", "Brave-Browser"),
 				filepath.Join(home, ".var", "app", "com.brave.Browser", "config", "BraveSoftware", "Brave-Browser"),
+				filepath.Join(home, "snap", "brave", "current", ".config", "BraveSoftware", "Brave-Browser"),
 			}),
 		},
 		{
@@ -528,7 +564,11 @@ func linuxCookieBrowserSpecs(home string) []cookieBrowserSpec {
 			Browser:          "opera",
 			Family:           cookieFamilyChromium,
 			SupportsProfiles: false,
-			Roots:            []string{filepath.Join(configHome, "opera")},
+			Roots: uniquePaths([]string{
+				filepath.Join(configHome, "opera"),
+				filepath.Join(configHome, "opera-developer"),
+				filepath.Join(configHome, "opera-beta"),
+			}),
 		},
 	}
 }
@@ -543,47 +583,68 @@ func windowsCookieBrowserSpecs() []cookieBrowserSpec {
 			Family:           cookieFamilyFirefox,
 			SupportsProfiles: true,
 			Roots: uniquePaths([]string{
-				filepath.Join(appData, "Mozilla", "Firefox", "Profiles"),
-				filepath.Join(localAppData, "Packages", "Mozilla.Firefox_*", "LocalCache", "Roaming", "Mozilla", "Firefox", "Profiles"),
+				pathUnder(appData, "Mozilla", "Firefox", "Profiles"),
+				pathUnder(localAppData, "Packages", "Mozilla.Firefox_*", "LocalCache", "Roaming", "Mozilla", "Firefox", "Profiles"),
 			}),
 		},
 		{
 			Browser:          "chrome",
 			Family:           cookieFamilyChromium,
 			SupportsProfiles: true,
-			Roots:            []string{filepath.Join(localAppData, "Google", "Chrome", "User Data")},
+			Roots: uniquePaths([]string{
+				pathUnder(localAppData, "Google", "Chrome", "User Data"),
+				pathUnder(localAppData, "Google", "Chrome Beta", "User Data"),
+				pathUnder(localAppData, "Google", "Chrome SxS", "User Data"),
+			}),
 		},
 		{
 			Browser:          "chromium",
 			Family:           cookieFamilyChromium,
 			SupportsProfiles: true,
-			Roots:            []string{filepath.Join(localAppData, "Chromium", "User Data")},
+			Roots:            []string{pathUnder(localAppData, "Chromium", "User Data")},
 		},
 		{
 			Browser:          "edge",
 			Family:           cookieFamilyChromium,
 			SupportsProfiles: true,
-			Roots:            []string{filepath.Join(localAppData, "Microsoft", "Edge", "User Data")},
+			Roots: uniquePaths([]string{
+				pathUnder(localAppData, "Microsoft", "Edge", "User Data"),
+				pathUnder(localAppData, "Microsoft", "Edge Beta", "User Data"),
+				pathUnder(localAppData, "Microsoft", "Edge Dev", "User Data"),
+			}),
 		},
 		{
 			Browser:          "brave",
 			Family:           cookieFamilyChromium,
 			SupportsProfiles: true,
-			Roots:            []string{filepath.Join(localAppData, "BraveSoftware", "Brave-Browser", "User Data")},
+			Roots:            []string{pathUnder(localAppData, "BraveSoftware", "Brave-Browser", "User Data")},
 		},
 		{
 			Browser:          "vivaldi",
 			Family:           cookieFamilyChromium,
 			SupportsProfiles: true,
-			Roots:            []string{filepath.Join(localAppData, "Vivaldi", "User Data")},
+			Roots:            []string{pathUnder(localAppData, "Vivaldi", "User Data")},
 		},
 		{
 			Browser:          "opera",
 			Family:           cookieFamilyChromium,
 			SupportsProfiles: false,
-			Roots:            []string{filepath.Join(appData, "Opera Software", "Opera Stable")},
+			Roots: uniquePaths([]string{
+				pathUnder(appData, "Opera Software", "Opera Stable"),
+				pathUnder(appData, "Opera Software", "Opera GX Stable"),
+				pathUnder(appData, "Opera Software", "Opera Developer"),
+			}),
 		},
 	}
+}
+
+func pathUnder(base string, elem ...string) string {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return ""
+	}
+	parts := append([]string{base}, elem...)
+	return filepath.Join(parts...)
 }
 
 func configHomeDir(home string) string {
@@ -649,10 +710,12 @@ func ytdlpCommandArgsFor(deps CheckDepsResult, base []string) []string {
 	args := make([]string, 0, len(base)+6)
 	if deps.Cookies.Status == cookiesStatusActive {
 		cookieArg := strings.TrimSpace(deps.Cookies.Browser)
-		if profile := cookiesProfileArg(deps.Cookies); profile != "" {
+		if profile := strings.TrimSpace(deps.Cookies.YTDLPProfile); profile != "" {
 			cookieArg += ":" + profile
 		}
-		args = append(args, "--cookies-from-browser", cookieArg)
+		if cookieArg != "" {
+			args = append(args, "--cookies-from-browser", cookieArg)
+		}
 	}
 	if deps.Runtime.Status == jsRuntimeStatusActive && strings.TrimSpace(deps.Runtime.Path) != "" {
 		args = append(args, "--js-runtimes", "node:"+deps.Runtime.Path)
@@ -662,20 +725,6 @@ func ytdlpCommandArgsFor(deps CheckDepsResult, base []string) []string {
 	}
 	args = append(args, base...)
 	return args
-}
-
-func cookiesProfileArg(info BrowserCookiesInfo) string {
-	if currentGOOS() == "linux" && strings.EqualFold(strings.TrimSpace(info.Browser), "firefox") {
-		return ""
-	}
-	profile := strings.TrimSpace(info.Profile)
-	if profile == "" {
-		return ""
-	}
-	if currentGOOS() == "windows" {
-		return filepath.Base(profile)
-	}
-	return profile
 }
 
 func runtimeUserAgent(deps CheckDepsResult) string {
@@ -864,20 +913,34 @@ func InstallYtDlpFor(l Locale, ch chan<- FileProgress) error {
 	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
 	}
-	url, err := YtdlpURL()
+
+	url, _, checksum, err := ytdlpDownloadAsset()
 	if err != nil {
 		return err
 	}
-	if err := DownloadFile(url, YtdlpBin, l, ch); err != nil {
+	staging, err := os.MkdirTemp(DepsDir, ".ytdlp-*")
+	if err != nil {
+		return fmt.Errorf("временная директория установки: %w", err)
+	}
+	defer os.RemoveAll(staging)
+
+	stagedYtdlp := filepath.Join(staging, binaryBaseName(YtdlpBin))
+	if err := DownloadFile(url, stagedYtdlp, l, ch); err != nil {
+		return err
+	}
+	if err := verifyFileSHA256(stagedYtdlp, checksum); err != nil {
 		return err
 	}
 	if !IsWindows {
-		if err := os.Chmod(YtdlpBin, 0o755); err != nil {
+		if err := os.Chmod(stagedYtdlp, 0o755); err != nil {
 			return fmt.Errorf("chmod yt-dlp: %w", err)
 		}
 	}
-	if detectExecutableDependency("ytdlp", "yt-dlp", true, true, nil, YtdlpBin, []string{"--version"}, firstNonEmptyLine, true).Version == "" {
+	if detectExecutableDependency("ytdlp", "yt-dlp", true, true, nil, stagedYtdlp, []string{"--version"}, firstNonEmptyLine, true).Version == "" {
 		return fmt.Errorf("бинарник yt-dlp скачан, но не запускается")
+	}
+	if err := replaceInstalledBinaries(map[string]string{stagedYtdlp: YtdlpBin}); err != nil {
+		return err
 	}
 	return nil
 }

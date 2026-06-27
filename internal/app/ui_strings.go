@@ -34,12 +34,13 @@ type UIStrings struct {
 	PlEmptyPlaylist, PlTimeout                                      string
 	VideoTitleFmt                                                   string
 
-	ParallelFmt, QualityTitle, AudioTitle, WorkersQueuedFmt string
+	ParallelFmt, QualityTitle, VideoOutputTitle, AudioTitle, WorkersQueuedFmt string
 
 	ModeTitle, ModeVideo, ModeAudio, ModeThumbnail                                 string
 	AudioMP3320, AudioMP3192, AudioM4ABest, AudioOpusBest, AudioFLAC, OutThumbnail string
+	VideoOriginal, VideoH264, VideoH265, VideoVP9, VideoAV1, VideoMKVCopy           string
 
-	Downloading, PlaylistBarFmt, QueueFmt, Waiting, ErrSlot, MergeProc, MP3Proc, ThumbProc string
+	Downloading, PlaylistBarFmt, QueueFmt, Waiting, ErrSlot, MergeProc, VideoConvertProc, MP3Proc, ThumbProc string
 
 	SummaryOK, SummaryPartial, SummaryFail, SummaryPlaylistTitle, SummaryLocation, SessionHist, SuccessFmt string
 
@@ -114,14 +115,16 @@ var strEN = UIStrings{
 	PlEmptyPlaylist: "playlist empty or unavailable", PlTimeout: "yt-dlp: timed out",
 	VideoTitleFmt: "Video %d",
 
-	ParallelFmt: "Parallel downloads", QualityTitle: "Choose quality", AudioTitle: "Choose audio", WorkersQueuedFmt: "%d items queued",
+	ParallelFmt: "Parallel downloads", QualityTitle: "Choose quality", VideoOutputTitle: "Choose video format", AudioTitle: "Choose audio", WorkersQueuedFmt: "%d items queued",
 
 	ModeTitle: "Choose mode", ModeVideo: "Video", ModeAudio: "Audio", ModeThumbnail: "Thumbnail",
 	AudioMP3320: "Audio · MP3 320k", AudioMP3192: "Audio · MP3 192k", AudioM4ABest: "Audio · M4A/AAC Best",
 	AudioOpusBest: "Audio · Opus Best", AudioFLAC: "Audio · FLAC Lossless", OutThumbnail: "Thumbnail",
+	VideoOriginal: "Original MP4", VideoH264: "MP4 · H.264/AAC", VideoH265: "MP4 · H.265/AAC",
+	VideoVP9: "WebM · VP9/Opus", VideoAV1: "MKV · AV1/Opus", VideoMKVCopy: "MKV · copy streams",
 
 	Downloading: "Downloading", PlaylistBarFmt: "Playlist · %d items", QueueFmt: "%d queued",
-	Waiting: "Waiting for work", ErrSlot: "Download failed", MergeProc: "Merging video and audio", MP3Proc: "Converting audio",
+	Waiting: "Waiting for work", ErrSlot: "Download failed", MergeProc: "Merging video and audio", VideoConvertProc: "Converting video", MP3Proc: "Converting audio",
 	ThumbProc: "Downloading thumbnail",
 
 	SummaryOK: "Download complete", SummaryPartial: "Completed with issues", SummaryFail: "Download failed",
@@ -214,14 +217,16 @@ var strRU = UIStrings{
 	PlEmptyPlaylist: "плейлист пуст или недоступен", PlTimeout: "yt-dlp: превышено время ожидания",
 	VideoTitleFmt: "Видео %d",
 
-	ParallelFmt: "Параллельная загрузка", QualityTitle: "Выбери качество", AudioTitle: "Выбери аудио", WorkersQueuedFmt: "%d видео в очереди",
+	ParallelFmt: "Параллельная загрузка", QualityTitle: "Выбери качество", VideoOutputTitle: "Выбери формат видео", AudioTitle: "Выбери аудио", WorkersQueuedFmt: "%d видео в очереди",
 
 	ModeTitle: "Выбери режим", ModeVideo: "Видео", ModeAudio: "Аудио", ModeThumbnail: "Превью",
 	AudioMP3320: "Аудио · MP3 320k", AudioMP3192: "Аудио · MP3 192k", AudioM4ABest: "Аудио · M4A/AAC Лучшее",
 	AudioOpusBest: "Аудио · Opus Лучшее", AudioFLAC: "Аудио · FLAC Lossless", OutThumbnail: "Превью",
+	VideoOriginal: "Оригинал MP4", VideoH264: "MP4 · H.264/AAC", VideoH265: "MP4 · H.265/AAC",
+	VideoVP9: "WebM · VP9/Opus", VideoAV1: "MKV · AV1/Opus", VideoMKVCopy: "MKV · копия потоков",
 
 	Downloading: "Загрузка", PlaylistBarFmt: "Плейлист · %d видео", QueueFmt: "%d в очереди",
-	Waiting: "Ожидание очереди", ErrSlot: "Загрузка не удалась", MergeProc: "Объединение видео и аудио", MP3Proc: "Конвертация аудио",
+	Waiting: "Ожидание очереди", ErrSlot: "Загрузка не удалась", MergeProc: "Объединение видео и аудио", VideoConvertProc: "Конвертация видео", MP3Proc: "Конвертация аудио",
 	ThumbProc: "Загрузка превью",
 
 	SummaryOK: "Загрузка завершена", SummaryPartial: "Завершено с ошибками", SummaryFail: "Загрузка не удалась",

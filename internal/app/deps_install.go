@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -87,24 +88,42 @@ func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
 		return err
 	}
 
+	staging, err := os.MkdirTemp(DepsDir, ".ffmpeg-*")
+	if err != nil {
+		return fmt.Errorf("временная директория установки: %w", err)
+	}
+	defer os.RemoveAll(staging)
+
+	ffmpegName := binaryBaseName(FFmpegBin)
+	ffprobeName := binaryBaseName(FFprobeBin)
+	stagedFFmpeg := filepath.Join(staging, ffmpegName)
+	stagedFFprobe := filepath.Join(staging, ffprobeName)
+	targets := map[string]string{
+		ffmpegName:  stagedFFmpeg,
+		ffprobeName: stagedFFprobe,
+	}
+
 	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
-		if err := extractZipBinaries(archive, map[string]string{
-			binaryBaseName(FFmpegBin):  FFmpegBin,
-			binaryBaseName(FFprobeBin): FFprobeBin,
-		}); err != nil {
+		if err := extractZipBinaries(archive, targets); err != nil {
 			return err
 		}
 	} else {
-		if err := extractArchiveBinariesWithTar(archive, map[string]string{
-			binaryBaseName(FFmpegBin):  FFmpegBin,
-			binaryBaseName(FFprobeBin): FFprobeBin,
-		}); err != nil {
+		if err := extractArchiveBinariesWithTar(archive, targets); err != nil {
 			return err
 		}
 	}
 
-	if detectExecutableDependency("ffmpeg", "ffmpeg", false, true, nil, FFmpegBin, []string{"-version"}, ffmpegVersionFromLine, true).Version == "" {
+	if detectExecutableDependency("ffmpeg", "ffmpeg", false, true, nil, stagedFFmpeg, []string{"-version"}, ffmpegVersionFromLine, true).Version == "" {
 		return fmt.Errorf("бинарник ffmpeg скачан, но не запускается")
+	}
+	if commandVersionLine(stagedFFprobe, "-version") == "" {
+		return fmt.Errorf("бинарник ffprobe скачан, но не запускается")
+	}
+	if err := replaceInstalledBinaries(map[string]string{
+		stagedFFmpeg:  FFmpegBin,
+		stagedFFprobe: FFprobeBin,
+	}); err != nil {
+		return err
 	}
 	return nil
 }
@@ -134,22 +153,33 @@ func InstallNodeFor(l Locale, ch chan<- FileProgress) error {
 		}
 	}
 
+	staging, err := os.MkdirTemp(DepsDir, ".node-*")
+	if err != nil {
+		return fmt.Errorf("временная директория установки: %w", err)
+	}
+	defer os.RemoveAll(staging)
+
+	nodeName := binaryBaseName(NodeBin)
+	stagedNode := filepath.Join(staging, nodeName)
 	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
 		if err := extractZipBinaries(archive, map[string]string{
-			binaryBaseName(NodeBin): NodeBin,
+			nodeName: stagedNode,
 		}); err != nil {
 			return err
 		}
 	} else {
 		if err := extractArchiveBinariesWithTar(archive, map[string]string{
-			binaryBaseName(NodeBin): NodeBin,
+			nodeName: stagedNode,
 		}); err != nil {
 			return err
 		}
 	}
 
-	if detectExecutableDependency("node", "node", false, true, nil, NodeBin, []string{"--version"}, firstNonEmptyLine, true).Version == "" {
+	if detectExecutableDependency("node", "node", false, true, nil, stagedNode, []string{"--version"}, firstNonEmptyLine, true).Version == "" {
 		return fmt.Errorf("бинарник node скачан, но не запускается")
+	}
+	if err := replaceInstalledBinaries(map[string]string{stagedNode: NodeBin}); err != nil {
+		return err
 	}
 	return nil
 }
@@ -172,6 +202,34 @@ func nodeDownloadAsset() (string, string, string, error) {
 		return "", "", "", err
 	}
 	return nodeLatestURL + filename, filename, checksum, nil
+}
+
+func ytdlpDownloadAsset() (string, string, string, error) {
+	platform, err := currentPlatform()
+	if err != nil {
+		return "", "", "", err
+	}
+	asset := strings.TrimSpace(platform.YTDLPAsset)
+	if asset == "" {
+		return "", "", "", fmt.Errorf("yt-dlp asset name is empty")
+	}
+	checksum, err := ytdlpAssetChecksum(asset)
+	if err != nil {
+		return "", "", "", err
+	}
+	return ytdlpBase + asset, asset, checksum, nil
+}
+
+func ytdlpAssetChecksum(asset string) (string, error) {
+	manifest, err := downloadText(ytdlpBase + "SHA2-256SUMS")
+	if err != nil {
+		return "", fmt.Errorf("yt-dlp checksum manifest: %w", err)
+	}
+	checksum, err := checksumFromManifest(manifest, asset)
+	if err != nil {
+		return "", fmt.Errorf("yt-dlp checksum for %s: %w", asset, err)
+	}
+	return checksum, nil
 }
 
 func nodeAssetFilename() (string, string, error) {
@@ -204,6 +262,22 @@ func nodeAssetFromManifest(manifest, suffix string) (string, string, error) {
 	}
 
 	return "", "", fmt.Errorf("node asset with suffix %s not found", suffix)
+}
+
+func checksumFromManifest(manifest, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	for _, line := range strings.Split(strings.ReplaceAll(manifest, "\r\n", "\n"), "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 2 || fields[len(fields)-1] != name {
+			continue
+		}
+		checksum, err := normalizeSHA256(fields[0])
+		if err != nil {
+			return "", err
+		}
+		return checksum, nil
+	}
+	return "", fmt.Errorf("asset %s not found", name)
 }
 
 func nodeAssetSuffix() (string, error) {
@@ -332,6 +406,9 @@ func listTarArchive(archive string) ([]string, error) {
 	if err == nil {
 		return parseTarListOutput(string(output))
 	}
+	if errors.Is(err, exec.ErrNotFound) {
+		return nil, errors.New("tar is required to extract this archive")
+	}
 	if line := firstNonEmptyLine(string(output)); line != "" {
 		return nil, errors.New(line)
 	}
@@ -418,6 +495,9 @@ func extractTarEntriesWithTar(archive, destDir string, entries []string) error {
 	if err == nil {
 		return nil
 	}
+	if errors.Is(err, exec.ErrNotFound) {
+		return errors.New("tar is required to extract this archive")
+	}
 	if line := firstNonEmptyLine(string(output)); line != "" {
 		return errors.New(line)
 	}
@@ -494,6 +574,15 @@ func copyExtractedFile(src, dest string) error {
 		return err
 	}
 	return out.Close()
+}
+
+func replaceInstalledBinaries(paths map[string]string) error {
+	for src, dest := range paths {
+		if err := replaceDownloadedFile(src, dest); err != nil {
+			return fmt.Errorf("установка %s: %w", filepath.Base(dest), err)
+		}
+	}
+	return nil
 }
 
 func binaryBaseName(path string) string {

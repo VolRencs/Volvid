@@ -83,4 +83,4 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 
 "$RSRC_TOOL" -ico "$ICON_FILE" -arch amd64 -o "$SYSO_FILE"
 
-GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$OUTPUT_PATH" ./cmd/downloader
+GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$OUTPUT_PATH" "$ROOT_DIR/cmd/downloader"

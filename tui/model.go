@@ -33,6 +33,7 @@ const (
 	scrAudio
 	scrQualityFetch
 	scrQuality
+	scrVideoOutput
 	scrWorkers
 	scrDownload
 	scrSummary
@@ -168,6 +169,7 @@ type Model struct {
 	mode           app.DownloadMode
 	profile        app.OutputProfile
 	qualityChoices []app.QualityChoice
+	videoProfiles  []app.OutputProfile
 	audioProfiles  []app.OutputProfile
 	flowErr        string
 	url            string
@@ -316,6 +318,10 @@ func (m Model) audioOptions() []string {
 	return app.OutputProfileLabels(m.audioProfiles)
 }
 
+func (m Model) videoOutputOptions() []string {
+	return app.OutputProfileLabels(m.videoProfiles)
+}
+
 func (m Model) modeOptions() []string {
 	u := m.u()
 	return []string{u.ModeVideo, u.ModeAudio, u.ModeThumbnail}
@@ -363,7 +369,7 @@ func (m Model) startPickDownloadsDir() (tea.Model, tea.Cmd) {
 
 func (m Model) restoreActiveScreen() (tea.Model, tea.Cmd) {
 	switch m.screen {
-	case scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrSearchResults, scrFragmentChoice, scrPlaylistAsk:
+	case scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrVideoOutput, scrSearchResults, scrFragmentChoice, scrPlaylistAsk:
 		m = m.syncMenu()
 		return m, nil
 	case scrURL:
@@ -421,6 +427,8 @@ func (m Model) menuItems() []string {
 		return []string{u.MenuAgainY, u.MenuAgainN}
 	case scrQuality:
 		return m.qualityOptions()
+	case scrVideoOutput:
+		return m.videoOutputOptions()
 	case scrWorkers:
 		return m.workerMenuOptions(min(len(m.dlEntries), 5))
 	default:
@@ -606,6 +614,7 @@ func (m *Model) resetProfileState() {
 	m.flowErr = ""
 	m.dlEntries = nil
 	m.qualityChoices = nil
+	m.videoProfiles = nil
 	m.audioProfiles = nil
 }
 
@@ -1034,6 +1043,7 @@ func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) 
 	m.profile = app.DefaultVideoProfile(m.locale)
 	m.flowErr = notice
 	m.qualityChoices = nil
+	m.videoProfiles = nil
 	m.audioProfiles = nil
 	m.screen = scrMode
 	m = m.syncMenu()
@@ -1042,6 +1052,7 @@ func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) 
 
 func (m Model) startQualityScan() (tea.Model, tea.Cmd) {
 	m.qualityChoices = nil
+	m.videoProfiles = nil
 	m.profile = app.OutputProfile{}
 	m.flowErr = ""
 	m.screen = scrQualityFetch

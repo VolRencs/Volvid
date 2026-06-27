@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"math"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -191,6 +190,8 @@ func (m Model) screenView() screenView {
 		return m.choiceScreen(u.AudioTitle, "", m.flowErr)
 	case scrQuality:
 		return m.choiceScreen(u.QualityTitle, "", m.flowErr)
+	case scrVideoOutput:
+		return m.choiceScreen(u.VideoOutputTitle, m.profile.Label, m.flowErr)
 	case scrWorkers:
 		return m.choiceScreen(u.ParallelFmt, fmt.Sprintf(u.WorkersQueuedFmt, len(m.dlEntries)), "")
 
@@ -711,16 +712,14 @@ func (m Model) depText(kind string) string {
 }
 
 func (m Model) cookiesAccessDetail() string {
-	if strings.TrimSpace(m.deps.Cookies.Browser) == "" {
+	browser := strings.TrimSpace(m.deps.Cookies.Browser)
+	if browser == "" {
 		return ""
 	}
-	if strings.EqualFold(strings.TrimSpace(m.deps.Cookies.Browser), "firefox") {
-		return m.deps.Cookies.Browser
+	if profile := strings.TrimSpace(m.deps.Cookies.ProfileName); profile != "" {
+		return browser + ":" + profile
 	}
-	if profile := strings.TrimSpace(m.deps.Cookies.Profile); profile != "" {
-		return m.deps.Cookies.Browser + ":" + filepath.Base(profile)
-	}
-	return m.deps.Cookies.Browser
+	return browser
 }
 
 func (m Model) runtimeAccessDetail() string {

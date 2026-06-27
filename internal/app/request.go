@@ -21,6 +21,12 @@ type OutputProfile struct {
 	Mode           DownloadMode
 	VideoFmtChain  []string
 	VideoFmtLabels []string
+	VideoContainer string
+	VideoCodec     string
+	VideoCRF       string
+	AudioCodec     string
+	AudioBitrate   string
+	RemuxOnly      bool
 	AudioFormat    string
 	AudioQuality   string
 }
@@ -162,11 +168,13 @@ func downloadRequestAllowsFragment(req DownloadRequest) bool {
 }
 
 func downloadRequestRequiresFFmpeg(req DownloadRequest) bool {
-	return req.Profile.Mode == ModeAudio || req.Fragment != nil
+	return req.Profile.Mode == ModeAudio || req.Fragment != nil || req.Profile.RequiresVideoPostprocessing()
 }
 
 func downloadRequestFFmpegError(req DownloadRequest) error {
 	switch {
+	case req.Profile.RequiresVideoPostprocessing():
+		return errors.New("ffmpeg is required for video transcoding")
 	case req.Fragment != nil:
 		return errors.New("ffmpeg is required for fragment downloads")
 	case req.Profile.Mode == ModeAudio:
@@ -225,10 +233,60 @@ func downloadModeArgs(profile OutputProfile, format string) ([]string, error) {
 		if format == "" {
 			format = "bestvideo+bestaudio/best"
 		}
-		return []string{"-f", format, "--merge-output-format", "mp4"}, nil
+		return videoModeArgs(profile, format), nil
 	default:
 		return nil, fmt.Errorf("unsupported download mode %d", profile.Mode)
 	}
+}
+
+func videoModeArgs(profile OutputProfile, format string) []string {
+	container := strings.TrimSpace(profile.VideoContainer)
+	if container == "" {
+		container = "mp4"
+	}
+
+	args := []string{"-f", format, "--merge-output-format", container}
+	if !profile.RequiresVideoPostprocessing() {
+		return args
+	}
+
+	args = append(args, "--recode-video", container)
+	ppArgs := videoPostprocessorArgs(profile)
+	if ppArgs != "" {
+		args = append(args, "--postprocessor-args", "VideoConvertor:"+ppArgs)
+		if profile.RemuxOnly {
+			args = append(args, "--postprocessor-args", "VideoRemuxer:"+ppArgs)
+		}
+	}
+	return args
+}
+
+func videoPostprocessorArgs(profile OutputProfile) string {
+	args := make([]string, 0, 10)
+	if codec := strings.TrimSpace(profile.VideoCodec); codec != "" {
+		args = append(args, "-c:v", codec)
+	}
+	if crf := strings.TrimSpace(profile.VideoCRF); crf != "" {
+		args = append(args, "-crf", crf)
+	}
+	if codec := strings.TrimSpace(profile.AudioCodec); codec != "" {
+		args = append(args, "-c:a", codec)
+	}
+	if bitrate := strings.TrimSpace(profile.AudioBitrate); bitrate != "" {
+		args = append(args, "-b:a", bitrate)
+	}
+	return strings.Join(args, " ")
+}
+
+func (p OutputProfile) RequiresVideoPostprocessing() bool {
+	if p.Mode != ModeVideo {
+		return false
+	}
+	return strings.TrimSpace(p.VideoCodec) != "" ||
+		strings.TrimSpace(p.AudioCodec) != "" ||
+		strings.TrimSpace(p.VideoCRF) != "" ||
+		strings.TrimSpace(p.AudioBitrate) != "" ||
+		p.RemuxOnly
 }
 
 func appendFragmentDownloadArgs(args []string, req DownloadRequest) []string {
