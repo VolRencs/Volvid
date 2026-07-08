@@ -77,19 +77,33 @@ func transcodeDownloadedVideo(
 		ch <- DlUpdate{Type: EvProc, Slot: slot, Text: StringsFor(l).VideoConvertProc}
 	}
 
-	args := ffmpegVideoTranscodeArgs(outputPath, tmp, profile)
-	out, err := commandCombinedOutput(ctx, 0, ffmpeg, args...)
-	if err != nil {
-		text := strings.TrimSpace(string(out))
-		if text == "" {
-			text = commandErrorText(err)
+	commands := ffmpegVideoTranscodeCommands(ctx, ffmpeg, outputPath, tmp, profile)
+	var lastErr error
+	var lastOut []byte
+	for i, command := range commands {
+		if i > 0 {
+			_ = os.Remove(tmp)
 		}
-		return fmt.Errorf("video transcoding failed: %s", text)
+		out, err := commandCombinedOutput(ctx, 0, ffmpeg, command.Args...)
+		if err == nil {
+			if err := replaceFile(outputPath, tmp); err != nil {
+				return fmt.Errorf("video transcoding failed: %w", err)
+			}
+			return nil
+		}
+
+		lastErr = err
+		lastOut = out
+		if ctx != nil && ctx.Err() != nil {
+			break
+		}
 	}
-	if err := replaceFile(outputPath, tmp); err != nil {
-		return fmt.Errorf("video transcoding failed: %w", err)
+
+	text := strings.TrimSpace(string(lastOut))
+	if text == "" {
+		text = commandErrorText(lastErr)
 	}
-	return nil
+	return fmt.Errorf("video transcoding failed: %s", text)
 }
 
 func transcodeTempPath(outputPath, container string) (string, error) {
@@ -114,7 +128,35 @@ func transcodeTempPath(outputPath, container string) (string, error) {
 	return name, nil
 }
 
-func ffmpegVideoTranscodeArgs(inputPath, outputPath string, profile OutputProfile) []string {
+type videoTranscodeCommand struct {
+	Label string
+	Args  []string
+}
+
+type hardwareVideoEncoder struct {
+	Name   string
+	Codec  string
+	Family string
+}
+
+func ffmpegVideoTranscodeCommands(ctx context.Context, ffmpeg, inputPath, outputPath string, profile OutputProfile) []videoTranscodeCommand {
+	commands := make([]videoTranscodeCommand, 0, 4)
+	for _, encoder := range hardwareVideoEncodersFor(ctx, ffmpeg, profile.VideoCodec) {
+		hwProfile := profile
+		hwProfile.VideoCodec = encoder.Codec
+		commands = append(commands, videoTranscodeCommand{
+			Label: encoder.Name,
+			Args:  ffmpegVideoTranscodeArgs(inputPath, outputPath, hwProfile, encoder.Family),
+		})
+	}
+	commands = append(commands, videoTranscodeCommand{
+		Label: "cpu",
+		Args:  ffmpegVideoTranscodeArgs(inputPath, outputPath, profile, ""),
+	})
+	return commands
+}
+
+func ffmpegVideoTranscodeArgs(inputPath, outputPath string, profile OutputProfile, hardwareFamily string) []string {
 	args := []string{
 		"-y",
 		"-hide_banner",
@@ -132,7 +174,9 @@ func ffmpegVideoTranscodeArgs(inputPath, outputPath string, profile OutputProfil
 	}
 	args = append(args, "-c:v", videoCodec)
 	if videoCodec != "copy" {
-		if crf := strings.TrimSpace(profile.VideoCRF); crf != "" {
+		if hardwareFamily != "" {
+			args = append(args, hardwareVideoQualityArgs(hardwareFamily, profile.VideoCRF)...)
+		} else if crf := strings.TrimSpace(profile.VideoCRF); crf != "" {
 			args = append(args, "-crf", crf)
 		}
 	}
@@ -152,6 +196,119 @@ func ffmpegVideoTranscodeArgs(inputPath, outputPath string, profile OutputProfil
 		args = append(args, "-movflags", "+faststart")
 	}
 	return append(args, outputPath)
+}
+
+func hardwareVideoQualityArgs(family, crf string) []string {
+	crf = strings.TrimSpace(crf)
+	if crf == "" {
+		crf = "23"
+	}
+
+	switch family {
+	case "nvenc":
+		return []string{"-preset", "p5", "-rc", "vbr", "-cq", crf}
+	case "qsv":
+		return []string{"-global_quality", crf}
+	default:
+		return nil
+	}
+}
+
+func hardwareVideoEncodersFor(ctx context.Context, ffmpeg, videoCodec string) []hardwareVideoEncoder {
+	codec := normalizedVideoCodec(videoCodec)
+	if codec == "" {
+		return nil
+	}
+
+	encoders := detectFFmpegVideoEncoders(ctx, ffmpeg)
+	candidates := hardwareEncoderCandidates(codec)
+	out := make([]hardwareVideoEncoder, 0, len(candidates))
+	for _, candidate := range candidates {
+		if encoders[candidate.Codec] {
+			out = append(out, candidate)
+		}
+	}
+	return out
+}
+
+func normalizedVideoCodec(codec string) string {
+	switch strings.ToLower(strings.TrimSpace(codec)) {
+	case "libx264", "h264", "avc":
+		return "h264"
+	case "libx265", "h265", "hevc":
+		return "hevc"
+	case "libsvtav1", "libaom-av1", "av1":
+		return "av1"
+	default:
+		return ""
+	}
+}
+
+func hardwareEncoderCandidates(codec string) []hardwareVideoEncoder {
+	switch codec {
+	case "h264":
+		return []hardwareVideoEncoder{
+			{Name: "NVIDIA NVENC H.264", Codec: "h264_nvenc", Family: "nvenc"},
+			{Name: "Intel Quick Sync H.264", Codec: "h264_qsv", Family: "qsv"},
+			{Name: "AMD AMF H.264", Codec: "h264_amf", Family: "amf"},
+		}
+	case "hevc":
+		return []hardwareVideoEncoder{
+			{Name: "NVIDIA NVENC H.265", Codec: "hevc_nvenc", Family: "nvenc"},
+			{Name: "Intel Quick Sync H.265", Codec: "hevc_qsv", Family: "qsv"},
+			{Name: "AMD AMF H.265", Codec: "hevc_amf", Family: "amf"},
+		}
+	case "av1":
+		return []hardwareVideoEncoder{
+			{Name: "NVIDIA NVENC AV1", Codec: "av1_nvenc", Family: "nvenc"},
+			{Name: "Intel Quick Sync AV1", Codec: "av1_qsv", Family: "qsv"},
+			{Name: "AMD AMF AV1", Codec: "av1_amf", Family: "amf"},
+		}
+	default:
+		return nil
+	}
+}
+
+var (
+	ffmpegEncodersMu    sync.Mutex
+	ffmpegEncodersCache = map[string]map[string]bool{}
+)
+
+func detectFFmpegVideoEncoders(ctx context.Context, ffmpeg string) map[string]bool {
+	ffmpeg = strings.TrimSpace(ffmpeg)
+	if ffmpeg == "" {
+		return nil
+	}
+
+	ffmpegEncodersMu.Lock()
+	if encoders, ok := ffmpegEncodersCache[ffmpeg]; ok {
+		ffmpegEncodersMu.Unlock()
+		return encoders
+	}
+	ffmpegEncodersMu.Unlock()
+
+	out, err := commandOutput(ctx, 3*time.Second, ffmpeg, "-hide_banner", "-encoders")
+	encoders := parseFFmpegVideoEncoders(string(out))
+	if err != nil {
+		encoders = map[string]bool{}
+	}
+
+	ffmpegEncodersMu.Lock()
+	ffmpegEncodersCache[ffmpeg] = encoders
+	ffmpegEncodersMu.Unlock()
+	return encoders
+}
+
+func parseFFmpegVideoEncoders(output string) map[string]bool {
+	encoders := map[string]bool{}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || !strings.Contains(fields[0], "V") {
+			continue
+		}
+		encoders[fields[1]] = true
+	}
+	return encoders
 }
 
 func replaceFile(dst, src string) error {

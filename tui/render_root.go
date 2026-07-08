@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"math"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -38,8 +37,6 @@ type screenView struct {
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
-var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func (m Model) View() tea.View {
 	content := m.buildScreen(m.renderCard(m.screenView()))
@@ -980,13 +977,13 @@ func versionBadgeValue(value string) string {
 func noticeTag(u *app.UIStrings, kind noticeKind) string {
 	switch kind {
 	case noticeInfo:
-		return sNoticeTag.Copy().Foreground(cInfo).Render(u.NoticeInfo)
+		return sNoticeTag.Foreground(cInfo).Render(u.NoticeInfo)
 	case noticeSuccess:
-		return sNoticeTag.Copy().Foreground(cSuccess).Render(u.NoticeSuccess)
+		return sNoticeTag.Foreground(cSuccess).Render(u.NoticeSuccess)
 	case noticeWarn:
-		return sNoticeTag.Copy().Foreground(cWarn).Render(u.NoticeWarn)
+		return sNoticeTag.Foreground(cWarn).Render(u.NoticeWarn)
 	case noticeError:
-		return sNoticeTag.Copy().Foreground(cError).Render(u.NoticeError)
+		return sNoticeTag.Foreground(cError).Render(u.NoticeError)
 	default:
 		return ""
 	}
@@ -1021,7 +1018,7 @@ func (m Model) sectionBodyWidth() int {
 
 func (m Model) cardStyle() lipgloss.Style {
 	py, px := m.cardPadding()
-	return sCard.Copy().Padding(py, px)
+	return sCard.Padding(py, px)
 }
 
 func sep(width int) string {

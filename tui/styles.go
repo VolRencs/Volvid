@@ -14,28 +14,25 @@ const (
 )
 
 var (
-	cPrimary      = lipgloss.Color("#67A8FF")
-	cPrimarySoft  = lipgloss.Color("#9CCEFF")
-	cPrimaryMuted = lipgloss.Color("#2C5EAA")
-	cInfo         = lipgloss.Color("#7FB9FF")
-	cSuccess      = lipgloss.Color("#86D6C6")
-	cWarn         = lipgloss.Color("#F1C878")
-	cError        = lipgloss.Color("#F0A0A0")
-	cGray         = lipgloss.Color("#A7B8D2")
-	cDim          = lipgloss.Color("#7284A1")
-	cWhite        = lipgloss.Color("#F4F8FF")
-	cBorder       = lipgloss.Color("#30496E")
-	cBorderSoft   = lipgloss.Color("#223551")
-	cPanel        = lipgloss.Color("#101A2B")
+	cPrimary     = lipgloss.Color("#67A8FF")
+	cPrimarySoft = lipgloss.Color("#9CCEFF")
+	cInfo        = lipgloss.Color("#7FB9FF")
+	cSuccess     = lipgloss.Color("#86D6C6")
+	cWarn        = lipgloss.Color("#F1C878")
+	cError       = lipgloss.Color("#F0A0A0")
+	cGray        = lipgloss.Color("#A7B8D2")
+	cDim         = lipgloss.Color("#7284A1")
+	cWhite       = lipgloss.Color("#F4F8FF")
+	cBorder      = lipgloss.Color("#30496E")
+	cBorderSoft  = lipgloss.Color("#223551")
+	cPanel       = lipgloss.Color("#101A2B")
 
 	sTitle   = lipgloss.NewStyle().Bold(true).Foreground(cPrimarySoft)
 	sOk      = lipgloss.NewStyle().Bold(true).Foreground(cSuccess)
 	sErr     = lipgloss.NewStyle().Bold(true).Foreground(cError)
 	sWarn    = lipgloss.NewStyle().Bold(true).Foreground(cWarn)
-	sGray    = lipgloss.NewStyle().Foreground(cGray)
 	sBold    = lipgloss.NewStyle().Bold(true).Foreground(cWhite)
 	sDim     = lipgloss.NewStyle().Foreground(cDim)
-	sNormal  = sBold.Bold(false)
 	sCursor  = lipgloss.NewStyle().Bold(true).Foreground(cPanel).Background(cPrimarySoft)
 	sLabel   = lipgloss.NewStyle().Foreground(cGray)
 	sValue   = lipgloss.NewStyle().Foreground(cWhite)
@@ -66,9 +63,9 @@ var (
 	sTableLabel   = lipgloss.NewStyle().Foreground(cGray)
 	sTableMeta    = lipgloss.NewStyle().Foreground(cDim)
 	sMenuLead     = lipgloss.NewStyle()
-	sMenuLeadAct  = sMenuLead.Copy().Bold(true).Foreground(cPrimarySoft)
+	sMenuLeadAct  = sMenuLead.Bold(true).Foreground(cPrimarySoft)
 	sMenuIndex    = lipgloss.NewStyle().Width(3).Align(lipgloss.Right).Foreground(cDim)
-	sMenuIndexAct = sMenuIndex.Copy().Foreground(cPrimarySoft)
+	sMenuIndexAct = sMenuIndex.Foreground(cPrimarySoft)
 	sMenuText     = lipgloss.NewStyle().Foreground(cGray)
 	sMenuTextAct  = lipgloss.NewStyle().Bold(true).Foreground(cWhite)
 
@@ -78,9 +75,9 @@ var (
 			PaddingLeft(1).
 			PaddingRight(1)
 
-	sNoticeSuccess = sNoticeInfo.Copy().BorderForeground(cSuccess)
-	sNoticeWarn    = sNoticeInfo.Copy().BorderForeground(cWarn)
-	sNoticeErr     = sNoticeInfo.Copy().BorderForeground(cError)
+	sNoticeSuccess = sNoticeInfo.BorderForeground(cSuccess)
+	sNoticeWarn    = sNoticeInfo.BorderForeground(cWarn)
+	sNoticeErr     = sNoticeInfo.BorderForeground(cError)
 	sNoticeTag     = lipgloss.NewStyle().Bold(true).Padding(0, 1).MarginRight(1)
 
 	sInputBox = lipgloss.NewStyle().
@@ -88,13 +85,13 @@ var (
 			BorderForeground(cBorderSoft).
 			Padding(0, 1)
 
-	sInputBoxFocus = sInputBox.Copy().
+	sInputBoxFocus = sInputBox.
 			BorderForeground(cPrimary)
 
 	sMenuRow = lipgloss.NewStyle().
 			Padding(0, 1)
 
-	sMenuActive = sMenuRow.Copy().
+	sMenuActive = sMenuRow.
 			Foreground(cWhite)
 
 	sPlTitle   = lipgloss.NewStyle().Inline(true)

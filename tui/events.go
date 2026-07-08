@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"time"
 
 	app "YouTubeBuild/internal/app"
@@ -623,7 +624,7 @@ func refreshDepsCmd(token int) tea.Cmd {
 
 func fetchPlaylistCmd(url string, l app.Locale) tea.Cmd {
 	return func() tea.Msg {
-		info, err := app.FetchPlaylistInfoFor(nil, url, l)
+		info, err := app.FetchPlaylistInfoFor(context.Background(), url, l)
 		return msgPlaylistFetched{info: info, err: err}
 	}
 }
