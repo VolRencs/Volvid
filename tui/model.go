@@ -1086,7 +1086,7 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	case !deps.YTDLP.Available:
 		m.depReturnScreen = m.screen
 		return m.openDependencyScreenWithError(depModeManage, m.depRequirementText(deps.YTDLP.Name))
-	case (m.currentProfile().Mode == app.ModeAudio || m.fragment != nil) && !deps.FFmpeg.Available:
+	case (m.currentProfile().Mode == app.ModeAudio || m.fragment != nil || m.currentProfile().RequiresVideoPostprocessing()) && !deps.FFmpeg.Available:
 		m.depReturnScreen = m.screen
 		return m.openDependencyScreenWithError(depModeManage, m.depRequirementText(deps.FFmpeg.Name))
 	}

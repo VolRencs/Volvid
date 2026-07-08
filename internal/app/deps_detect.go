@@ -282,6 +282,8 @@ func cookieBrowserSpecs(home, goos string) []cookieBrowserSpec {
 		return linuxCookieBrowserSpecs(home)
 	case "windows":
 		return windowsCookieBrowserSpecs()
+	case "darwin":
+		return darwinCookieBrowserSpecs(home)
 	default:
 		return nil
 	}
@@ -549,9 +551,13 @@ func linuxCookieBrowserSpecs(home string) []cookieBrowserSpec {
 			Family:           cookieFamilyChromium,
 			SupportsProfiles: true,
 			Roots: uniquePaths([]string{
+				filepath.Join(configHome, "BraveSoftware"),
 				filepath.Join(configHome, "BraveSoftware", "Brave-Browser"),
+				filepath.Join(configHome, "BraveSoftware", "Brave-Origin"),
 				filepath.Join(home, ".var", "app", "com.brave.Browser", "config", "BraveSoftware", "Brave-Browser"),
+				filepath.Join(home, ".var", "app", "com.brave.Browser", "config", "BraveSoftware", "Brave-Origin"),
 				filepath.Join(home, "snap", "brave", "current", ".config", "BraveSoftware", "Brave-Browser"),
+				filepath.Join(home, "snap", "brave", "current", ".config", "BraveSoftware", "Brave-Origin"),
 			}),
 		},
 		{
@@ -634,6 +640,70 @@ func windowsCookieBrowserSpecs() []cookieBrowserSpec {
 				pathUnder(appData, "Opera Software", "Opera GX Stable"),
 				pathUnder(appData, "Opera Software", "Opera Developer"),
 			}),
+		},
+	}
+}
+
+func darwinCookieBrowserSpecs(home string) []cookieBrowserSpec {
+	return []cookieBrowserSpec{
+		{
+			Browser:          "firefox",
+			Family:           cookieFamilyFirefox,
+			SupportsProfiles: true,
+			Roots: []string{
+				filepath.Join(home, "Library", "Application Support", "Firefox", "Profiles"),
+			},
+		},
+		{
+			Browser:          "chrome",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots: []string{
+				filepath.Join(home, "Library", "Application Support", "Google", "Chrome"),
+			},
+		},
+		{
+			Browser:          "chromium",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots: []string{
+				filepath.Join(home, "Library", "Application Support", "Chromium"),
+			},
+		},
+		{
+			Browser:          "edge",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots: []string{
+				filepath.Join(home, "Library", "Application Support", "Microsoft Edge"),
+				filepath.Join(home, "Library", "Application Support", "Microsoft Edge Beta"),
+				filepath.Join(home, "Library", "Application Support", "Microsoft Edge Dev"),
+			},
+		},
+		{
+			Browser:          "brave",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots: []string{
+				filepath.Join(home, "Library", "Application Support", "BraveSoftware", "Brave-Browser"),
+			},
+		},
+		{
+			Browser:          "vivaldi",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: true,
+			Roots: []string{
+				filepath.Join(home, "Library", "Application Support", "Vivaldi"),
+			},
+		},
+		{
+			Browser:          "opera",
+			Family:           cookieFamilyChromium,
+			SupportsProfiles: false,
+			Roots: []string{
+				filepath.Join(home, "Library", "Application Support", "com.operasoftware.Opera"),
+				filepath.Join(home, "Library", "Application Support", "com.operasoftware.OperaGX"),
+			},
 		},
 	}
 }

@@ -252,7 +252,7 @@ func isPickFolderKey(msg tea.KeyPressMsg) bool {
 
 func (m Model) isMenuScreen() bool {
 	switch m.screen {
-	case scrUpdateReady, scrPlaylistAsk, scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrSearchResults, scrFragmentChoice, scrDepUpdate:
+	case scrUpdateReady, scrPlaylistAsk, scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrVideoOutput, scrSearchResults, scrFragmentChoice, scrDepUpdate:
 		return true
 	}
 	return false
@@ -516,6 +516,17 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.profile = m.qualityChoices[idx].Profile(m.locale)
+		m.videoProfiles = app.VideoOutputProfiles(m.profile, m.locale)
+		m.flowErr = ""
+		m.screen = scrVideoOutput
+		m = m.syncMenu()
+		return m, nil
+
+	case scrVideoOutput:
+		if idx < 0 || idx >= len(m.videoProfiles) {
+			return m, nil
+		}
+		m.profile = m.videoProfiles[idx]
 		m.flowErr = ""
 		return m.continueAfterProfileSelection()
 

@@ -250,12 +250,18 @@ func videoModeArgs(profile OutputProfile, format string) []string {
 		return args
 	}
 
-	args = append(args, "--recode-video", container)
+	if profile.RemuxOnly {
+		args = append(args, "--remux-video", container)
+	} else {
+		args = append(args, "--recode-video", container)
+	}
+
 	ppArgs := videoPostprocessorArgs(profile)
 	if ppArgs != "" {
-		args = append(args, "--postprocessor-args", "VideoConvertor:"+ppArgs)
 		if profile.RemuxOnly {
 			args = append(args, "--postprocessor-args", "VideoRemuxer:"+ppArgs)
+		} else {
+			args = append(args, "--postprocessor-args", "VideoConvertor:"+ppArgs)
 		}
 	}
 	return args
