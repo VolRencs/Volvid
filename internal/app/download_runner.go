@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -35,11 +36,144 @@ func runDownloadRequest(ctx context.Context, slot int, req DownloadRequest, url,
 		}
 		result = streamYtdlp(ctx, slot, req.Locale, deps, args, ch)
 		if result.Err == nil {
+			if err := transcodeDownloadedVideo(ctx, slot, req.Profile, req.Locale, deps, result.OutputPath, ch); err != nil {
+				return failedDownload(err)
+			}
 			return result
 		}
 	}
 
 	return result
+}
+
+func transcodeDownloadedVideo(
+	ctx context.Context,
+	slot int,
+	profile OutputProfile,
+	l Locale,
+	deps CheckDepsResult,
+	outputPath string,
+	ch chan<- DlUpdate,
+) error {
+	if !profile.NeedsVideoTranscode() {
+		return nil
+	}
+
+	ffmpeg := strings.TrimSpace(deps.FFmpeg.Path)
+	if ffmpeg == "" {
+		ffmpeg = FFmpegBin
+	}
+	if strings.TrimSpace(outputPath) == "" {
+		return errors.New("video transcoding failed: downloaded file path is unknown")
+	}
+
+	tmp, err := transcodeTempPath(outputPath, profile.VideoContainer)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp)
+
+	if ch != nil {
+		ch <- DlUpdate{Type: EvProc, Slot: slot, Text: StringsFor(l).VideoConvertProc}
+	}
+
+	args := ffmpegVideoTranscodeArgs(outputPath, tmp, profile)
+	out, err := commandCombinedOutput(ctx, 0, ffmpeg, args...)
+	if err != nil {
+		text := strings.TrimSpace(string(out))
+		if text == "" {
+			text = commandErrorText(err)
+		}
+		return fmt.Errorf("video transcoding failed: %s", text)
+	}
+	if err := replaceFile(outputPath, tmp); err != nil {
+		return fmt.Errorf("video transcoding failed: %w", err)
+	}
+	return nil
+}
+
+func transcodeTempPath(outputPath, container string) (string, error) {
+	dir := filepath.Dir(outputPath)
+	base := filepath.Base(outputPath)
+	ext := strings.TrimSpace(container)
+	if ext == "" {
+		ext = strings.TrimPrefix(filepath.Ext(base), ".")
+	}
+	if ext == "" {
+		ext = "mp4"
+	}
+	tmp, err := os.CreateTemp(dir, "."+base+".transcode-*."+ext)
+	if err != nil {
+		return "", err
+	}
+	name := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", err
+	}
+	return name, nil
+}
+
+func ffmpegVideoTranscodeArgs(inputPath, outputPath string, profile OutputProfile) []string {
+	args := []string{
+		"-y",
+		"-hide_banner",
+		"-loglevel", "error",
+		"-i", inputPath,
+		"-map", "0:v:0",
+		"-map", "0:a?",
+		"-dn",
+		"-sn",
+	}
+
+	videoCodec := strings.TrimSpace(profile.VideoCodec)
+	if videoCodec == "" {
+		videoCodec = "copy"
+	}
+	args = append(args, "-c:v", videoCodec)
+	if videoCodec != "copy" {
+		if crf := strings.TrimSpace(profile.VideoCRF); crf != "" {
+			args = append(args, "-crf", crf)
+		}
+	}
+
+	audioCodec := strings.TrimSpace(profile.AudioCodec)
+	if audioCodec == "" {
+		audioCodec = "copy"
+	}
+	args = append(args, "-c:a", audioCodec)
+	if audioCodec != "copy" {
+		if bitrate := strings.TrimSpace(profile.AudioBitrate); bitrate != "" {
+			args = append(args, "-b:a", bitrate)
+		}
+	}
+
+	if strings.EqualFold(strings.TrimSpace(profile.VideoContainer), "mp4") {
+		args = append(args, "-movflags", "+faststart")
+	}
+	return append(args, outputPath)
+}
+
+func replaceFile(dst, src string) error {
+	backupFile, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".backup-*")
+	if err != nil {
+		return err
+	}
+	backup := backupFile.Name()
+	if err := backupFile.Close(); err != nil {
+		_ = os.Remove(backup)
+		return err
+	}
+	_ = os.Remove(backup)
+
+	if err := os.Rename(dst, backup); err != nil {
+		return err
+	}
+	if err := os.Rename(src, dst); err != nil {
+		_ = os.Rename(backup, dst)
+		return err
+	}
+	return os.Remove(backup)
 }
 
 func downloadFormats(req DownloadRequest) ([]string, []string) {

@@ -141,25 +141,6 @@ func downloadRequestEntries(req DownloadRequest) []PlaylistEntry {
 	return append([]PlaylistEntry(nil), req.Entries...)
 }
 
-func downloadRequestSourceURLs(req DownloadRequest) []string {
-	if entries := downloadRequestEntries(req); len(entries) > 0 {
-		return entryURLs(entries)
-	}
-	return []string{req.Target.DownloadURL(req.ForceSingle)}
-}
-
-func entryURLs(entries []PlaylistEntry) []string {
-	urls := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		url := strings.TrimSpace(entry.URL)
-		if url == "" {
-			continue
-		}
-		urls = append(urls, url)
-	}
-	return urls
-}
-
 func downloadRequestAllowsFragment(req DownloadRequest) bool {
 	if req.Profile.Mode == ModeThumbnail || downloadRequestUsesPlaylist(req) {
 		return false
@@ -252,36 +233,8 @@ func videoModeArgs(profile OutputProfile, format string) []string {
 
 	if profile.RemuxOnly {
 		args = append(args, "--remux-video", container)
-	} else {
-		args = append(args, "--recode-video", container)
-	}
-
-	ppArgs := videoPostprocessorArgs(profile)
-	if ppArgs != "" {
-		if profile.RemuxOnly {
-			args = append(args, "--postprocessor-args", "VideoRemuxer:"+ppArgs)
-		} else {
-			args = append(args, "--postprocessor-args", "VideoConvertor:"+ppArgs)
-		}
 	}
 	return args
-}
-
-func videoPostprocessorArgs(profile OutputProfile) string {
-	args := make([]string, 0, 10)
-	if codec := strings.TrimSpace(profile.VideoCodec); codec != "" {
-		args = append(args, "-c:v", codec)
-	}
-	if crf := strings.TrimSpace(profile.VideoCRF); crf != "" {
-		args = append(args, "-crf", crf)
-	}
-	if codec := strings.TrimSpace(profile.AudioCodec); codec != "" {
-		args = append(args, "-c:a", codec)
-	}
-	if bitrate := strings.TrimSpace(profile.AudioBitrate); bitrate != "" {
-		args = append(args, "-b:a", bitrate)
-	}
-	return strings.Join(args, " ")
 }
 
 func (p OutputProfile) RequiresVideoPostprocessing() bool {
@@ -293,6 +246,16 @@ func (p OutputProfile) RequiresVideoPostprocessing() bool {
 		strings.TrimSpace(p.VideoCRF) != "" ||
 		strings.TrimSpace(p.AudioBitrate) != "" ||
 		p.RemuxOnly
+}
+
+func (p OutputProfile) NeedsVideoTranscode() bool {
+	if p.Mode != ModeVideo || p.RemuxOnly {
+		return false
+	}
+	return strings.TrimSpace(p.VideoCodec) != "" ||
+		strings.TrimSpace(p.AudioCodec) != "" ||
+		strings.TrimSpace(p.VideoCRF) != "" ||
+		strings.TrimSpace(p.AudioBitrate) != ""
 }
 
 func appendFragmentDownloadArgs(args []string, req DownloadRequest) []string {

@@ -97,21 +97,6 @@ func ParseTarget(raw string) (ParsedTarget, error) {
 	return target, nil
 }
 
-func LooksLikeYouTubeURL(raw string) bool {
-	_, err := ParseTarget(raw)
-	return err == nil
-}
-
-func IsPlaylistURL(raw string) bool {
-	target, err := ParseTarget(raw)
-	return err == nil && target.IsPlaylist()
-}
-
-func HasMixedTarget(raw string) bool {
-	target, err := ParseTarget(raw)
-	return err == nil && target.Kind == TargetMixed
-}
-
 func normalizeYouTubeHost(host string) string {
 	host = strings.ToLower(strings.TrimSpace(host))
 	host = strings.TrimPrefix(host, "www.")

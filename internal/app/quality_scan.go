@@ -73,19 +73,6 @@ func ResolveQualityChoicesContext(ctx context.Context, urls []string) ([]Quality
 	return choices, nil
 }
 
-func AutoDownloadWorkers(items int) int {
-	return optimalParallelism(items, maxParallelPlaylistDownload)
-}
-
-func FindQualityChoice(choices []QualityChoice, key string) (QualityChoice, bool) {
-	for _, choice := range choices {
-		if choice.Key == key {
-			return choice, true
-		}
-	}
-	return QualityChoice{}, false
-}
-
 func QualityChoiceLabels(choices []QualityChoice, l Locale) []string {
 	labels := make([]string, len(choices))
 	for i, choice := range choices {
@@ -144,10 +131,6 @@ func compactQualityURLs(urls []string) []string {
 type qualityScanResult struct {
 	info videoQualityInfo
 	err  error
-}
-
-func ScanQualityChoices(urls []string) ([]QualityChoice, error) {
-	return ScanQualityChoicesContext(context.Background(), urls)
 }
 
 func ScanQualityChoicesContext(ctx context.Context, urls []string) ([]QualityChoice, error) {
@@ -240,10 +223,6 @@ func estimateVideoSize(video videoQualityInfo, heights []int) (int64, bool) {
 		}
 	}
 	return 0, false
-}
-
-func scanVideoInfo(url string) (videoQualityInfo, error) {
-	return scanVideoInfoContext(context.Background(), url)
 }
 
 func scanVideoInfoContext(ctx context.Context, url string) (videoQualityInfo, error) {

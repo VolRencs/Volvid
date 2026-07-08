@@ -6,10 +6,6 @@ import (
 	"strings"
 )
 
-func FmtBytes(n int64) string {
-	return FmtBytesFor(n, LoadLocale())
-}
-
 func FmtBytesFor(n int64, l Locale) string {
 	ru := l == LocaleRU
 	switch {
@@ -61,22 +57,4 @@ func SanitizeDirname(name string) string {
 		return "playlist"
 	}
 	return name
-}
-
-func unitToMult(unit string) int64 {
-	u := strings.ToUpper(unit)
-	u, _ = strings.CutSuffix(u, "IB")
-	u, _ = strings.CutSuffix(u, "B")
-	switch u {
-	case "K":
-		return 1_024
-	case "M":
-		return 1_048_576
-	case "G":
-		return 1_073_741_824
-	case "T":
-		return 1_099_511_627_776
-	default:
-		return 1
-	}
 }

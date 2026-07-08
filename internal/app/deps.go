@@ -1,10 +1,6 @@
 package app
 
-import (
-	"fmt"
-	"strings"
-	"time"
-)
+import "time"
 
 type DependencySource string
 
@@ -53,8 +49,6 @@ const (
 	versionProbeTimeout = 1500 * time.Millisecond
 )
 
-type DepsLogger func(format string, args ...any)
-
 func (r CheckDepsResult) Dependencies() []DependencyInfo {
 	return []DependencyInfo{r.YTDLP, r.FFmpeg, r.Node}
 }
@@ -89,59 +83,4 @@ func filterDependencies(deps []DependencyInfo, keep func(DependencyInfo) bool) [
 		}
 	}
 	return out
-}
-
-func EnsureRuntimeDeps(logf DepsLogger) (CheckDepsResult, error) {
-	deps := RefreshDeps()
-	for _, dep := range deps.DownloadableMissing() {
-		if logf != nil {
-			logf("Зависимости: %s не найден, скачиваю…", dep.Name)
-		}
-		if err := InstallDependencyFor(dep.Key, LocaleEN, nil); err != nil {
-			if dep.Required {
-				return RefreshDeps(), fmt.Errorf("установка %s: %w", dep.Name, err)
-			}
-			if logf != nil {
-				logf("Зависимости: не удалось подготовить %s: %v", dep.Name, err)
-			}
-		}
-	}
-
-	deps = RefreshDeps()
-	if deps.MissingRequired() {
-		return deps, fmt.Errorf("%s не найден", strings.Join(missingDependencyNames(deps.MissingRequiredDeps()), ", "))
-	}
-	return deps, nil
-}
-
-func UpdateManagedDeps(ch chan<- FileProgress) error {
-	return UpdateManagedDepsFor(LoadLocale(), ch)
-}
-
-func UpdateManagedDepsFor(l Locale, ch chan<- FileProgress) error {
-	deps := RefreshDeps()
-	actionable := deps.ActionableDependencies()
-	for _, dep := range actionable {
-		if dep.Source == DepSystem {
-			continue
-		}
-		if err := InstallDependencyFor(dep.Key, l, ch); err != nil {
-			return fmt.Errorf("%s: %w", dep.Name, err)
-		}
-	}
-	if len(actionable) > 0 {
-		RefreshDeps()
-	}
-	return nil
-}
-
-func missingDependencyNames(deps []DependencyInfo) []string {
-	names := make([]string, 0, len(deps))
-	for _, dep := range deps {
-		name := strings.TrimSpace(dep.Name)
-		if name != "" {
-			names = append(names, name)
-		}
-	}
-	return names
 }

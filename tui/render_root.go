@@ -265,30 +265,6 @@ func (m Model) renderDownloadsLocation() string {
 	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeOutputTitle), body)
 }
 
-func (m Model) renderHomeActions() string {
-	actions := []string{
-		renderActionBadge("Enter", m.u().HelpEnter),
-		renderActionBadge("Ctrl+G", m.u().HelpSearch),
-		renderActionBadge("O", m.u().HelpOpenFolder),
-		renderActionBadge("Tab", m.u().LangTab),
-	}
-	if m.canOpenDependencyScreen() {
-		actions = append(actions, renderActionBadge("Ctrl+U", m.u().HelpDeps))
-	}
-	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeActionsTitle), joinFittedParts(m.sectionBodyWidth(), actions, "  "))
-}
-
-func (m Model) renderHomeRuntime() string {
-	rows := []depStatusRow{
-		{Label: "yt-dlp", Value: m.homeDepSummary(m.deps.YTDLP)},
-		{Label: "ffmpeg", Value: m.homeDepSummary(m.deps.FFmpeg)},
-		{Label: "node", Value: m.homeDepSummary(m.deps.Node)},
-		{Label: "cookies", Value: m.homeAccessSummary(m.deps.Cookies.Status, m.cookiesAccessDetail())},
-		{Label: "js", Value: m.homeAccessSummary(m.deps.Runtime.Status, m.runtimeAccessDetail())},
-	}
-	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeRuntimeTitle), m.renderDepStatusRows(rows))
-}
-
 func (m Model) renderHomeSession() string {
 	if m.compactHomeLayout() && len(m.session.Items) == 0 {
 		return ""
@@ -316,56 +292,6 @@ func (m Model) renderHomeSession() string {
 		rows = append(rows, icon+"  "+sValue.Render(trunc(item.Label, width))+"\n"+sMeta.Render(trunc(item.URL, width+14)))
 	}
 	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeSessionTitle), strings.Join(rows, "\n\n"))
-}
-
-func (m Model) renderHomeOverview() string {
-	width := m.sectionBodyWidth()
-	lines := []string{
-		sTableLabel.Render(strings.TrimSpace(m.u().HomeOutputTitle)+": ") + renderFileLink(trunc(app.DlDir, max(18, width-14))),
-	}
-
-	session := []string{
-		renderBadge(m.u().HomeStatSuccess, strconv.Itoa(m.session.Success)),
-		renderBadge(m.u().HomeStatFailed, strconv.Itoa(m.session.Failed)),
-	}
-	if item := m.lastSessionItem(); item != nil {
-		icon := sOk.Render("✔")
-		if !item.OK {
-			icon = sErr.Render("✘")
-		}
-		session = append(session, icon+" "+sValue.Render(trunc(item.Label, max(10, width-18))))
-	}
-	lines = append(lines, joinFittedParts(width, session, "  "))
-
-	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeOverviewTitle), strings.Join(compactSections(lines...), "\n"))
-}
-
-func (m Model) homeDepSummary(dep app.DependencyInfo) string {
-	switch {
-	case !dep.Available:
-		return sErr.Render(m.depText("missing"))
-	case strings.TrimSpace(dep.Version) != "":
-		return sOk.Render(dep.Version)
-	default:
-		return sOk.Render(m.depText("available"))
-	}
-}
-
-func (m Model) homeAccessSummary(status, detail string) string {
-	switch strings.TrimSpace(status) {
-	case "active":
-		if strings.TrimSpace(detail) != "" {
-			return sOk.Render(detail)
-		}
-		return sOk.Render(m.depText("active"))
-	case "", "browser not found", "not found":
-		return sDim.Render(m.depText("not_active"))
-	default:
-		if strings.TrimSpace(detail) != "" {
-			return sWarn.Render(detail)
-		}
-		return sWarn.Render(status)
-	}
 }
 
 func compactSections(parts ...string) []string {
@@ -1098,14 +1024,6 @@ func (m Model) cardStyle() lipgloss.Style {
 	return sCard.Copy().Padding(py, px)
 }
 
-func (m Model) lastSessionItem() *app.SessionItem {
-	if len(m.session.Items) == 0 {
-		return nil
-	}
-	item := m.session.Items[len(m.session.Items)-1]
-	return &item
-}
-
 func sep(width int) string {
 	return sRule.Render(strings.Repeat("─", width))
 }
@@ -1181,14 +1099,6 @@ func joinFittedParts(width int, parts []string, sep string) string {
 	}
 	lines = append(lines, current)
 	return strings.Join(lines, "\n")
-}
-
-func plainStatusText(value string) string {
-	value = strings.TrimSpace(ansiEscapeRE.ReplaceAllString(value, ""))
-	if value == "" {
-		return "—"
-	}
-	return value
 }
 
 func formatElapsed(d time.Duration) string {

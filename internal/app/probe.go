@@ -52,14 +52,6 @@ var (
 
 var ErrMediaDurationUnavailable = errors.New("media duration unavailable")
 
-func ProbeMediaURL(raw string) (*MediaProbe, error) {
-	target, err := ParseTarget(raw)
-	if err != nil {
-		return nil, err
-	}
-	return ProbeMediaContext(context.Background(), target)
-}
-
 func ProbeMediaDuration(target ParsedTarget) (int, error) {
 	return ProbeMediaDurationContext(context.Background(), target)
 }

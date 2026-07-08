@@ -99,10 +99,6 @@ func validUpdateDownloadURL(raw, assetName string) bool {
 	return strings.HasPrefix(cleanPath, "/VolRencs/YouTubeDownloader/releases/download/")
 }
 
-func ApplyUpdate(info *UpdateInfo, ch chan<- FileProgress) error {
-	return ApplyUpdateFor(LoadLocale(), info, ch)
-}
-
 func ApplyUpdateFor(l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
 	if info == nil || strings.TrimSpace(info.DlURL) == "" {
 		return fmt.Errorf("update info is empty")

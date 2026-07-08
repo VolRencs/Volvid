@@ -968,17 +968,6 @@ func parseDownloadFloat(raw string) float64 {
 	return n
 }
 
-func YtdlpURL() (string, error) {
-	platform, err := currentPlatform()
-	if err != nil {
-		return "", err
-	}
-	if platform.YTDLPAsset == "" {
-		return "", fmt.Errorf("yt-dlp asset name is empty")
-	}
-	return ytdlpBase + platform.YTDLPAsset, nil
-}
-
 func InstallYtDlpFor(l Locale, ch chan<- FileProgress) error {
 	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)

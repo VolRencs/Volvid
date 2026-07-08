@@ -84,12 +84,3 @@ func OutputProfileLabels(profiles []OutputProfile) []string {
 	}
 	return labels
 }
-
-func FindOutputProfile(profiles []OutputProfile, key string) (OutputProfile, bool) {
-	for _, profile := range profiles {
-		if profile.Key == key {
-			return profile, true
-		}
-	}
-	return OutputProfile{}, false
-}
