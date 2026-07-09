@@ -14,21 +14,27 @@ import (
 const processTerminateGrace = 2 * time.Second
 
 func commandOutput(ctx context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
+	stdout, _, err := commandOutputWithErrorOutput(ctx, timeout, name, args...)
+	return stdout, err
+}
+
+func commandOutputWithErrorOutput(ctx context.Context, timeout time.Duration, name string, args ...string) ([]byte, []byte, error) {
 	runCtx, cancel := commandContext(ctx, timeout)
 	defer cancel()
 
 	cmd := newProcessTreeCommand(runCtx, name, args...)
 	var stdout bytes.Buffer
+	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
-	cmd.Stderr = io.Discard
+	cmd.Stderr = &stderr
 
 	if err := startCommand(cmd, runCtx); err != nil {
-		return nil, err
+		return nil, stderr.Bytes(), err
 	}
 	if err := waitCommand(cmd, runCtx); err != nil {
-		return nil, err
+		return stdout.Bytes(), stderr.Bytes(), err
 	}
-	return stdout.Bytes(), nil
+	return stdout.Bytes(), nil, nil
 }
 
 func commandCombinedOutput(ctx context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
