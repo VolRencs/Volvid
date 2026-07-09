@@ -35,6 +35,42 @@ func InstallDependencyFor(key string, l Locale, ch chan<- FileProgress) error {
 	return nil
 }
 
+func InstallYtDlpFor(l Locale, ch chan<- FileProgress) error {
+	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
+		return fmt.Errorf("создание DepsDir: %w", err)
+	}
+
+	url, _, checksum, err := ytdlpDownloadAsset()
+	if err != nil {
+		return err
+	}
+	staging, err := os.MkdirTemp(DepsDir, ".ytdlp-*")
+	if err != nil {
+		return fmt.Errorf("временная директория установки: %w", err)
+	}
+	defer os.RemoveAll(staging)
+
+	stagedYtdlp := filepath.Join(staging, binaryBaseName(YtdlpBin))
+	if err := DownloadFile(url, stagedYtdlp, l, ch); err != nil {
+		return err
+	}
+	if err := verifyFileSHA256(stagedYtdlp, checksum); err != nil {
+		return err
+	}
+	if !IsWindows {
+		if err := os.Chmod(stagedYtdlp, 0o755); err != nil {
+			return fmt.Errorf("chmod yt-dlp: %w", err)
+		}
+	}
+	if detectExecutableDependency("ytdlp", "yt-dlp", true, true, nil, stagedYtdlp, []string{"--version"}, firstNonEmptyLine, true).Version == "" {
+		return fmt.Errorf("бинарник yt-dlp скачан, но не запускается")
+	}
+	if err := replaceInstalledBinaries(map[string]string{stagedYtdlp: YtdlpBin}); err != nil {
+		return err
+	}
+	return nil
+}
+
 func extractZipEntry(zf *zip.File, dest string) error {
 	if zf == nil {
 		return errors.New("zip entry is nil")

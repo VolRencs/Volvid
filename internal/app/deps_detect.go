@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -45,7 +44,6 @@ type cookieBrowserSpec struct {
 
 type cookieCandidate struct {
 	Browser    string
-	Family     cookieBrowserFamily
 	Profile    string
 	CookiePath string
 	ModTime    time.Time
@@ -291,7 +289,7 @@ func cookieBrowserSpecs(home, goos string) []cookieBrowserSpec {
 
 func collectCookieCandidates(specs []cookieBrowserSpec) ([]cookieCandidate, bool) {
 	out := make([]cookieCandidate, 0, len(specs))
-	seen := make(map[string]struct{}, len(specs)*2)
+	seen := make(map[string]struct{}, len(specs)*4)
 	foundRoots := false
 
 	for _, spec := range specs {
@@ -301,6 +299,9 @@ func collectCookieCandidates(specs []cookieBrowserSpec) ([]cookieCandidate, bool
 		}
 		for _, candidate := range browserCookieCandidates(spec, roots) {
 			key := filepath.Clean(candidate.CookiePath)
+			if key == "." || key == "" {
+				key = filepath.Clean(candidate.Profile)
+			}
 			if _, exists := seen[key]; exists {
 				continue
 			}
@@ -383,36 +384,16 @@ func expandCookieRoot(root string) []string {
 
 func firefoxCookieCandidates(browser string, roots []string) []cookieCandidate {
 	out := make([]cookieCandidate, 0, len(roots))
-	seen := make(map[string]struct{}, len(roots)*2)
 
 	for _, root := range roots {
-		for _, pattern := range []string{
-			filepath.Join(root, "cookies.sqlite"),
-			filepath.Join(root, "*", "cookies.sqlite"),
-			filepath.Join(root, "Profiles", "*", "cookies.sqlite"),
-		} {
-			matches, err := filepath.Glob(pattern)
-			if err != nil {
-				continue
-			}
-			for _, match := range matches {
-				info, ok := readableCookieFile(match)
-				if !ok {
-					continue
-				}
-				key := filepath.Clean(match)
-				if _, exists := seen[key]; exists {
-					continue
-				}
-				seen[key] = struct{}{}
-				out = append(out, cookieCandidate{
-					Browser:    browser,
-					Family:     cookieFamilyFirefox,
-					Profile:    absoluteIfPossible(filepath.Dir(match)),
-					CookiePath: absoluteIfPossible(match),
-					ModTime:    info.ModTime(),
-				})
-			}
+		for _, profileDir := range firefoxProfileDirs(root) {
+			cookiePath, modTime := firefoxProfileState(profileDir)
+			out = append(out, cookieCandidate{
+				Browser:    browser,
+				Profile:    absoluteIfPossible(profileDir),
+				CookiePath: cookiePath,
+				ModTime:    modTime,
+			})
 		}
 	}
 
@@ -421,25 +402,15 @@ func firefoxCookieCandidates(browser string, roots []string) []cookieCandidate {
 
 func chromiumCookieCandidates(browser string, roots []string, supportsProfiles bool) []cookieCandidate {
 	out := make([]cookieCandidate, 0, len(roots))
-	seen := make(map[string]struct{}, len(roots)*2)
 
 	for _, root := range roots {
 		for _, profileDir := range chromiumProfileDirs(root, supportsProfiles) {
-			cookiePath, info, ok := chromiumCookieFile(profileDir)
-			if !ok {
-				continue
-			}
-			key := filepath.Clean(cookiePath)
-			if _, exists := seen[key]; exists {
-				continue
-			}
-			seen[key] = struct{}{}
+			cookiePath, modTime := chromiumProfileState(root, profileDir)
 			out = append(out, cookieCandidate{
 				Browser:    browser,
-				Family:     cookieFamilyChromium,
 				Profile:    absoluteIfPossible(profileDir),
-				CookiePath: absoluteIfPossible(cookiePath),
-				ModTime:    info.ModTime(),
+				CookiePath: cookiePath,
+				ModTime:    modTime,
 			})
 		}
 	}
@@ -447,48 +418,150 @@ func chromiumCookieCandidates(browser string, roots []string, supportsProfiles b
 	return out
 }
 
+func firefoxProfileDirs(root string) []string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil
+	}
+
+	out := make([]string, 0, 4)
+	if firefoxProfileExists(root) {
+		out = append(out, root)
+	}
+	for _, pattern := range []string{
+		filepath.Join(root, "*.default*"),
+		filepath.Join(root, "*", "cookies.sqlite"),
+		filepath.Join(root, "Profiles", "*.default*"),
+		filepath.Join(root, "Profiles", "*", "cookies.sqlite"),
+	} {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			continue
+		}
+		for _, match := range matches {
+			if filepath.Base(match) == "cookies.sqlite" {
+				match = filepath.Dir(match)
+			}
+			if firefoxProfileExists(match) {
+				out = append(out, match)
+			}
+		}
+	}
+	return uniquePaths(out)
+}
+
+func firefoxProfileExists(profileDir string) bool {
+	if !pathIsDir(profileDir) {
+		return false
+	}
+	return pathExists(filepath.Join(profileDir, "cookies.sqlite")) ||
+		pathExists(filepath.Join(profileDir, "prefs.js"))
+}
+
+func firefoxProfileState(profileDir string) (string, time.Time) {
+	cookiePath, cookieTime := profileCookieState(profileDir, "cookies.sqlite")
+	if !cookieTime.IsZero() {
+		return cookiePath, cookieTime
+	}
+	if info, ok := fileInfo(filepath.Join(profileDir, "prefs.js")); ok {
+		return "", info.ModTime()
+	}
+	if info, ok := fileInfo(profileDir); ok {
+		return "", info.ModTime()
+	}
+	return "", time.Time{}
+}
+
 func chromiumProfileDirs(root string, supportsProfiles bool) []string {
 	root = strings.TrimSpace(root)
 	if root == "" {
 		return nil
 	}
+
+	out := make([]string, 0, 4)
+	if chromiumProfileExists(root) {
+		out = append(out, root)
+	}
 	if !supportsProfiles {
-		return []string{root}
+		return uniquePaths(out)
 	}
 
-	out := []string{root}
-	for _, fixed := range []string{"Default", "Guest Profile"} {
-		out = append(out, filepath.Join(root, fixed))
+	for _, fixed := range []string{"Default", "Guest Profile", "System Profile"} {
+		profile := filepath.Join(root, fixed)
+		if chromiumProfileExists(profile) {
+			out = append(out, profile)
+		}
 	}
 	if matches, err := filepath.Glob(filepath.Join(root, "Profile *")); err == nil {
-		out = append(out, matches...)
+		for _, match := range matches {
+			if chromiumProfileExists(match) {
+				out = append(out, match)
+			}
+		}
 	}
 	return uniquePaths(out)
 }
 
-func chromiumCookieFile(profileDir string) (string, os.FileInfo, bool) {
-	for _, path := range []string{
-		filepath.Join(profileDir, "Network", "Cookies"),
-		filepath.Join(profileDir, "Cookies"),
+func chromiumProfileExists(profileDir string) bool {
+	if !pathIsDir(profileDir) {
+		return false
+	}
+	for _, marker := range []string{
+		"Preferences",
+		filepath.Join("Network", "Cookies"),
+		"Cookies",
 	} {
-		if info, ok := readableCookieFile(path); ok {
-			return path, info, true
+		if pathExists(filepath.Join(profileDir, marker)) {
+			return true
 		}
 	}
-	return "", nil, false
+	return false
 }
 
-func readableCookieFile(path string) (os.FileInfo, bool) {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return nil, false
+func chromiumProfileState(root, profileDir string) (string, time.Time) {
+	cookiePath, cookieTime := profileCookieState(
+		profileDir,
+		filepath.Join(profileDir, "Network", "Cookies"),
+		filepath.Join(profileDir, "Cookies"),
+	)
+	if !cookieTime.IsZero() {
+		return cookiePath, cookieTime
 	}
-	file, err := os.Open(path)
+	if info, ok := fileInfo(filepath.Join(profileDir, "Preferences")); ok {
+		return "", info.ModTime()
+	}
+	if info, ok := fileInfo(filepath.Join(root, "Local State")); ok {
+		return "", info.ModTime()
+	}
+	if info, ok := fileInfo(profileDir); ok {
+		return "", info.ModTime()
+	}
+	return "", time.Time{}
+}
+
+func profileCookieState(profileDir string, cookiePaths ...string) (string, time.Time) {
+	for _, path := range cookiePaths {
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(profileDir, path)
+		}
+		if info, ok := fileInfo(path); ok && !info.IsDir() {
+			return absoluteIfPossible(path), info.ModTime()
+		}
+	}
+	return "", time.Time{}
+}
+
+func fileInfo(path string) (os.FileInfo, bool) {
+	info, err := os.Stat(path)
 	if err != nil {
 		return nil, false
 	}
-	_ = file.Close()
 	return info, true
+}
+
+func pathIsDir(path string) bool {
+	info, ok := fileInfo(path)
+	return ok && info.IsDir()
 }
 
 func linuxCookieBrowserSpecs(home string) []cookieBrowserSpec {
@@ -544,6 +617,9 @@ func linuxCookieBrowserSpecs(home string) []cookieBrowserSpec {
 				filepath.Join(configHome, "microsoft-edge"),
 				filepath.Join(configHome, "microsoft-edge-beta"),
 				filepath.Join(configHome, "microsoft-edge-dev"),
+				filepath.Join(configHome, "microsoft-edge-unstable"),
+				filepath.Join(home, ".var", "app", "com.microsoft.Edge", "config", "microsoft-edge"),
+				filepath.Join(home, ".var", "app", "com.microsoft.EdgeDev", "config", "microsoft-edge-dev"),
 			}),
 		},
 		{
@@ -617,6 +693,7 @@ func windowsCookieBrowserSpecs() []cookieBrowserSpec {
 				pathUnder(localAppData, "Microsoft", "Edge", "User Data"),
 				pathUnder(localAppData, "Microsoft", "Edge Beta", "User Data"),
 				pathUnder(localAppData, "Microsoft", "Edge Dev", "User Data"),
+				pathUnder(localAppData, "Microsoft", "Edge SxS", "User Data"),
 			}),
 		},
 		{
@@ -678,6 +755,7 @@ func darwinCookieBrowserSpecs(home string) []cookieBrowserSpec {
 				filepath.Join(home, "Library", "Application Support", "Microsoft Edge"),
 				filepath.Join(home, "Library", "Application Support", "Microsoft Edge Beta"),
 				filepath.Join(home, "Library", "Application Support", "Microsoft Edge Dev"),
+				filepath.Join(home, "Library", "Application Support", "Microsoft Edge Canary"),
 			},
 		},
 		{
@@ -928,8 +1006,8 @@ func pathExists(path string) bool {
 	if path == "" {
 		return false
 	}
-	_, err := os.Stat(path)
-	return err == nil
+	_, ok := fileInfo(path)
+	return ok
 }
 
 func absoluteIfPossible(path string) string {
@@ -942,64 +1020,4 @@ func absoluteIfPossible(path string) string {
 		return path
 	}
 	return abs
-}
-
-func parseDownloadInt(raw string) int64 {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return 0
-	}
-	n, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-func parseDownloadFloat(raw string) float64 {
-	raw = strings.TrimSpace(strings.TrimSuffix(raw, "%"))
-	if raw == "" {
-		return 0
-	}
-	n, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-func InstallYtDlpFor(l Locale, ch chan<- FileProgress) error {
-	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
-		return fmt.Errorf("создание DepsDir: %w", err)
-	}
-
-	url, _, checksum, err := ytdlpDownloadAsset()
-	if err != nil {
-		return err
-	}
-	staging, err := os.MkdirTemp(DepsDir, ".ytdlp-*")
-	if err != nil {
-		return fmt.Errorf("временная директория установки: %w", err)
-	}
-	defer os.RemoveAll(staging)
-
-	stagedYtdlp := filepath.Join(staging, binaryBaseName(YtdlpBin))
-	if err := DownloadFile(url, stagedYtdlp, l, ch); err != nil {
-		return err
-	}
-	if err := verifyFileSHA256(stagedYtdlp, checksum); err != nil {
-		return err
-	}
-	if !IsWindows {
-		if err := os.Chmod(stagedYtdlp, 0o755); err != nil {
-			return fmt.Errorf("chmod yt-dlp: %w", err)
-		}
-	}
-	if detectExecutableDependency("ytdlp", "yt-dlp", true, true, nil, stagedYtdlp, []string{"--version"}, firstNonEmptyLine, true).Version == "" {
-		return fmt.Errorf("бинарник yt-dlp скачан, но не запускается")
-	}
-	if err := replaceInstalledBinaries(map[string]string{stagedYtdlp: YtdlpBin}); err != nil {
-		return err
-	}
-	return nil
 }

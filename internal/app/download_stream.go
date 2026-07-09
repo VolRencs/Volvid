@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -141,16 +142,7 @@ func parseJSONStringWithPrefix(line, prefix string) string {
 	if !strings.HasPrefix(line, prefix) {
 		return ""
 	}
-	raw := strings.TrimSpace(strings.TrimPrefix(line, prefix))
-	if raw == "" {
-		return ""
-	}
-
-	var value string
-	if err := json.Unmarshal([]byte(raw), &value); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(value)
+	return parseJSONStringField(strings.TrimPrefix(line, prefix))
 }
 
 func parseProgressUpdate(line string, slot int, l Locale) (DlUpdate, string, bool) {
@@ -205,6 +197,30 @@ func formatProgressSpeed(raw string, l Locale) string {
 		suffix = "/с"
 	}
 	return FmtBytesFor(value, l) + suffix
+}
+
+func parseDownloadInt(raw string) int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+func parseDownloadFloat(raw string) float64 {
+	raw = strings.TrimSpace(strings.TrimSuffix(raw, "%"))
+	if raw == "" {
+		return 0
+	}
+	n, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func postprocessLabel(line string, l Locale) string {
