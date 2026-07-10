@@ -50,14 +50,6 @@ func ffmpegArgs(deps CheckDepsResult) []string {
 }
 
 func streamYtdlp(ctx context.Context, slot int, l Locale, deps CheckDepsResult, args []string, ch chan<- DlUpdate) downloadResult {
-	result := streamYtdlpOnce(ctx, slot, l, deps, args, ch)
-	if result.Err != nil && usesBrowserCookies(deps) && isBrowserCookieCopyError(result.ErrText) {
-		return streamYtdlpOnce(ctx, slot, l, depsWithoutBrowserCookies(deps), args, ch)
-	}
-	return result
-}
-
-func streamYtdlpOnce(ctx context.Context, slot int, l Locale, deps CheckDepsResult, args []string, ch chan<- DlUpdate) downloadResult {
 	cmd, pr, runCtx, cancel, err := startYTDLPMergedOutputCommandFor(
 		ctx,
 		0,
@@ -72,20 +64,11 @@ func streamYtdlpOnce(ctx context.Context, slot int, l Locale, deps CheckDepsResu
 
 	result := downloadResult{}
 	lastTitle := ""
-	var diagnostic strings.Builder
 
 	if err := readCommandLines(pr, func(raw []byte) error {
 		line := strings.TrimSpace(string(raw))
 		if line == "" {
 			return nil
-		}
-		if !strings.HasPrefix(line, ytdlpLineStart) &&
-			!strings.HasPrefix(line, ytdlpLineProgress) &&
-			!strings.HasPrefix(line, ytdlpLinePost) &&
-			!strings.HasPrefix(line, ytdlpLineMoved) &&
-			diagnostic.Len() < 4096 {
-			diagnostic.WriteString(line)
-			diagnostic.WriteByte('\n')
 		}
 
 		if parseMovedOutputPath(line, &result) {
@@ -130,9 +113,6 @@ func streamYtdlpOnce(ctx context.Context, slot int, l Locale, deps CheckDepsResu
 	}
 
 	if err := waitCommand(cmd, runCtx); err != nil {
-		if result.ErrText == "" {
-			setDownloadErrorText(&result, diagnostic.String())
-		}
 		setDownloadError(&result, err)
 		return result
 	}

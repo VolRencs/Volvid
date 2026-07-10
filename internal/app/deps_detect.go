@@ -875,26 +875,6 @@ func ytdlpCommandArgsFor(deps CheckDepsResult, base []string) []string {
 	return args
 }
 
-func depsWithoutBrowserCookies(deps CheckDepsResult) CheckDepsResult {
-	deps.Cookies = BrowserCookiesInfo{}
-	return deps
-}
-
-func usesBrowserCookies(deps CheckDepsResult) bool {
-	return deps.Cookies.Status == cookiesStatusActive && strings.TrimSpace(deps.Cookies.Browser) != ""
-}
-
-func isBrowserCookieCopyError(text string) bool {
-	text = strings.ToLower(strings.TrimSpace(text))
-	if text == "" {
-		return false
-	}
-	return strings.Contains(text, "could not copy chrome cookie database") ||
-		(strings.Contains(text, "permission") &&
-			strings.Contains(text, "network") &&
-			strings.Contains(text, "cookies"))
-}
-
 func runtimeUserAgent(deps CheckDepsResult) string {
 	if deps.Cookies.Status != cookiesStatusActive {
 		return ""
@@ -965,11 +945,7 @@ func ytdlpOutputFor(ctx context.Context, timeout time.Duration, deps CheckDepsRe
 	if bin == "" {
 		return nil, fmt.Errorf("yt-dlp is required")
 	}
-	out, stderr, err := commandOutputWithErrorOutput(ctx, timeout, bin, ytdlpCommandArgsFor(deps, args)...)
-	if err == nil || !usesBrowserCookies(deps) || !isBrowserCookieCopyError(string(stderr)) {
-		return out, err
-	}
-	return commandOutput(ctx, timeout, bin, ytdlpCommandArgsFor(depsWithoutBrowserCookies(deps), args)...)
+	return commandOutput(ctx, timeout, bin, ytdlpCommandArgsFor(deps, args)...)
 }
 
 func startYTDLPMergedOutputCommandFor(
