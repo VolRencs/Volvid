@@ -58,7 +58,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.depRefreshing = false
-		m = m.withDeps(msg.deps)
+		m.deps = msg.deps
 		if m.screen == scrDepUpdate {
 			m = m.syncMenu()
 		}
@@ -119,9 +119,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) updateElapsed() {
 	m.dlElapsed = time.Since(m.dlStartedAt).Round(time.Second)
-	if m.dlElapsed < 0 {
-		m.dlElapsed = 0
-	}
 }
 
 func (m Model) handleDepDone(msg msgDepDone) (tea.Model, tea.Cmd) {
@@ -192,6 +189,28 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		switch m.screen {
 		case scrSearchInput, scrSearchResults:
 			return m.exitSearch()
+		case scrPlaylistAsk, scrPlaylist:
+			return m.exitToURL()
+		case scrFragmentChoice:
+			return m.exitToURL()
+		case scrMode:
+			return m.exitToURL()
+		case scrFragmentInput:
+			return m.handleFragmentInputKey(msg)
+		case scrAudio:
+			return m.startModeSelectionWithNotice("")
+		case scrQuality:
+			return m.startModeSelectionWithNotice("")
+		case scrVideoOutput:
+			return m.gotoQualitySelection()
+		case scrWorkers:
+			return m.gotoWorkersBack()
+		case scrDownload:
+			return m.cancelDownload()
+		case scrSummary:
+			return m.resetForNext()
+		case scrDepUpdate:
+			return m.returnFromDependencyScreen()
 		}
 	}
 
@@ -202,11 +221,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "down":
 			m.menu.Move(1)
-			return m, nil
-		case "esc":
-			if m.screen == scrDepUpdate {
-				return m.returnFromDependencyScreen()
-			}
 			return m, nil
 		case "enter":
 			return m.activateMenu()
@@ -294,7 +308,7 @@ func (m Model) handleFragmentInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m.fragmentErr = ""
 		m.fragment = &fragment
 		m.fragmentIn.Blur()
-		return m.startModeSelection()
+		return m.startModeSelectionWithNotice("")
 	default:
 		return m.routeFocusedInputMessage(msg)
 	}
@@ -328,7 +342,7 @@ func (m Model) handlePlaylistKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.plInputErr = m.u().ErrPickOne
 			return m, nil
 		}
-		return m.startModeSelection()
+		return m.startModeSelectionWithNotice("")
 	default:
 		return m, nil
 	}
@@ -424,6 +438,9 @@ func (m Model) routeFocusedInputMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) activateMenu() (tea.Model, tea.Cmd) {
+	if len(m.menu.items) == 0 {
+		return m, nil
+	}
 	idx := m.menu.Index()
 
 	switch m.screen {
@@ -450,7 +467,7 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		case depActionRefresh:
 			return m.startDepsRefresh()
 		case depActionContinue:
-			return m.gotoURL()
+			return m.gotoURLWithDeps(app.DetectDeps())
 		case depActionBack:
 			return m.returnFromDependencyScreen()
 		case depActionExit:
@@ -557,7 +574,7 @@ func (m Model) activateFragmentChoice(idx int) (tea.Model, tea.Cmd) {
 	switch {
 	case idx == 0:
 		m.fragment = nil
-		return m.startModeSelection()
+		return m.startModeSelectionWithNotice("")
 	case m.canUseURLStartFragment() && idx == 1:
 		fragment := app.DownloadFragment{StartAt: m.target.URLStartAt}
 		if err := app.ValidateFragmentDuration(fragment, m.mediaDuration); err != nil {
@@ -566,7 +583,7 @@ func (m Model) activateFragmentChoice(idx int) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.fragment = &fragment
-		return m.startModeSelection()
+		return m.startModeSelectionWithNotice("")
 	default:
 		m.fragmentErr = ""
 		m.screen = scrFragmentInput

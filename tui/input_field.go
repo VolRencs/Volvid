@@ -78,10 +78,6 @@ func (i *inputField) Update(msg tea.Msg) tea.Cmd {
 		}
 		i.cursorVisible = !i.cursorVisible
 		return blinkInputCmd(i.target, i.blinkTag)
-	case tea.PasteMsg:
-		return i.updateContent(msg.Content)
-	case tea.ClipboardMsg:
-		return i.updateContent(msg.Content)
 	case tea.KeyPressMsg:
 		if !i.focused {
 			return nil

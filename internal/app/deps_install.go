@@ -88,20 +88,32 @@ func extractZipEntry(zf *zip.File, dest string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
-	out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+
+	tmp, err := os.CreateTemp(filepath.Dir(dest), ".extract-*")
 	if err != nil {
 		return err
 	}
+	tmpName := tmp.Name()
 
-	if _, err := io.Copy(out, rc); err != nil {
-		_ = out.Close()
+	if _, err := io.Copy(tmp, rc); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
-	if err := out.Sync(); err != nil {
-		_ = out.Close()
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
-	return out.Close()
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, mode); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return os.Rename(tmpName, dest)
 }
 
 func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
@@ -613,10 +625,40 @@ func copyExtractedFile(src, dest string) error {
 }
 
 func replaceInstalledBinaries(paths map[string]string) error {
+	type rollback struct {
+		origDest string
+		backup   string
+	}
+	var rollbacks []rollback
+
 	for src, dest := range paths {
-		if err := replaceDownloadedFile(src, dest); err != nil {
+		backup := replacementBackupPath(dest)
+		hadDest := true
+		if err := os.Rename(dest, backup); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				for _, r := range rollbacks {
+					_ = os.Rename(r.backup, r.origDest)
+				}
+				return fmt.Errorf("установка %s: %w", filepath.Base(dest), err)
+			}
+			hadDest = false
+		}
+		if err := os.Rename(src, dest); err != nil {
+			if hadDest {
+				_ = os.Rename(backup, dest)
+			}
+			for _, r := range rollbacks {
+				_ = os.Rename(r.backup, r.origDest)
+			}
 			return fmt.Errorf("установка %s: %w", filepath.Base(dest), err)
 		}
+		if hadDest {
+			rollbacks = append(rollbacks, rollback{origDest: dest, backup: backup})
+		}
+	}
+
+	for _, r := range rollbacks {
+		_ = os.Remove(r.backup)
 	}
 	return nil
 }

@@ -63,12 +63,6 @@ func (r CheckDepsResult) MissingRequired() bool {
 	return len(r.MissingRequiredDeps()) > 0
 }
 
-func (r CheckDepsResult) DownloadableMissing() []DependencyInfo {
-	return filterDependencies(r.Dependencies(), func(dep DependencyInfo) bool {
-		return !dep.Available && dep.Downloadable
-	})
-}
-
 func (r CheckDepsResult) ActionableDependencies() []DependencyInfo {
 	return filterDependencies(r.Dependencies(), func(dep DependencyInfo) bool {
 		return dep.Downloadable && (!dep.Available || dep.Source == DepManaged)

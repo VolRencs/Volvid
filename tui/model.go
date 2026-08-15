@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -192,6 +193,9 @@ type Model struct {
 	depRefreshing   bool
 	depRefreshToken int
 	depUpdateDone   bool
+
+	dlCancel    context.CancelFunc
+	dlCancelled bool
 }
 
 func New() tea.Model {
@@ -511,7 +515,7 @@ func (m *Model) toggleAllPlaylistEntries() {
 		m.clearPlaylistSelection()
 		return
 	}
-	if m.selectedPlaylistCount() == total {
+	if len(m.plSelected) == total {
 		m.clearPlaylistSelection()
 		return
 	}
@@ -636,6 +640,8 @@ func (m *Model) resetDownloadProgressState() {
 	m.dlStartedAt = time.Time{}
 	m.dlElapsed = 0
 	m.timerActive = false
+	m.dlCancel = nil
+	m.dlCancelled = false
 }
 
 func (m *Model) resetDownloadState() {
@@ -740,7 +746,7 @@ func (m Model) exitSearch() (tea.Model, tea.Cmd) {
 func (m Model) handlePlaylistFetched(msg msgPlaylistFetched) (tea.Model, tea.Cmd) {
 	if msg.err != nil || msg.info == nil {
 		m.forceSingle = true
-		return m.startModeSelection()
+		return m.startModeSelectionWithNotice("")
 	}
 
 	m.plInfo = msg.info
@@ -809,7 +815,7 @@ func (m Model) handleFragmentDurationMsg(msg msgFragmentDuration) (tea.Model, te
 
 func (m Model) gotoChecks() (tea.Model, tea.Cmd) {
 	deps := app.DetectDeps()
-	m = m.withDeps(deps)
+	m.deps = deps
 	if deps.MissingRequired() {
 		return m.openDependencyScreen(depModeStartup)
 	}
@@ -821,7 +827,7 @@ func (m Model) gotoURL() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) gotoURLWithDeps(deps app.CheckDepsResult) (tea.Model, tea.Cmd) {
-	m = m.withDeps(deps)
+	m.deps = deps
 	m.screen = scrURL
 	return m, m.urlInput.Focus()
 }
@@ -868,7 +874,7 @@ func (m Model) returnFromDependencyScreen() (tea.Model, tea.Cmd) {
 	if m.depMode == depModeStartup {
 		m.depErr = ""
 		if !m.deps.MissingRequired() {
-			return m.gotoURL()
+			return m.gotoURLWithDeps(app.DetectDeps())
 		}
 		return m, tea.Quit
 	}
@@ -949,6 +955,10 @@ func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.dlCancelled {
+		return m, nil
+	}
+
 	if u.Slot >= 0 && u.Slot < len(m.slots) {
 		s := &m.slots[u.Slot]
 		switch u.Type {
@@ -1021,17 +1031,40 @@ func (m Model) downloadLabel() string {
 			label = m.u().ModeVideo
 		}
 	}
-	if fragment := m.fragmentLabel(profile.Mode); fragment != "" {
+	if profile.Mode == app.ModeThumbnail {
+		return label
+	}
+	if fragment := app.FormatFragmentLabel(m.fragment); fragment != "" {
 		return label + " [" + fragment + "]"
 	}
 	return label
 }
 
-func (m Model) fragmentLabel(mode app.DownloadMode) string {
-	if mode == app.ModeThumbnail {
-		return ""
+func (m Model) exitToURL() (tea.Model, tea.Cmd) {
+	m.resetTargetFlowState()
+	m.screen = scrURL
+	return m, m.urlInput.Focus()
+}
+
+func (m Model) gotoModeSelection() (tea.Model, tea.Cmd) {
+	return m.startModeSelection()
+}
+
+func (m Model) gotoQualitySelection() (tea.Model, tea.Cmd) {
+	m.screen = scrQuality
+	m = m.syncMenu()
+	return m, nil
+}
+
+func (m Model) gotoWorkersBack() (tea.Model, tea.Cmd) {
+	if m.mode == app.ModeAudio {
+		m.screen = scrAudio
+		m = m.syncMenu()
+		return m, nil
 	}
-	return app.FormatFragmentLabel(m.fragment)
+	m.screen = scrVideoOutput
+	m = m.syncMenu()
+	return m, nil
 }
 
 func (m Model) startModeSelection() (tea.Model, tea.Cmd) {
@@ -1080,7 +1113,7 @@ func (m Model) currentProfile() app.OutputProfile {
 
 func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	deps := app.DetectDeps()
-	m = m.withDeps(deps)
+	m.deps = deps
 
 	switch {
 	case !deps.YTDLP.Available:
@@ -1129,9 +1162,25 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	m.dlCh = ch
 	m.screen = scrDownload
 
+	dlCtx, dlCancel := context.WithCancel(context.Background())
+	m.dlCancel = dlCancel
+
 	req.Workers = workers
-	app.StartDownloadRequest(req, ch)
+	app.StartDownloadRequestContext(dlCtx, req, ch)
 	return m, tea.Batch(listenDownloadCmd(ch), timerTickCmd())
+}
+
+func (m Model) cancelDownload() (tea.Model, tea.Cmd) {
+	if m.dlCancel != nil {
+		m.dlCancel()
+		m.dlCancel = nil
+	}
+	m.timerActive = false
+	m.dlElapsed = time.Since(m.dlStartedAt).Round(time.Second)
+	m.resetDownloadState()
+	m.dlCancelled = true
+	m.screen = scrURL
+	return m, m.urlInput.Focus()
 }
 
 func (m *Model) restoreDownloadConfigScreen() {

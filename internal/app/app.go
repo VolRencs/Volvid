@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	Version = "6.4.3"
+	Version = "6.5.0"
 
 	ffmpegWinURL   = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ffmpegLinuxURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
@@ -46,7 +46,7 @@ var (
 	FFprobeBin string
 	NodeBin    string
 
-	apiClient = &http.Client{Timeout: 8 * time.Second}
+	apiClient *http.Client
 	dlClient  *http.Client
 )
 

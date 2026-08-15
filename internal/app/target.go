@@ -53,13 +53,6 @@ func (t ParsedTarget) VideoURL() string {
 	return "https://www.youtube.com/watch?v=" + url.QueryEscape(t.VideoID)
 }
 
-func (t ParsedTarget) PlaylistURL() string {
-	if t.PlaylistID == "" {
-		return t.CanonicalURL
-	}
-	return "https://www.youtube.com/playlist?list=" + url.QueryEscape(t.PlaylistID)
-}
-
 func (t ParsedTarget) DownloadURL(forceSingle bool) string {
 	if forceSingle && t.VideoID != "" {
 		return t.VideoURL()

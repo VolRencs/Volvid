@@ -3,7 +3,7 @@ package app
 import "fmt"
 
 type UIStrings struct {
-	HelpMove, HelpEnter, HelpDeps, HelpSpace, HelpAll, HelpSlash, HelpSearch, HelpBack, HelpOpenFolder, HelpPickFolder string
+	HelpMove, HelpEnter, HelpDeps, HelpSpace, HelpAll, HelpSlash, HelpSearch, HelpBack, HelpOpenFolder, HelpPickFolder, HelpCancel string
 
 	QBest, QEcon string
 
@@ -23,8 +23,8 @@ type UIStrings struct {
 	FragmentInputHint, FragmentInputHintWithDurationFmt, FragmentInputBadFormat, FragmentInputBadRange    string
 	FragmentDurationFmt, FragmentUnavailable, FragmentInputOutOfBoundsFmt, FragmentURLStartOutOfBoundsFmt string
 
-	HomeInputTitle, HomeOutputTitle, HomeActionsTitle, HomeRuntimeTitle, HomeSessionTitle, HomeOverviewTitle string
-	HomeSessionEmpty, HomeStatSuccess, HomeStatFailed                                                        string
+	HomeInputTitle, HomeOutputTitle, HomeSessionTitle string
+	HomeSessionEmpty, HomeStatSuccess, HomeStatFailed string
 
 	PlVideosFmt, PlEnterNums, PlSelectedFmt string
 	ErrPickOne                              string
@@ -42,7 +42,7 @@ type UIStrings struct {
 
 	Downloading, PlaylistBarFmt, QueueFmt, Waiting, ErrSlot, MergeProc, VideoConvertProc, MP3Proc, ThumbProc string
 
-	SummaryOK, SummaryPartial, SummaryFail, SummaryPlaylistTitle, SummaryLocation, SessionHist, SuccessFmt string
+	SummaryOK, SummaryPartial, SummaryFail, SummaryCancelled, SummaryPlaylistTitle, SummaryLocation, SessionHist, SuccessFmt string
 
 	MenuUpdateY, MenuUpdateN, MenuVidOnly, MenuOpenPl string
 	MenuAgainY, MenuAgainN, WorkerSeq, WorkerNFmt     string
@@ -68,7 +68,7 @@ type UIStrings struct {
 var strEN = UIStrings{
 	HelpMove: "move", HelpEnter: "continue",
 	HelpDeps: "dependencies", HelpSpace: "select", HelpAll: "all", HelpSlash: "manual",
-	HelpSearch: "search", HelpBack: "back", HelpOpenFolder: "open folder", HelpPickFolder: "choose folder",
+	HelpSearch: "search", HelpBack: "back", HelpOpenFolder: "open folder", HelpPickFolder: "choose folder", HelpCancel: "cancel",
 
 	QBest: "Best quality (HD·4K)", QEcon: "Economy quality (360p)",
 
@@ -90,10 +90,9 @@ var strEN = UIStrings{
 	PasteURL: "Paste a YouTube video or playlist URL", URLErrEmpty: "URL cannot be empty",
 	URLErrBad: "Does not look like a YouTube URL", URLHints: "youtube.com/watch · youtube.com/playlist · youtu.be",
 	PickDownloadsTitle: "Choose download folder",
-	HomeInputTitle:     "Target", HomeOutputTitle: "Download location", HomeActionsTitle: "Quick actions",
-	HomeRuntimeTitle: "Environment", HomeSessionTitle: "Recent session", HomeSessionEmpty: "No downloads yet in this session.",
-	HomeOverviewTitle: "Overview",
-	HomeStatSuccess:   "ok", HomeStatFailed: "failed",
+	HomeInputTitle: "Target", HomeOutputTitle: "Download location",
+	HomeSessionTitle: "Recent session", HomeSessionEmpty: "No downloads yet in this session.",
+	HomeStatSuccess: "ok", HomeStatFailed: "failed",
 	SearchTitle: "YouTube search", SearchPrompt: "Enter a video title or keywords",
 	SearchPlaceholder: "lofi hip hop mix", SearchErrEmpty: "Search query cannot be empty",
 	SearchErrFailed: "Search failed", SearchNoResults: "Nothing found",
@@ -127,7 +126,7 @@ var strEN = UIStrings{
 	Waiting: "Waiting for work", ErrSlot: "Download failed", MergeProc: "Merging video and audio", VideoConvertProc: "Converting video", MP3Proc: "Converting audio",
 	ThumbProc: "Downloading thumbnail",
 
-	SummaryOK: "Download complete", SummaryPartial: "Completed with issues", SummaryFail: "Download failed",
+	SummaryOK: "Download complete", SummaryPartial: "Completed with issues", SummaryFail: "Download failed", SummaryCancelled: "Download cancelled",
 	SummaryPlaylistTitle: "Playlist summary", SummaryLocation: "Saved to", SessionHist: "Session history",
 	SuccessFmt: "/%d ok",
 
@@ -170,7 +169,7 @@ var strEN = UIStrings{
 var strRU = UIStrings{
 	HelpMove: "движение", HelpEnter: "продолжить",
 	HelpDeps: "зависимости", HelpSpace: "выбрать", HelpAll: "все", HelpSlash: "вручную",
-	HelpSearch: "поиск", HelpBack: "назад", HelpOpenFolder: "открыть папку", HelpPickFolder: "выбрать папку",
+	HelpSearch: "поиск", HelpBack: "назад", HelpOpenFolder: "открыть папку", HelpPickFolder: "выбрать папку", HelpCancel: "отмена",
 
 	QBest: "Лучшее качество (HD·4K)", QEcon: "Экономичное качество (360p)",
 
@@ -192,10 +191,9 @@ var strRU = UIStrings{
 	PasteURL: "Вставь ссылку на видео или плейлист YouTube", URLErrEmpty: "Ссылка не может быть пустой",
 	URLErrBad: "Не похоже на YouTube-ссылку", URLHints: "youtube.com/watch · youtube.com/playlist · youtu.be",
 	PickDownloadsTitle: "Выбери папку загрузки",
-	HomeInputTitle:     "Источник", HomeOutputTitle: "Папка загрузки", HomeActionsTitle: "Быстрые действия",
-	HomeRuntimeTitle: "Окружение", HomeSessionTitle: "Текущая сессия", HomeSessionEmpty: "В этой сессии ещё не было загрузок.",
-	HomeOverviewTitle: "Сводка",
-	HomeStatSuccess:   "успешно", HomeStatFailed: "ошибки",
+	HomeInputTitle: "Источник", HomeOutputTitle: "Папка загрузки",
+	HomeSessionTitle: "Текущая сессия", HomeSessionEmpty: "В этой сессии ещё не было загрузок.",
+	HomeStatSuccess: "успешно", HomeStatFailed: "ошибки",
 	SearchTitle: "Поиск YouTube", SearchPrompt: "Введи название видео или ключевые слова",
 	SearchPlaceholder: "lofi hip hop mix", SearchErrEmpty: "Поисковый запрос не может быть пустым",
 	SearchErrFailed: "Не удалось выполнить поиск", SearchNoResults: "Ничего не найдено",
@@ -229,7 +227,7 @@ var strRU = UIStrings{
 	Waiting: "Ожидание очереди", ErrSlot: "Загрузка не удалась", MergeProc: "Объединение видео и аудио", VideoConvertProc: "Конвертация видео", MP3Proc: "Конвертация аудио",
 	ThumbProc: "Загрузка превью",
 
-	SummaryOK: "Загрузка завершена", SummaryPartial: "Завершено с ошибками", SummaryFail: "Загрузка не удалась",
+	SummaryOK: "Загрузка завершена", SummaryPartial: "Завершено с ошибками", SummaryFail: "Загрузка не удалась", SummaryCancelled: "Загрузка отменена",
 	SummaryPlaylistTitle: "Итог по плейлисту", SummaryLocation: "Сохранено в", SessionHist: "История сессии",
 	SuccessFmt: "/%d успешно",
 

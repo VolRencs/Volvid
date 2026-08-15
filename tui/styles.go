@@ -44,21 +44,21 @@ var (
 		BorderForeground(cBorder).
 		Padding(1, 2)
 
-	sSectionTitle = lipgloss.NewStyle().Bold(true).Foreground(cWhite)
+	sSectionTitle = lipgloss.NewStyle().Bold(true).Foreground(cPrimarySoft)
 	sSectionBox   = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+			Border(lipgloss.NormalBorder(), false, false, false, true).
 			BorderForeground(cBorderSoft).
-			Padding(0, 1)
-	sRule         = lipgloss.NewStyle().Foreground(cBorderSoft)
+			PaddingLeft(1)
+	sRule         = lipgloss.NewStyle().Foreground(cBorder)
 	sSubtitle     = lipgloss.NewStyle().Foreground(cGray)
 	sMeta         = lipgloss.NewStyle().Foreground(cDim)
 	sBadge        = lipgloss.NewStyle()
 	sBadgeLabel   = lipgloss.NewStyle().Foreground(cDim)
 	sBadgeValue   = lipgloss.NewStyle().Bold(true).Foreground(cWhite)
 	sBadgeHotkey  = lipgloss.NewStyle().Foreground(cPrimarySoft).Bold(true)
-	sHelpKey      = lipgloss.NewStyle().Foreground(cPrimarySoft).Bold(true)
+	sHelpKey      = lipgloss.NewStyle().Bold(true).Foreground(cPrimarySoft)
 	sHelpText     = lipgloss.NewStyle().Foreground(cGray)
-	sInputHint    = lipgloss.NewStyle().Foreground(cGray)
+	sInputHint    = lipgloss.NewStyle().Foreground(cDim)
 	sLink         = lipgloss.NewStyle().Foreground(cPrimarySoft)
 	sTableLabel   = lipgloss.NewStyle().Foreground(cGray)
 	sTableMeta    = lipgloss.NewStyle().Foreground(cDim)
@@ -105,6 +105,6 @@ var (
 )
 
 const (
-	progressFullChar  = "▌"
+	progressFullChar  = "█"
 	progressEmptyChar = "░"
 )

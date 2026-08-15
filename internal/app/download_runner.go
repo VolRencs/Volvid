@@ -360,10 +360,6 @@ func normalizeWorkerCount(workers, jobs int) int {
 	return min(workers, jobs)
 }
 
-func StartDownloadRequest(req DownloadRequest, ch chan<- DlUpdate) {
-	StartDownloadRequestContext(context.Background(), req, ch)
-}
-
 func StartDownloadRequestContext(ctx context.Context, req DownloadRequest, ch chan<- DlUpdate) {
 	go func() {
 		var wg sync.WaitGroup
@@ -456,15 +452,22 @@ func playlistWorker(
 }
 
 func runPlaylistEntry(ctx context.Context, slot int, req DownloadRequest, outputDir string, entry PlaylistEntry, ch chan<- DlUpdate) {
-	defer resetDownloadSlot(slot, ch)
+	defer resetDownloadSlot(ctx, slot, ch)
 	ch <- DlUpdate{Type: EvStart, Slot: slot, Text: entry.Title}
 	result := runDownloadRequest(ctx, slot, req, entry.URL, playlistOutputTemplate(outputDir, entry), []string{"--no-playlist"}, ch)
 	ch <- DlUpdate{Type: EvDone, Slot: slot, OK: result.Err == nil, ErrText: result.ErrText}
 }
 
-func resetDownloadSlot(slot int, ch chan<- DlUpdate) {
-	time.Sleep(slotResetDelay)
-	ch <- DlUpdate{Type: EvReset, Slot: slot}
+func resetDownloadSlot(ctx context.Context, slot int, ch chan<- DlUpdate) {
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(slotResetDelay):
+	}
+	select {
+	case ch <- DlUpdate{Type: EvReset, Slot: slot}:
+	case <-ctx.Done():
+	}
 }
 
 func playlistOutputDir(req DownloadRequest) string {

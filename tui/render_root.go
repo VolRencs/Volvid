@@ -54,7 +54,7 @@ func (m Model) screenView() screenView {
 	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch, scrSearchFetch, scrFragmentProbe:
 		return screenView{
 			title: m.stageTitle(),
-			body:  m.renderSpinnerScreen(m.spinnerScreenText()),
+			body:  m.renderSpinnerScreen(m.stageTitle()),
 		}
 
 	case scrUpdateReady:
@@ -134,22 +134,10 @@ func (m Model) screenView() screenView {
 		}
 
 	case scrSearchResults:
-		return screenView{
-			title:    strings.TrimSpace(u.SearchTitle),
-			subtitle: strings.TrimSpace(m.searchQuery),
-			body:     m.menu.View(m.menuWidth()),
-			bindings: m.menuBindings(m.kbEsc()),
-		}
+		return m.choiceScreen(u.SearchTitle, m.searchQuery, "")
 
 	case scrPlaylistAsk:
-		return screenView{
-			title:      strings.TrimSpace(u.ModeTitle),
-			subtitle:   strings.TrimSpace(m.url),
-			body:       m.menu.View(m.menuWidth()),
-			notice:     u.PlaylistMixWarn,
-			noticeKind: noticeWarn,
-			bindings:   m.menuBindings(),
-		}
+		return m.choiceScreen(u.ModeTitle, m.url, u.PlaylistMixWarn)
 
 	case scrPlaylist:
 		return screenView{
@@ -162,14 +150,7 @@ func (m Model) screenView() screenView {
 		}
 
 	case scrFragmentChoice:
-		return screenView{
-			title:      strings.TrimSpace(u.FragmentTitle),
-			subtitle:   m.fragmentChoiceSubtitle(),
-			body:       m.menu.View(m.menuWidth()),
-			notice:     m.flowErr,
-			noticeKind: noticeWarn,
-			bindings:   m.menuBindings(),
-		}
+		return m.choiceScreen(u.FragmentTitle, m.fragmentChoiceSubtitle(), m.flowErr)
 
 	case scrFragmentInput:
 		return screenView{
@@ -197,6 +178,7 @@ func (m Model) screenView() screenView {
 			title:    strings.TrimSpace(m.downloadTitle()),
 			subtitle: m.downloadSubtitle(),
 			body:     m.viewDownload(),
+			bindings: []binding{m.kbCancel()},
 		}
 
 	case scrSummary:
@@ -221,7 +203,7 @@ func (m Model) screenView() screenView {
 
 	return screenView{
 		title: "VolRen Downloader",
-		body:  m.renderSpinnerScreen(m.spinnerScreenText()),
+		body:  m.renderSpinnerScreen(m.stageTitle()),
 	}
 }
 
@@ -236,7 +218,7 @@ func (m Model) choiceScreen(title, subtitle, notice string) screenView {
 		body:       m.menu.View(m.menuWidth()),
 		notice:     notice,
 		noticeKind: kind,
-		bindings:   m.menuBindings(),
+		bindings:   m.menuBindings(m.kbEsc()),
 	}
 }
 
@@ -252,14 +234,14 @@ func (m Model) renderURLScreenBody() string {
 }
 
 func (m Model) renderHomeInput() string {
-	title := sSectionTitle.Render(strings.TrimSpace(m.u().HomeInputTitle))
+	title := sSectionTitle.Render(m.u().HomeInputTitle)
 	return title + "\n" + renderInputField(m.urlInput)
 }
 
 func (m Model) renderDownloadsLocation() string {
 	pathWidth := max(18, m.cardBodyWidth()-10)
 	body := renderFileLink(trunc(app.DlDir, pathWidth))
-	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeOutputTitle), body)
+	return m.renderSectionBlock(m.u().HomeOutputTitle, body)
 }
 
 func (m Model) renderHomeSession() string {
@@ -270,7 +252,7 @@ func (m Model) renderHomeSession() string {
 	stats := renderBadge(m.u().HomeStatSuccess, strconv.Itoa(m.session.Success)) + "  " +
 		renderBadge(m.u().HomeStatFailed, strconv.Itoa(m.session.Failed))
 	if len(m.session.Items) == 0 {
-		return m.renderSectionBlock(strings.TrimSpace(m.u().HomeSessionTitle), stats+"\n"+sMeta.Render(strings.TrimSpace(m.u().HomeSessionEmpty)))
+		return m.renderSectionBlock(m.u().HomeSessionTitle, stats+"\n"+sMeta.Render(m.u().HomeSessionEmpty))
 	}
 
 	items := m.session.Items
@@ -282,13 +264,17 @@ func (m Model) renderHomeSession() string {
 	rows := make([]string, 0, len(items)+1)
 	rows = append(rows, stats)
 	for _, item := range items {
-		icon := sOk.Render("✔")
-		if !item.OK {
-			icon = sErr.Render("✘")
-		}
+		icon := sessionIcon(item.OK)
 		rows = append(rows, icon+"  "+sValue.Render(trunc(item.Label, width))+"\n"+sMeta.Render(trunc(item.URL, width+14)))
 	}
-	return m.renderSectionBlock(strings.TrimSpace(m.u().HomeSessionTitle), strings.Join(rows, "\n\n"))
+	return m.renderSectionBlock(m.u().HomeSessionTitle, strings.Join(rows, "\n\n"))
+}
+
+func sessionIcon(ok bool) string {
+	if ok {
+		return sOk.Render("●")
+	}
+	return sErr.Render("●")
 }
 
 func compactSections(parts ...string) []string {
@@ -320,8 +306,7 @@ func (m Model) renderHeader(title, subtitle string) string {
 	if subtitle = strings.TrimSpace(subtitle); subtitle != "" {
 		parts = append(parts, m.renderSubtitle(subtitle))
 	}
-	parts = append(parts, sep(m.cardBodyWidth()))
-	return strings.Join(parts, "\n")
+	return strings.Join(parts, "\n") + "\n" + sep(m.cardBodyWidth())
 }
 
 func (m Model) renderSubtitle(text string) string {
@@ -333,7 +318,7 @@ func (m Model) renderSubtitle(text string) string {
 }
 
 func (m Model) renderTopBar() string {
-	left := sBold.Render("VolRen Downloader") + sMeta.Render(" · v"+app.Version)
+	left := sBold.Render("VolRen") + " " + sSubtitle.Render("Downloader") + sDim.Render(" v"+app.Version)
 	right := m.depBadge()
 	if right == "" {
 		return left
@@ -410,7 +395,7 @@ func (m Model) playlistBindings() []binding {
 	if m.plInputMode {
 		return []binding{m.kbEnter(), m.kbEsc()}
 	}
-	return []binding{m.kbMove(), m.kbSpace(), m.kbEnter(), m.kbAll(), m.kbSlash()}
+	return []binding{m.kbMove(), m.kbSpace(), m.kbEnter(), m.kbAll(), m.kbSlash(), m.kbEsc()}
 }
 
 func (m Model) summaryBindings() []binding {
@@ -438,6 +423,9 @@ func (m Model) kbPickFolder() binding {
 	return binding{key: "Ctrl+O", help: m.u().HelpPickFolder}
 }
 func (m Model) kbEsc() binding { return binding{key: "Esc", help: m.u().HelpBack} }
+func (m Model) kbCancel() binding {
+	return binding{key: "Esc", help: m.u().HelpCancel}
+}
 func (m Model) kbAny() binding { return binding{key: m.u().HelpAnyKey, help: m.u().HelpExit} }
 func (m Model) kbOpenFolder() binding {
 	return binding{key: "O", help: m.u().HelpOpenFolder}
@@ -449,7 +437,8 @@ func (m Model) renderFooterHelp(bindings ...binding) string {
 	for _, item := range bindings {
 		parts = append(parts, sHelpKey.Render(item.key)+" "+sHelpText.Render(item.help))
 	}
-	return joinFittedParts(m.cardBodyWidth(), parts, "  ")
+	body := joinFittedParts(m.cardBodyWidth(), parts, "  ·  ")
+	return sep(m.cardBodyWidth()) + "\n" + body
 }
 
 func (m Model) renderNotice(text string, kind noticeKind) string {
@@ -492,10 +481,6 @@ func (m Model) renderSpinnerScreen(text string) string {
 	return m.renderSectionBlock("", sTitle.Render(m.spinnerView())+"  "+sBody.Render(strings.TrimSpace(text)))
 }
 
-func (m Model) spinnerScreenText() string {
-	return m.stageTitle()
-}
-
 func (m Model) fragmentChoiceSubtitle() string {
 	u := m.u()
 	lines := []string{strings.TrimSpace(u.FragmentHint)}
@@ -509,14 +494,14 @@ func (m Model) fragmentChoiceSubtitle() string {
 }
 
 func (m Model) depScreenTitle() string {
-	return strings.TrimSpace(m.u().DepTitle)
+	return m.u().DepTitle
 }
 
 func (m Model) depScreenSubtitle() string {
 	if m.depRefreshing {
-		return strings.TrimSpace(m.u().DepsRefreshing)
+		return m.u().DepsRefreshing
 	}
-	return strings.TrimSpace(m.u().DepSubtitle)
+	return m.u().DepSubtitle
 }
 
 func (m Model) renderUpdateDone() string {
@@ -538,7 +523,7 @@ func (m Model) renderDepsUpdateScreen() string {
 
 	parts := []string{m.renderSectionBlock("", m.renderDepStatusRows(rows))}
 	if systemCount := m.systemDepsCount(); systemCount > 0 {
-		parts = append(parts, m.renderSectionBlock("", sMeta.Render(strings.TrimSpace(m.u().DepSystemNote))))
+		parts = append(parts, m.renderSectionBlock("", sMeta.Render(m.u().DepSystemNote)))
 	}
 	if len(m.menu.items) > 0 {
 		parts = append(parts, m.menu.View(m.menuWidth()))
@@ -563,13 +548,13 @@ type depStatusRow struct {
 
 func (m Model) renderDepStatusRows(rows []depStatusRow) string {
 	labelWidth := 0
-	lines := make([]string, 0, len(rows))
 	for _, row := range rows {
 		labelWidth = max(labelWidth, lipgloss.Width(strings.TrimSpace(row.Label)))
 	}
+	lines := make([]string, 0, len(rows))
 	for _, row := range rows {
 		label := fmt.Sprintf("%-*s", labelWidth, strings.TrimSpace(row.Label))
-		lines = append(lines, sTableLabel.Render(label)+sTableMeta.Render("  ·  ")+row.Value)
+		lines = append(lines, sTableLabel.Render(label)+sMeta.Render("  ·  ")+sTableMeta.Render(row.Value))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -686,7 +671,7 @@ func (m Model) viewDependencyProgress() string {
 
 func (m Model) playlistTitle() string {
 	if m.plInfo == nil {
-		return fmt.Sprintf(strings.TrimSpace(m.u().PlVideosFmt), 0)
+		return fmt.Sprintf(m.u().PlVideosFmt, 0)
 	}
 	return trunc(strings.TrimSpace(m.plInfo.Title), max(1, m.cardBodyWidth()-4))
 }
@@ -714,7 +699,7 @@ func (m Model) viewPlaylist() string {
 	parts = append(parts, m.renderSectionBlock("", m.renderPlaylistItems()))
 	if m.plInputMode {
 		parts = append(parts,
-			m.renderSectionBlock(strings.TrimSpace(m.u().PlEnterNums), renderInputField(m.plInput)),
+			m.renderSectionBlock(m.u().PlEnterNums, renderInputField(m.plInput)),
 		)
 	}
 	return strings.Join(parts, "\n\n")
@@ -726,7 +711,7 @@ func (m Model) renderPlaylistItems() string {
 	end := min(len(entries), start+m.playlistViewportHeight())
 	indexWidth := max(2, len(strconv.Itoa(len(entries))))
 	rowWidth := m.cardBodyWidth()
-	staticWidth := lipgloss.Width(renderMenuLead(false)) + lipgloss.Width("[✓]") + indexWidth + 14
+	staticWidth := lipgloss.Width(renderMenuLead(false)) + lipgloss.Width("●") + indexWidth + 14
 	titleWidth := max(1, min(m.playlistTitleWidth(), rowWidth-staticWidth))
 
 	lines := make([]string, 0, end-start)
@@ -735,9 +720,9 @@ func (m Model) renderPlaylistItems() string {
 		current := i == m.plCursor
 		lead := renderMenuLead(current)
 
-		check := sMeta.Render("[ ]")
+		check := sMeta.Render("○")
 		if m.plSelected[entry.Index] {
-			check = sOk.Render("[✓]")
+			check = sOk.Render("●")
 		}
 
 		number := sMenuIndex.Width(indexWidth).Render(fmt.Sprintf("%*d", indexWidth, entry.Index))
@@ -761,7 +746,7 @@ func (m Model) downloadTitle() string {
 	if m.dlTotal > 0 {
 		return strings.TrimSpace(fmt.Sprintf(m.u().PlaylistBarFmt, m.dlTotal))
 	}
-	return strings.TrimSpace(m.u().Downloading)
+	return m.u().Downloading
 }
 
 func (m Model) downloadSubtitle() string {
@@ -780,13 +765,14 @@ func (m Model) viewDownload() string {
 	if m.dlTotal > 0 {
 		done := m.dlDone + m.dlFailed
 		pct := float64(done) / float64(m.dlTotal) * 100
+		statsLine := sOk.Render(fmt.Sprintf("%.1f%%", pct)) + "  " +
+			sOk.Render(fmt.Sprintf("● %d", m.dlDone)) + "  " +
+			sErr.Render(fmt.Sprintf("● %d", m.dlFailed)) + "  " +
+			sMeta.Render(fmt.Sprintf(u.QueueFmt, m.dlTotal-done)) + "  " +
+			sMeta.Render(formatElapsed(m.dlElapsed))
 		parts = append(parts, m.renderSectionBlock("", strings.Join([]string{
 			renderProgressBar(barWidth, pct),
-			sOk.Render(fmt.Sprintf("%.1f%%", pct)) + "  " +
-				sOk.Render(fmt.Sprintf("✓ %d", m.dlDone)) + "  " +
-				sErr.Render(fmt.Sprintf("✕ %d", m.dlFailed)) + "  " +
-				sMeta.Render(fmt.Sprintf(u.QueueFmt, m.dlTotal-done)) + "  " +
-				sMeta.Render(formatElapsed(m.dlElapsed)),
+			statsLine,
 		}, "\n")))
 		for i, slot := range m.slots {
 			parts = append(parts, m.renderSectionBlock("", m.viewSlot(i, slot, true)))
@@ -803,7 +789,7 @@ func (m Model) viewDownload() string {
 func (m Model) viewSlot(index int, slot slotState, withBadge bool) string {
 	u := m.u()
 
-	indicator := sTitle.Render("●")
+	indicator := sDim.Render("○")
 	switch {
 	case slot.done:
 		indicator = sOk.Render("●")
@@ -815,7 +801,7 @@ func (m Model) viewSlot(index int, slot slotState, withBadge bool) string {
 
 	prefix := indicator + "  "
 	if withBadge {
-		prefix += sLabel.Render(fmt.Sprintf("[%d]", index+1)) + "  "
+		prefix += sLabel.Render(fmt.Sprintf("#%d", index+1)) + "  "
 	}
 
 	if slot.title == "" && !slot.done && !slot.failed && !slot.proc && slot.pct <= 0 && slot.doneB <= 0 {
@@ -850,22 +836,25 @@ func (m Model) summaryTitle() string {
 	if m.dlTotal > 0 {
 		switch {
 		case m.dlDone == 0 && m.dlFailed > 0:
-			return strings.TrimSpace(m.u().SummaryFail)
+			return m.u().SummaryFail
 		case m.dlFailed > 0:
-			return strings.TrimSpace(m.u().SummaryPartial)
+			return m.u().SummaryPartial
 		default:
-			return strings.TrimSpace(m.u().SummaryOK)
+			return m.u().SummaryOK
 		}
 	}
 	if !m.singleOK {
-		return strings.TrimSpace(m.u().SummaryFail)
+		return m.u().SummaryFail
 	}
-	return strings.TrimSpace(m.u().SummaryOK)
+	return m.u().SummaryOK
 }
 
 func (m Model) summarySubtitle() string {
 	if m.dlTotal > 0 {
-		return fmt.Sprintf("✔ %d  ·  ✘ %d  ·  %s", m.dlDone, m.dlFailed, formatElapsed(m.dlElapsed))
+		return fmt.Sprintf("%s %d  ·  %s %d  ·  %s",
+			sOk.Render("●"), m.dlDone,
+			sErr.Render("●"), m.dlFailed,
+			formatElapsed(m.dlElapsed))
 	}
 	return formatElapsed(m.dlElapsed)
 }
@@ -874,10 +863,13 @@ func (m Model) viewSummary() string {
 	var parts []string
 
 	if m.singleOK || m.dlDone > 0 {
-		parts = append(parts, m.renderSectionBlock(strings.TrimSpace(m.u().SummaryLocation), renderFileLink(app.DlDir)))
+		parts = append(parts, m.renderSectionBlock(m.u().SummaryLocation, renderFileLink(app.DlDir)))
 	}
 	if m.dlTotal > 0 {
-		parts = append(parts, m.renderSectionBlock("", sValue.Render(fmt.Sprintf("%s  ✓ %d  ✕ %d", m.u().SummaryPlaylistTitle, m.dlDone, m.dlFailed))))
+		playlistLine := sValue.Render(m.u().SummaryPlaylistTitle) + "  " +
+			sOk.Render(fmt.Sprintf("● %d", m.dlDone)) + "  " +
+			sErr.Render(fmt.Sprintf("● %d", m.dlFailed))
+		parts = append(parts, m.renderSectionBlock("", playlistLine))
 	}
 
 	if len(m.menu.items) > 0 {
@@ -889,13 +881,10 @@ func (m Model) viewSummary() string {
 		labelWidth := fitWidth(m.cardBodyWidth()/3, 24, 8)
 		urlWidth := max(1, m.cardBodyWidth()-labelWidth-10)
 		for _, item := range m.session.Items {
-			icon := sOk.Render("✔")
-			if !item.OK {
-				icon = sErr.Render("✘")
-			}
-			rows = append(rows, fmt.Sprintf("%s  %-*s  %s", icon, labelWidth, trunc(item.Label, labelWidth), sMeta.Render(trunc(item.URL, urlWidth))))
+			icon := sessionIcon(item.OK)
+			rows = append(rows, fmt.Sprintf("%s %-*s  %s", icon, labelWidth, trunc(item.Label, labelWidth), sMeta.Render(trunc(item.URL, urlWidth))))
 		}
-		parts = append(parts, m.renderSectionBlock(strings.TrimSpace(m.u().SessionHist), strings.Join(rows, "\n")))
+		parts = append(parts, m.renderSectionBlock(m.u().SessionHist, strings.Join(rows, "\n")))
 	}
 
 	return strings.Join(parts, "\n\n")
@@ -925,7 +914,7 @@ func renderProgressBar(width int, pct float64) string {
 		for range filledWidth {
 			b.WriteString(lipgloss.NewStyle().
 				Foreground(blend[blendIndex]).
-				Background(blend[blendIndex+1]).
+				Background(blend[blendIndex]).
 				Render(progressFullChar))
 			blendIndex += 2
 		}
@@ -977,13 +966,13 @@ func versionBadgeValue(value string) string {
 func noticeTag(u *app.UIStrings, kind noticeKind) string {
 	switch kind {
 	case noticeInfo:
-		return sNoticeTag.Foreground(cInfo).Render(u.NoticeInfo)
+		return sNoticeTag.Foreground(cInfo).Render(u.NoticeInfo) + " "
 	case noticeSuccess:
-		return sNoticeTag.Foreground(cSuccess).Render(u.NoticeSuccess)
+		return sNoticeTag.Foreground(cSuccess).Render(u.NoticeSuccess) + " "
 	case noticeWarn:
-		return sNoticeTag.Foreground(cWarn).Render(u.NoticeWarn)
+		return sNoticeTag.Foreground(cWarn).Render(u.NoticeWarn) + " "
 	case noticeError:
-		return sNoticeTag.Foreground(cError).Render(u.NoticeError)
+		return sNoticeTag.Foreground(cError).Render(u.NoticeError) + " "
 	default:
 		return ""
 	}
@@ -993,12 +982,12 @@ func (m Model) renderSectionBlock(title, body string) string {
 	if strings.TrimSpace(body) == "" {
 		return ""
 	}
-	parts := make([]string, 0, 2)
+	body = strings.Trim(body, "\n")
+	w := m.sectionBodyWidth()
 	if title = strings.TrimSpace(title); title != "" {
-		parts = append(parts, sSectionTitle.Render(title))
+		return sSectionTitle.Render(title) + "\n" + sSectionBox.Width(w).Render(body)
 	}
-	parts = append(parts, sSectionBox.Width(m.sectionBodyWidth()).Render(strings.Trim(body, "\n")))
-	return strings.Join(parts, "\n")
+	return sSectionBox.Width(w).Render(body)
 }
 
 func (m Model) compactHomeLayout() bool {

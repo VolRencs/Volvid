@@ -9,7 +9,7 @@
 ![Go](https://img.shields.io/badge/Go-1.26.2%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-6.4.3-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-6.5.0-orange?style=flat-square)
 
 </div>
 

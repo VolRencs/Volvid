@@ -226,15 +226,11 @@ func videoModeArgs(profile OutputProfile, format string) []string {
 		container = "mp4"
 	}
 
-	args := []string{"-f", format, "--merge-output-format", container}
-	if !profile.RequiresVideoPostprocessing() {
-		return args
+	if profile.RemuxOnly {
+		return []string{"-f", format, "--remux-video", container}
 	}
 
-	if profile.RemuxOnly {
-		args = append(args, "--remux-video", container)
-	}
-	return args
+	return []string{"-f", format, "--merge-output-format", container}
 }
 
 func (p OutputProfile) RequiresVideoPostprocessing() bool {
