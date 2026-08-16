@@ -12,17 +12,25 @@ type menu struct {
 }
 
 func (m *menu) SetItems(items []string) {
-	changed := !sameMenuItems(m.items, items)
+	countChanged := len(m.items) != len(items)
 	m.items = append(m.items[:0], items...)
 	if len(m.items) == 0 {
 		m.cursor = 0
 		return
 	}
-	if changed {
+	if countChanged {
 		m.cursor = 0
 		return
 	}
 	m.cursor = max(0, min(m.cursor, len(m.items)-1))
+}
+
+func (m *menu) SetCursor(index int) {
+	if len(m.items) == 0 {
+		m.cursor = 0
+		return
+	}
+	m.cursor = max(0, min(index, len(m.items)-1))
 }
 
 func (m *menu) Move(delta int) {
@@ -42,19 +50,19 @@ func (m menu) Index() int {
 func (m menu) View(width int) string {
 	rowWidth := fitWidth(width, menuW, 24)
 	indexWidth := max(2, len(strconv.Itoa(len(m.items))))
-	labelWidth := max(10, rowWidth-indexWidth-8)
+	labelWidth := max(10, rowWidth-indexWidth-4)
 	lines := make([]string, len(m.items))
 	for i, item := range m.items {
 		label := trunc(item, labelWidth)
 		prefix := fmt.Sprintf("%*d", indexWidth, i+1)
 		lead := renderMenuLead(false)
 		indexStyle := sMenuIndex.Width(indexWidth)
-		textStyle := sMenuText
+		textStyle := sMenuText.Width(labelWidth)
 		rowStyle := sMenuRow
 		if i == m.cursor {
 			lead = renderMenuLead(true)
 			indexStyle = sMenuIndexAct.Width(indexWidth)
-			textStyle = sMenuTextAct
+			textStyle = sMenuTextAct.Width(labelWidth)
 			rowStyle = sMenuActive
 		}
 		row := lead + indexStyle.Render(prefix) + "  " + textStyle.Render(label)
@@ -65,19 +73,7 @@ func (m menu) View(width int) string {
 
 func renderMenuLead(active bool) string {
 	if active {
-		return sMenuLeadAct.Render("› ")
+		return sMenuLeadAct.Render("▸ ")
 	}
 	return sMenuLead.Render("  ")
-}
-
-func sameMenuItems(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

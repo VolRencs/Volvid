@@ -49,7 +49,7 @@ func ffmpegArgs(deps CheckDepsResult) []string {
 	return []string{"--ffmpeg-location", bin}
 }
 
-func streamYtdlp(ctx context.Context, slot int, l Locale, deps CheckDepsResult, args []string, ch chan<- DlUpdate) downloadResult {
+func streamYtdlp(ctx context.Context, slot int, l Locale, deps CheckDepsResult, args []string, ch chan<- DlUpdate, cleanup *downloadCleanup) downloadResult {
 	cmd, pr, runCtx, cancel, err := startYTDLPMergedOutputCommandFor(
 		ctx,
 		0,
@@ -72,6 +72,7 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, deps CheckDepsResult, 
 		}
 
 		if parseMovedOutputPath(line, &result) {
+			cleanup.add(result.OutputPath)
 			return nil
 		}
 		if strings.HasPrefix(strings.ToLower(line), "error:") {
@@ -81,11 +82,14 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, deps CheckDepsResult, 
 
 		switch {
 		case strings.HasPrefix(line, ytdlpLineStart):
-			title := parseJSONStringWithPrefix(line, ytdlpLineStart)
+			title, filename := parseBeforeDownload(line)
 			if title != "" {
 				lastTitle = title
-				ch <- DlUpdate{Type: EvStart, Slot: slot, Text: title}
+				if !sendUpdate(ctx, ch, DlUpdate{Type: EvStart, Slot: slot, Text: title}) {
+					return ctx.Err()
+				}
 			}
+			cleanup.add(filename)
 
 		case strings.HasPrefix(line, ytdlpLineProgress):
 			update, title, ok := parseProgressUpdate(line, slot, l)
@@ -94,14 +98,20 @@ func streamYtdlp(ctx context.Context, slot int, l Locale, deps CheckDepsResult, 
 			}
 			if title != "" && title != lastTitle {
 				lastTitle = title
-				ch <- DlUpdate{Type: EvDest, Slot: slot, Text: title}
+				if !sendUpdate(ctx, ch, DlUpdate{Type: EvDest, Slot: slot, Text: title}) {
+					return ctx.Err()
+				}
 			}
-			ch <- update
+			if !sendUpdate(ctx, ch, update) {
+				return ctx.Err()
+			}
 
 		case strings.HasPrefix(line, ytdlpLinePost):
 			label := postprocessLabel(line, l)
 			if label != "" {
-				ch <- DlUpdate{Type: EvProc, Slot: slot, Text: label}
+				if !sendUpdate(ctx, ch, DlUpdate{Type: EvProc, Slot: slot, Text: label}) {
+					return ctx.Err()
+				}
 			}
 		}
 		return nil
@@ -123,7 +133,7 @@ func streamProtocolArgs() []string {
 	return []string{
 		"--newline",
 		"--progress",
-		"--print", "before_dl:" + ytdlpLineStart + "%(title|)j",
+		"--print", "before_dl:" + ytdlpLineStart + "%(title|)j\t%(_filename|)j",
 		"--print", "after_move:" + ytdlpLineMoved + "%(filepath)j",
 		"--progress-template", "download:" + ytdlpLineProgress + "%(progress.downloaded_bytes|0)s\t%(progress.total_bytes|0)s\t%(progress.total_bytes_estimate|0)s\t%(progress.speed|0)s\t%(progress._percent_str|0)s\t%(info.title|)j",
 		"--progress-template", "postprocess:" + ytdlpLinePost + "%(progress.postprocessor|)s",
@@ -143,6 +153,16 @@ func parseJSONStringWithPrefix(line, prefix string) string {
 		return ""
 	}
 	return parseJSONStringField(strings.TrimPrefix(line, prefix))
+}
+
+func parseBeforeDownload(line string) (string, string) {
+	payload := strings.TrimPrefix(line, ytdlpLineStart)
+	parts := strings.SplitN(payload, "\t", 2)
+	title := parseJSONStringField(parts[0])
+	if len(parts) < 2 {
+		return title, ""
+	}
+	return title, parseJSONStringField(parts[1])
 }
 
 func parseProgressUpdate(line string, slot int, l Locale) (DlUpdate, string, bool) {

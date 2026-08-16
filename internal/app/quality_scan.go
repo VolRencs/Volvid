@@ -12,10 +12,9 @@ import (
 )
 
 const (
-	qualityScanTimeout          = 90 * time.Second
-	maxDetailedQualityURLs      = 5
-	maxParallelQualityScans     = 6
-	maxParallelPlaylistDownload = 4
+	qualityScanTimeout      = 90 * time.Second
+	maxDetailedQualityURLs  = 5
+	maxParallelQualityScans = 6
 )
 
 type QualityChoice struct {

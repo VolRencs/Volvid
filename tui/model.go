@@ -124,6 +124,7 @@ type (
 		target inputTarget
 		tag    int
 	}
+	menuDigitTickMsg struct{}
 )
 
 type Model struct {
@@ -166,6 +167,8 @@ type Model struct {
 	fragmentIn    inputField
 
 	menu menu
+
+	menuDigits string
 
 	mode           app.DownloadMode
 	profile        app.OutputProfile
@@ -352,7 +355,7 @@ func (m Model) canOpenDependencyScreen() bool {
 }
 
 func (m Model) canOpenDownloadsFolder() bool {
-	return m.screen == scrURL || (m.screen == scrSummary && (m.singleOK || m.dlDone > 0))
+	return m.screen == scrSummary && (m.singleOK || m.dlDone > 0)
 }
 
 func (m Model) canPickDownloadsFolder() bool {
@@ -401,6 +404,7 @@ func (m Model) workerMenuOptions(n int) []string {
 }
 
 func (m Model) syncMenu() Model {
+	m.menuDigits = ""
 	m.menu.SetItems(m.menuItems())
 	return m
 }
@@ -1057,12 +1061,14 @@ func (m Model) gotoQualitySelection() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) gotoWorkersBack() (tea.Model, tea.Cmd) {
-	if m.mode == app.ModeAudio {
+	switch m.mode {
+	case app.ModeAudio:
 		m.screen = scrAudio
-		m = m.syncMenu()
-		return m, nil
+	case app.ModeThumbnail:
+		m.screen = scrMode
+	default:
+		m.screen = scrVideoOutput
 	}
-	m.screen = scrVideoOutput
 	m = m.syncMenu()
 	return m, nil
 }
@@ -1157,6 +1163,7 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	m.dlStartedAt = time.Now()
 	m.dlElapsed = 0
 	m.timerActive = true
+	m.dlCancelled = false
 
 	ch := make(chan app.DlUpdate, 256)
 	m.dlCh = ch

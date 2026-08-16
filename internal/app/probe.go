@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"path"
 	"strings"
 	"sync"
@@ -31,11 +32,11 @@ type MediaFormat struct {
 }
 
 type probePayload struct {
-	Title        string        `json:"title"`
-	Duration     int           `json:"duration"`
-	Thumbnail    string        `json:"thumbnail"`
-	ThumbnailExt string        `json:"thumbnail_ext"`
-	Formats      []MediaFormat `json:"formats"`
+	Title        string          `json:"title"`
+	Duration     json.RawMessage `json:"duration"`
+	Thumbnail    string          `json:"thumbnail"`
+	ThumbnailExt string          `json:"thumbnail_ext"`
+	Formats      []MediaFormat   `json:"formats"`
 }
 
 type probeCall struct {
@@ -142,7 +143,7 @@ func probeMediaUncached(ctx context.Context, target ParsedTarget) (*MediaProbe, 
 
 	probe := &MediaProbe{
 		Title:        strings.TrimSpace(payload.Title),
-		Duration:     payload.Duration,
+		Duration:     decodeProbeDuration(payload.Duration),
 		ThumbnailURL: strings.TrimSpace(payload.Thumbnail),
 		ThumbnailExt: detectThumbnailExt(payload.ThumbnailExt, payload.Thumbnail),
 		Formats:      append([]MediaFormat(nil), payload.Formats...),
@@ -183,6 +184,20 @@ func cloneCachedProbeLocked(key string) (*MediaProbe, bool) {
 		return nil, false
 	}
 	return cloneMediaProbe(probe), true
+}
+
+func decodeProbeDuration(raw json.RawMessage) int {
+	if len(raw) == 0 {
+		return 0
+	}
+	var seconds float64
+	if err := json.Unmarshal(raw, &seconds); err != nil {
+		return 0
+	}
+	if seconds <= 0 || seconds > math.MaxInt32 {
+		return 0
+	}
+	return int(math.Round(seconds))
 }
 
 func detectThumbnailExt(ext, thumbURL string) string {

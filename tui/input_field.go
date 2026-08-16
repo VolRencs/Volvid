@@ -167,7 +167,7 @@ func (i *inputField) ensureCursorVisible() {
 		return
 	}
 
-	maxVisible := i.width - 1
+	maxVisible := i.width
 	if i.cursor < i.offset {
 		i.offset = i.cursor
 	}
@@ -270,7 +270,7 @@ func (i inputField) View() string {
 		}
 		b.WriteString(cell)
 	}
-	if i.focused && cursor == len(visible) {
+	if i.focused && i.cursorVisible && cursor >= len(visible) && len(visible) < i.width {
 		b.WriteString(i.renderCursor(" "))
 	}
 	return b.String()
@@ -293,7 +293,7 @@ func (i inputField) visibleWindow() (int, int) {
 		return 0, len(i.value)
 	}
 	start := min(i.offset, len(i.value))
-	end := min(len(i.value), start+max(1, i.width-1))
+	end := min(len(i.value), start+max(1, i.width))
 	return start, max(start, end)
 }
 

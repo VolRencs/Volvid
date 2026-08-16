@@ -302,7 +302,7 @@ func (m Model) renderCard(view screenView) string {
 }
 
 func (m Model) renderHeader(title, subtitle string) string {
-	parts := []string{sBold.Render(strings.TrimSpace(title))}
+	parts := []string{sAccent.Render("▍ ") + sBold.Render(strings.TrimSpace(title))}
 	if subtitle = strings.TrimSpace(subtitle); subtitle != "" {
 		parts = append(parts, m.renderSubtitle(subtitle))
 	}
@@ -318,7 +318,7 @@ func (m Model) renderSubtitle(text string) string {
 }
 
 func (m Model) renderTopBar() string {
-	left := sBold.Render("VolRen") + " " + sSubtitle.Render("Downloader") + sDim.Render(" v"+app.Version)
+	left := sBold.Render("VolRen") + " " + sSubtitle.Render("Downloader") + sDim.Render("  v"+app.Version)
 	right := m.depBadge()
 	if right == "" {
 		return left
@@ -387,7 +387,7 @@ func (m Model) renderInputWithHint(field inputField, hint string) string {
 }
 
 func (m Model) menuBindings(extra ...binding) []binding {
-	bindings := []binding{m.kbMove(), m.kbEnter()}
+	bindings := []binding{m.kbMove(), m.kbDigits(), m.kbEnter()}
 	return append(bindings, extra...)
 }
 
@@ -414,6 +414,7 @@ func (m Model) depBindings() []binding {
 }
 
 func (m Model) kbMove() binding   { return binding{key: "↑/↓", help: m.u().HelpMove} }
+func (m Model) kbDigits() binding { return binding{key: "1-9", help: m.u().HelpDigits} }
 func (m Model) kbEnter() binding  { return binding{key: "Enter", help: m.u().HelpEnter} }
 func (m Model) kbSpace() binding  { return binding{key: "Space", help: m.u().HelpSpace} }
 func (m Model) kbAll() binding    { return binding{key: "A", help: m.u().HelpAll} }
@@ -464,6 +465,10 @@ func (m Model) renderNotice(text string, kind noticeKind) string {
 func (m Model) stageTitle() string {
 	u := m.u()
 	switch m.screen {
+	case scrDepDl:
+		return strings.TrimSpace(u.DepsUpdating)
+	case scrUpdateDl:
+		return strings.TrimSpace(u.AppUpdating)
 	case scrPlaylistFetch:
 		return strings.TrimSpace(u.SpinnerPlaylist)
 	case scrQualityFetch:

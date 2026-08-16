@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	app "YouTubeBuild/internal/app"
@@ -36,6 +37,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
+
+	case menuDigitTickMsg:
+		return m.activatePendingDigits()
 
 	case msgUpdateChecked:
 		if msg.info == nil {
@@ -161,6 +165,10 @@ func (m Model) handleQualityScanned(msg msgQualityScanned) (tea.Model, tea.Cmd) 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 
+	if !m.isMenuScreen() || !isDigitKey(k) {
+		m.menuDigits = ""
+	}
+
 	if k == "tab" {
 		m.locale = app.NextLocale(m.locale)
 		_ = app.SaveLocale(m.locale)
@@ -225,6 +233,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			return m.activateMenu()
 		default:
+			if isDigitKey(k) {
+				return m.handleMenuDigit(k)
+			}
 			return m, nil
 		}
 	}
@@ -263,6 +274,52 @@ func isPickFolderKey(msg tea.KeyPressMsg) bool {
 	default:
 		return false
 	}
+}
+
+func isDigitKey(k string) bool {
+	if len(k) != 1 {
+		return false
+	}
+	c := k[0]
+	return (c >= '1' && c <= '9') || c == '0'
+}
+
+func digitTimeoutCmd() tea.Cmd {
+	return tea.Tick(700*time.Millisecond, func(time.Time) tea.Msg { return menuDigitTickMsg{} })
+}
+
+func (m Model) handleMenuDigit(digit string) (tea.Model, tea.Cmd) {
+	if !m.isMenuScreen() || len(m.menu.items) == 0 {
+		m.menuDigits = ""
+		return m, nil
+	}
+	buf := m.menuDigits + digit
+	n, err := strconv.Atoi(buf)
+	if err != nil || n < 1 || n > len(m.menu.items) {
+		m.menuDigits = ""
+		return m, nil
+	}
+	m.menuDigits = buf
+	if n*10 > len(m.menu.items) {
+		m.menuDigits = ""
+		m.menu.SetCursor(n - 1)
+		return m.activateMenu()
+	}
+	return m, digitTimeoutCmd()
+}
+
+func (m Model) activatePendingDigits() (tea.Model, tea.Cmd) {
+	buf := m.menuDigits
+	m.menuDigits = ""
+	if buf == "" {
+		return m, nil
+	}
+	n, err := strconv.Atoi(buf)
+	if err != nil || n < 1 || n > len(m.menu.items) {
+		return m, nil
+	}
+	m.menu.SetCursor(n - 1)
+	return m.activateMenu()
 }
 
 func (m Model) isMenuScreen() bool {

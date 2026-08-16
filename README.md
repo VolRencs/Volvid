@@ -9,7 +9,7 @@
 ![Go](https://img.shields.io/badge/Go-1.26.2%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-6.5.0-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-6.5.1-orange?style=flat-square)
 
 </div>
 
@@ -105,6 +105,7 @@ On startup:
 | Key | Action |
 |-----|--------|
 | `↑` / `↓` | Move in menus |
+| `1-9` | Select a menu item by its number |
 | `Enter` | Continue |
 | `Space` | Select item in playlist view |
 | `/` | Enter playlist indices manually |
@@ -114,7 +115,7 @@ On startup:
 | `Tab` | Switch UI language |
 | `Ctrl+U` | Open dependency management |
 | `Ctrl+O` | Choose downloads folder |
-| `O` | Open the downloads folder |
+| `O` | Open the downloads folder (summary screen) |
 
 ## Platforms
 

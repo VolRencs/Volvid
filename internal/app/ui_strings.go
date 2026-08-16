@@ -3,7 +3,7 @@ package app
 import "fmt"
 
 type UIStrings struct {
-	HelpMove, HelpEnter, HelpDeps, HelpSpace, HelpAll, HelpSlash, HelpSearch, HelpBack, HelpOpenFolder, HelpPickFolder, HelpCancel string
+	HelpMove, HelpEnter, HelpDeps, HelpSpace, HelpAll, HelpSlash, HelpSearch, HelpBack, HelpOpenFolder, HelpPickFolder, HelpCancel, HelpDigits string
 
 	QBest, QEcon string
 
@@ -12,10 +12,11 @@ type UIStrings struct {
 	UpdateAvail, CurrentVerShort string
 	PlaylistMixWarn              string
 
-	DepsUpdating, DepsRefreshing                          string
-	UpdateAppliedWin, UpdateAppliedUnix, UpdateDonePrefix string
-	HelpAnyKey, HelpExit, DepsOK                          string
-	DownloadsDirLocked, PickDownloadsFailed               string
+	DepsUpdating, DepsRefreshing                     string
+	AppUpdating, UpdateAppliedWin, UpdateAppliedUnix string
+	UpdateDonePrefix                                 string
+	HelpAnyKey, HelpExit, DepsOK                     string
+	DownloadsDirLocked, PickDownloadsFailed          string
 
 	PasteURL, URLErrEmpty, URLErrBad, URLHints, PickDownloadsTitle                                        string
 	SearchTitle, SearchPrompt, SearchPlaceholder, SearchErrEmpty, SearchErrFailed, SearchNoResults        string
@@ -38,11 +39,11 @@ type UIStrings struct {
 
 	ModeTitle, ModeVideo, ModeAudio, ModeThumbnail                                 string
 	AudioMP3320, AudioMP3192, AudioM4ABest, AudioOpusBest, AudioFLAC, OutThumbnail string
-	VideoOriginal, VideoH264, VideoH265, VideoVP9, VideoAV1, VideoMKVCopy           string
+	VideoOriginal, VideoH264, VideoH265, VideoVP9, VideoAV1, VideoMKVCopy          string
 
 	Downloading, PlaylistBarFmt, QueueFmt, Waiting, ErrSlot, MergeProc, VideoConvertProc, MP3Proc, ThumbProc string
 
-	SummaryOK, SummaryPartial, SummaryFail, SummaryCancelled, SummaryPlaylistTitle, SummaryLocation, SessionHist, SuccessFmt string
+	SummaryOK, SummaryPartial, SummaryFail, SummaryPlaylistTitle, SummaryLocation, SessionHist string
 
 	MenuUpdateY, MenuUpdateN, MenuVidOnly, MenuOpenPl string
 	MenuAgainY, MenuAgainN, WorkerSeq, WorkerNFmt     string
@@ -59,7 +60,6 @@ type UIStrings struct {
 	DepRoleRequired, DepRoleOptional                   string
 	DepSourceBundled, DepSourceSystem                  string
 	NoticeInfo, NoticeSuccess, NoticeWarn, NoticeError string
-	LangTab                                            string
 
 	FallbackFmt string
 	PlaylistTag string
@@ -68,7 +68,7 @@ type UIStrings struct {
 var strEN = UIStrings{
 	HelpMove: "move", HelpEnter: "continue",
 	HelpDeps: "dependencies", HelpSpace: "select", HelpAll: "all", HelpSlash: "manual",
-	HelpSearch: "search", HelpBack: "back", HelpOpenFolder: "open folder", HelpPickFolder: "choose folder", HelpCancel: "cancel",
+	HelpSearch: "search", HelpBack: "back", HelpOpenFolder: "open folder", HelpPickFolder: "choose folder", HelpCancel: "cancel", HelpDigits: "choose",
 
 	QBest: "Best quality (HD·4K)", QEcon: "Economy quality (360p)",
 
@@ -80,6 +80,7 @@ var strEN = UIStrings{
 
 	DepsUpdating:      "Updating dependencies…",
 	DepsRefreshing:    "Refreshing dependency status…",
+	AppUpdating:       "Updating app…",
 	UpdateAppliedWin:  "The app will close and replace the executable in the background.",
 	UpdateAppliedUnix: "Binary replaced. Restart the app.",
 	UpdateDonePrefix:  "Update applied",
@@ -90,7 +91,7 @@ var strEN = UIStrings{
 	PasteURL: "Paste a YouTube video or playlist URL", URLErrEmpty: "URL cannot be empty",
 	URLErrBad: "Does not look like a YouTube URL", URLHints: "youtube.com/watch · youtube.com/playlist · youtu.be",
 	PickDownloadsTitle: "Choose download folder",
-	HomeInputTitle: "Target", HomeOutputTitle: "Download location",
+	HomeInputTitle:     "Target", HomeOutputTitle: "Download location",
 	HomeSessionTitle: "Recent session", HomeSessionEmpty: "No downloads yet in this session.",
 	HomeStatSuccess: "ok", HomeStatFailed: "failed",
 	SearchTitle: "YouTube search", SearchPrompt: "Enter a video title or keywords",
@@ -126,9 +127,9 @@ var strEN = UIStrings{
 	Waiting: "Waiting for work", ErrSlot: "Download failed", MergeProc: "Merging video and audio", VideoConvertProc: "Converting video", MP3Proc: "Converting audio",
 	ThumbProc: "Downloading thumbnail",
 
-	SummaryOK: "Download complete", SummaryPartial: "Completed with issues", SummaryFail: "Download failed", SummaryCancelled: "Download cancelled",
-	SummaryPlaylistTitle: "Playlist summary", SummaryLocation: "Saved to", SessionHist: "Session history",
-	SuccessFmt: "/%d ok",
+	SummaryOK: "Download complete", SummaryPartial: "Completed with issues", SummaryFail: "Download failed",
+	SummaryPlaylistTitle: "Playlist summary", SummaryLocation: "Saved to",
+	SessionHist: "Session history",
 
 	MenuUpdateY: "Install update", MenuUpdateN: "Skip for now",
 	MenuVidOnly: "This video only", MenuOpenPl: "Open full playlist",
@@ -160,7 +161,6 @@ var strEN = UIStrings{
 	NoticeSuccess:        "OK",
 	NoticeWarn:           "WARN",
 	NoticeError:          "ERROR",
-	LangTab:              "Tab language",
 
 	FallbackFmt: "Fallback format #%d: %s",
 	PlaylistTag: " [pl/%d]",
@@ -169,7 +169,7 @@ var strEN = UIStrings{
 var strRU = UIStrings{
 	HelpMove: "движение", HelpEnter: "продолжить",
 	HelpDeps: "зависимости", HelpSpace: "выбрать", HelpAll: "все", HelpSlash: "вручную",
-	HelpSearch: "поиск", HelpBack: "назад", HelpOpenFolder: "открыть папку", HelpPickFolder: "выбрать папку", HelpCancel: "отмена",
+	HelpSearch: "поиск", HelpBack: "назад", HelpOpenFolder: "открыть папку", HelpPickFolder: "выбрать папку", HelpCancel: "отмена", HelpDigits: "выбрать",
 
 	QBest: "Лучшее качество (HD·4K)", QEcon: "Экономичное качество (360p)",
 
@@ -181,6 +181,7 @@ var strRU = UIStrings{
 
 	DepsUpdating:      "Обновление зависимостей…",
 	DepsRefreshing:    "Обновляю статус зависимостей…",
+	AppUpdating:       "Обновление приложения…",
 	UpdateAppliedWin:  "Приложение закроется и заменит исполняемый файл в фоне.",
 	UpdateAppliedUnix: "Бинарный файл обновлён. Перезапустите приложение.",
 	UpdateDonePrefix:  "Обновление применено",
@@ -191,7 +192,7 @@ var strRU = UIStrings{
 	PasteURL: "Вставь ссылку на видео или плейлист YouTube", URLErrEmpty: "Ссылка не может быть пустой",
 	URLErrBad: "Не похоже на YouTube-ссылку", URLHints: "youtube.com/watch · youtube.com/playlist · youtu.be",
 	PickDownloadsTitle: "Выбери папку загрузки",
-	HomeInputTitle: "Источник", HomeOutputTitle: "Папка загрузки",
+	HomeInputTitle:     "Источник", HomeOutputTitle: "Папка загрузки",
 	HomeSessionTitle: "Текущая сессия", HomeSessionEmpty: "В этой сессии ещё не было загрузок.",
 	HomeStatSuccess: "успешно", HomeStatFailed: "ошибки",
 	SearchTitle: "Поиск YouTube", SearchPrompt: "Введи название видео или ключевые слова",
@@ -227,9 +228,9 @@ var strRU = UIStrings{
 	Waiting: "Ожидание очереди", ErrSlot: "Загрузка не удалась", MergeProc: "Объединение видео и аудио", VideoConvertProc: "Конвертация видео", MP3Proc: "Конвертация аудио",
 	ThumbProc: "Загрузка превью",
 
-	SummaryOK: "Загрузка завершена", SummaryPartial: "Завершено с ошибками", SummaryFail: "Загрузка не удалась", SummaryCancelled: "Загрузка отменена",
-	SummaryPlaylistTitle: "Итог по плейлисту", SummaryLocation: "Сохранено в", SessionHist: "История сессии",
-	SuccessFmt: "/%d успешно",
+	SummaryOK: "Загрузка завершена", SummaryPartial: "Завершено с ошибками", SummaryFail: "Загрузка не удалась",
+	SummaryPlaylistTitle: "Итог по плейлисту", SummaryLocation: "Сохранено в",
+	SessionHist: "История сессии",
 
 	MenuUpdateY: "Установить обновление", MenuUpdateN: "Пропустить",
 	MenuVidOnly: "Только это видео", MenuOpenPl: "Открыть плейлист",
@@ -261,7 +262,6 @@ var strRU = UIStrings{
 	NoticeSuccess:        "OK",
 	NoticeWarn:           "ВНИМ",
 	NoticeError:          "ОШИБКА",
-	LangTab:              "Tab язык",
 
 	FallbackFmt: "Запасной формат #%d: %s",
 	PlaylistTag: " [плейлист/%d]",

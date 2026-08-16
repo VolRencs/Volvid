@@ -8,26 +8,28 @@ import (
 
 const (
 	barW   = 38
-	cardW  = 82
+	cardW  = 84
 	inputW = 56
-	menuW  = 68
+	menuW  = 72
 )
 
 var (
-	cPrimary     = lipgloss.Color("#67A8FF")
-	cPrimarySoft = lipgloss.Color("#9CCEFF")
+	cPrimary     = lipgloss.Color("#5BA8F5")
+	cPrimarySoft = lipgloss.Color("#A9D2FF")
 	cInfo        = lipgloss.Color("#7FB9FF")
-	cSuccess     = lipgloss.Color("#86D6C6")
-	cWarn        = lipgloss.Color("#F1C878")
-	cError       = lipgloss.Color("#F0A0A0")
-	cGray        = lipgloss.Color("#A7B8D2")
-	cDim         = lipgloss.Color("#7284A1")
-	cWhite       = lipgloss.Color("#F4F8FF")
-	cBorder      = lipgloss.Color("#30496E")
-	cBorderSoft  = lipgloss.Color("#223551")
-	cPanel       = lipgloss.Color("#101A2B")
+	cSuccess     = lipgloss.Color("#4ECCA0")
+	cWarn        = lipgloss.Color("#F0B95C")
+	cError       = lipgloss.Color("#F08B8B")
+	cGray        = lipgloss.Color("#A9BAD4")
+	cDim         = lipgloss.Color("#6E82A6")
+	cWhite       = lipgloss.Color("#EDF4FF")
+	cPanel       = lipgloss.Color("#0E1626")
+	cBorder      = lipgloss.Color("#33496E")
+	cBorderSoft  = lipgloss.Color("#26395A")
+	cAccentDim   = lipgloss.Color("#7C9CC4")
 
 	sTitle   = lipgloss.NewStyle().Bold(true).Foreground(cPrimarySoft)
+	sAccent  = lipgloss.NewStyle().Bold(true).Foreground(cAccentDim)
 	sOk      = lipgloss.NewStyle().Bold(true).Foreground(cSuccess)
 	sErr     = lipgloss.NewStyle().Bold(true).Foreground(cError)
 	sWarn    = lipgloss.NewStyle().Bold(true).Foreground(cWarn)
@@ -63,9 +65,9 @@ var (
 	sTableLabel   = lipgloss.NewStyle().Foreground(cGray)
 	sTableMeta    = lipgloss.NewStyle().Foreground(cDim)
 	sMenuLead     = lipgloss.NewStyle()
-	sMenuLeadAct  = sMenuLead.Bold(true).Foreground(cPrimarySoft)
+	sMenuLeadAct  = sMenuLead.Bold(true).Foreground(cPrimary)
 	sMenuIndex    = lipgloss.NewStyle().Width(3).Align(lipgloss.Right).Foreground(cDim)
-	sMenuIndexAct = sMenuIndex.Foreground(cPrimarySoft)
+	sMenuIndexAct = sMenuIndex.Foreground(cPrimary)
 	sMenuText     = lipgloss.NewStyle().Foreground(cGray)
 	sMenuTextAct  = lipgloss.NewStyle().Bold(true).Foreground(cWhite)
 
