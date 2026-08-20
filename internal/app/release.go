@@ -127,15 +127,15 @@ func ApplyUpdateFor(l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
 }
 
 func versionGT(a, b string) bool {
-	parse := func(s string) [3]int {
-		var v [3]int
-		for i, p := range strings.SplitN(s, ".", 3) {
+	parse := func(s string) [4]int {
+		var v [4]int
+		for i, p := range strings.SplitN(s, ".", 4) {
 			v[i], _ = strconv.Atoi(p)
 		}
 		return v
 	}
 	av, bv := parse(a), parse(b)
-	for i := range 3 {
+	for i := range 4 {
 		if c := cmp.Compare(av[i], bv[i]); c != 0 {
 			return c > 0
 		}

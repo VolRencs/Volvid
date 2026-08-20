@@ -68,7 +68,7 @@ func loadDeps(force bool) CheckDepsResult {
 		depsCacheMu.Unlock()
 		return deps
 	}
-	if call := depsCacheFlight; call != nil && (!force || call.generation == depsCacheGeneration) {
+	if call := depsCacheFlight; call != nil && call.generation == depsCacheGeneration {
 		depsCacheMu.Unlock()
 		<-call.done
 		return call.result
@@ -125,7 +125,6 @@ func detectExecutableDependency(key, name string, required, downloadable bool, l
 	} else if pathExists(managedPath) {
 		dep.Path = managedPath
 		dep.Source = DepManaged
-		dep.Managed = true
 		dep.Available = true
 	}
 
@@ -171,12 +170,10 @@ func detectBrowserCookies(home, goos string) BrowserCookiesInfo {
 }
 
 func browserCookiesInfoFromCandidate(candidate cookieCandidate, goos string) BrowserCookiesInfo {
-	profile := strings.TrimSpace(candidate.Profile)
 	return BrowserCookiesInfo{
 		Status:       StatusActive,
 		Browser:      strings.TrimSpace(candidate.Browser),
-		Profile:      profile,
-		ProfileName:  cookieProfileName(profile),
+		ProfileName:  cookieProfileName(candidate.Profile),
 		CookiePath:   strings.TrimSpace(candidate.CookiePath),
 		YTDLPProfile: ytdlpCookieProfileArg(candidate, goos),
 	}
@@ -622,7 +619,8 @@ func resolveRuntimeDeps() CheckDepsResult {
 }
 
 func ytdlpCommandArgsFor(deps CheckDepsResult, base []string) []string {
-	args := make([]string, 0, len(base)+6)
+	args := make([]string, 0, len(base)+7)
+	args = append(args, "--ignore-config")
 	if deps.Cookies.Status == StatusActive {
 		cookieArg := strings.TrimSpace(deps.Cookies.Browser)
 		if profile := strings.TrimSpace(deps.Cookies.YTDLPProfile); profile != "" {

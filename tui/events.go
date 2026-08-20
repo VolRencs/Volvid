@@ -157,6 +157,12 @@ func (m Model) handleQualityScanned(msg msgQualityScanned) (tea.Model, tea.Cmd) 
 	if len(m.qualityChoices) == 0 {
 		m.qualityChoices = app.DefaultQualityChoices()
 	}
+	if msg.err != nil {
+		m.flowErr = msg.err.Error()
+		m.screen = scrMode
+		m = m.syncMenu()
+		return m, nil
+	}
 	m.screen = scrQuality
 	m = m.syncMenu()
 	return m, nil
@@ -189,7 +195,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.startPickDownloadsDir()
 	}
 
-	if isOpenFolderKey(msg) && m.canOpenDownloadsFolder() {
+	if isOpenFolderKey(msg) && m.canOpenDownloadsFolder() &&
+		(m.screen != scrURL || isUppercaseOpenFolderKey(msg)) {
 		return m.startOpenDownloadsDir()
 	}
 
@@ -267,6 +274,15 @@ func isOpenFolderKey(msg tea.KeyPressMsg) bool {
 	}
 }
 
+func isUppercaseOpenFolderKey(msg tea.KeyPressMsg) bool {
+	switch msg.String() {
+	case "O", "Щ":
+		return true
+	default:
+		return false
+	}
+}
+
 func isPickFolderKey(msg tea.KeyPressMsg) bool {
 	switch msg.String() {
 	case "ctrl+o", "ctrl+O", "ctrl+щ", "ctrl+Щ":
@@ -300,6 +316,7 @@ func (m Model) handleMenuDigit(digit string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.menuDigits = buf
+	m.menuDigitsScreen = m.screen
 	if n*10 > len(m.menu.items) {
 		m.menuDigits = ""
 		m.menu.SetCursor(n - 1)
@@ -311,7 +328,7 @@ func (m Model) handleMenuDigit(digit string) (tea.Model, tea.Cmd) {
 func (m Model) activatePendingDigits() (tea.Model, tea.Cmd) {
 	buf := m.menuDigits
 	m.menuDigits = ""
-	if buf == "" {
+	if buf == "" || !m.isMenuScreen() || m.screen != m.menuDigitsScreen {
 		return m, nil
 	}
 	n, err := strconv.Atoi(buf)

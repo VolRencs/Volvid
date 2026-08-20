@@ -25,19 +25,6 @@ type ParsedTarget struct {
 	HasURLStart  bool
 }
 
-func (k TargetKind) String() string {
-	switch k {
-	case TargetVideo:
-		return "video"
-	case TargetPlaylist:
-		return "playlist"
-	case TargetMixed:
-		return "mixed"
-	default:
-		return "unknown"
-	}
-}
-
 func (t ParsedTarget) IsVideo() bool {
 	return t.Kind == TargetVideo || t.Kind == TargetMixed
 }

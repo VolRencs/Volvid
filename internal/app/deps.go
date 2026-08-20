@@ -18,14 +18,12 @@ type DependencyInfo struct {
 	Source       DependencySource
 	Required     bool
 	Downloadable bool
-	Managed      bool
 	Available    bool
 }
 
 type BrowserCookiesInfo struct {
 	Status       string
 	Browser      string
-	Profile      string
 	ProfileName  string
 	CookiePath   string
 	YTDLPProfile string

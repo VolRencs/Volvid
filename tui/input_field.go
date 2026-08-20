@@ -184,11 +184,7 @@ func (i *inputField) deleteAfterCursor() {
 	i.value = i.value[:i.cursor]
 }
 
-func (i *inputField) deleteWordBackward() {
-	if i.cursor == 0 || len(i.value) == 0 {
-		return
-	}
-
+func (i *inputField) wordBoundaryBackward() int {
 	start := i.cursor
 	for start > 0 && unicode.IsSpace(i.value[start-1]) {
 		start--
@@ -196,15 +192,10 @@ func (i *inputField) deleteWordBackward() {
 	for start > 0 && !unicode.IsSpace(i.value[start-1]) {
 		start--
 	}
-	i.value = append(i.value[:start], i.value[i.cursor:]...)
-	i.cursor = start
+	return start
 }
 
-func (i *inputField) deleteWordForward() {
-	if i.cursor >= len(i.value) || len(i.value) == 0 {
-		return
-	}
-
+func (i *inputField) wordBoundaryForward() int {
 	end := i.cursor
 	for end < len(i.value) && unicode.IsSpace(i.value[end]) {
 		end++
@@ -212,37 +203,32 @@ func (i *inputField) deleteWordForward() {
 	for end < len(i.value) && !unicode.IsSpace(i.value[end]) {
 		end++
 	}
+	return end
+}
+
+func (i *inputField) deleteWordBackward() {
+	start := i.wordBoundaryBackward()
+	if start == i.cursor {
+		return
+	}
+	i.value = append(i.value[:start], i.value[i.cursor:]...)
+	i.cursor = start
+}
+
+func (i *inputField) deleteWordForward() {
+	end := i.wordBoundaryForward()
+	if end == i.cursor {
+		return
+	}
 	i.value = append(i.value[:i.cursor], i.value[end:]...)
 }
 
 func (i *inputField) wordBackward() {
-	if i.cursor == 0 || len(i.value) == 0 {
-		return
-	}
-
-	pos := i.cursor
-	for pos > 0 && unicode.IsSpace(i.value[pos-1]) {
-		pos--
-	}
-	for pos > 0 && !unicode.IsSpace(i.value[pos-1]) {
-		pos--
-	}
-	i.cursor = pos
+	i.cursor = i.wordBoundaryBackward()
 }
 
 func (i *inputField) wordForward() {
-	if i.cursor >= len(i.value) || len(i.value) == 0 {
-		return
-	}
-
-	pos := i.cursor
-	for pos < len(i.value) && unicode.IsSpace(i.value[pos]) {
-		pos++
-	}
-	for pos < len(i.value) && !unicode.IsSpace(i.value[pos]) {
-		pos++
-	}
-	i.cursor = pos
+	i.cursor = i.wordBoundaryForward()
 }
 
 func (i inputField) View() string {
@@ -317,13 +303,6 @@ func sanitizeRunes(runes []rune) []rune {
 		}
 	}
 	return clean
-}
-
-func (i *inputField) updateContent(content string) tea.Cmd {
-	if !i.focused {
-		return nil
-	}
-	return i.insertRunes([]rune(content))
 }
 
 func (i *inputField) touch() tea.Cmd {

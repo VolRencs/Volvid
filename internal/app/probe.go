@@ -6,19 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"path"
 	"strings"
 	"sync"
 )
 
 type MediaProbe struct {
-	Title        string
-	Duration     int
-	ThumbnailURL string
-	ThumbnailExt string
-	Formats      []MediaFormat
-	HasAudio     bool
-	HasVideo     bool
+	Duration int
+	Formats  []MediaFormat
+	HasVideo bool
 }
 
 type MediaFormat struct {
@@ -32,11 +27,8 @@ type MediaFormat struct {
 }
 
 type probePayload struct {
-	Title        string          `json:"title"`
-	Duration     json.RawMessage `json:"duration"`
-	Thumbnail    string          `json:"thumbnail"`
-	ThumbnailExt string          `json:"thumbnail_ext"`
-	Formats      []MediaFormat   `json:"formats"`
+	Duration json.RawMessage `json:"duration"`
+	Formats  []MediaFormat   `json:"formats"`
 }
 
 type probeCall struct {
@@ -142,17 +134,11 @@ func probeMediaUncached(ctx context.Context, target ParsedTarget) (*MediaProbe, 
 	}
 
 	probe := &MediaProbe{
-		Title:        strings.TrimSpace(payload.Title),
-		Duration:     decodeProbeDuration(payload.Duration),
-		ThumbnailURL: strings.TrimSpace(payload.Thumbnail),
-		ThumbnailExt: detectThumbnailExt(payload.ThumbnailExt, payload.Thumbnail),
-		Formats:      append([]MediaFormat(nil), payload.Formats...),
+		Duration: decodeProbeDuration(payload.Duration),
+		Formats:  append([]MediaFormat(nil), payload.Formats...),
 	}
 
 	for _, format := range probe.Formats {
-		if format.ACodec != "" && format.ACodec != "none" {
-			probe.HasAudio = true
-		}
 		if format.VCodec != "" && format.VCodec != "none" {
 			probe.HasVideo = true
 		}
@@ -200,34 +186,14 @@ func decodeProbeDuration(raw json.RawMessage) int {
 	return int(math.Round(seconds))
 }
 
-func detectThumbnailExt(ext, thumbURL string) string {
-	ext = strings.TrimSpace(strings.TrimPrefix(ext, "."))
-	if ext != "" {
-		return ext
-	}
-	if thumbURL == "" {
-		return ""
-	}
-	suffix := strings.TrimPrefix(path.Ext(thumbURL), ".")
-	suffix = strings.TrimSpace(suffix)
-	if suffix == "" {
-		return ""
-	}
-	return suffix
-}
-
 func cloneMediaProbe(probe *MediaProbe) *MediaProbe {
 	if probe == nil {
 		return nil
 	}
 	cloned := &MediaProbe{
-		Title:        probe.Title,
-		Duration:     probe.Duration,
-		ThumbnailURL: probe.ThumbnailURL,
-		ThumbnailExt: probe.ThumbnailExt,
-		HasAudio:     probe.HasAudio,
-		HasVideo:     probe.HasVideo,
-		Formats:      append([]MediaFormat(nil), probe.Formats...),
+		Duration: probe.Duration,
+		HasVideo: probe.HasVideo,
+		Formats:  append([]MediaFormat(nil), probe.Formats...),
 	}
 	return cloned
 }

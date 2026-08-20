@@ -8,10 +8,43 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
-const processTerminateGrace = 2 * time.Second
+const (
+	processTerminateGrace    = 2 * time.Second
+	commandStderrCaptureSize = 8 << 10
+)
+
+type limitedBuffer struct {
+	buf []byte
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	if len(b.buf) < commandStderrCaptureSize {
+		room := commandStderrCaptureSize - len(b.buf)
+		if len(p) > room {
+			p = p[:room]
+		}
+		b.buf = append(b.buf, p...)
+	}
+	return len(p), nil
+}
+
+func (b limitedBuffer) String() string {
+	return strings.TrimSpace(string(b.buf))
+}
+
+func commandErrorWithStderr(err error, stderr limitedBuffer) error {
+	if err == nil {
+		return nil
+	}
+	if text := stderr.String(); text != "" {
+		return fmt.Errorf("%w: %s", err, text)
+	}
+	return err
+}
 
 func commandOutput(ctx context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
 	runCtx, cancel := commandContext(ctx, timeout)
@@ -19,14 +52,15 @@ func commandOutput(ctx context.Context, timeout time.Duration, name string, args
 
 	cmd := newProcessTreeCommand(runCtx, name, args...)
 	var stdout bytes.Buffer
+	var stderr limitedBuffer
 	cmd.Stdout = &stdout
-	cmd.Stderr = io.Discard
+	cmd.Stderr = &stderr
 
 	if err := startCommand(cmd, runCtx); err != nil {
 		return nil, err
 	}
 	if err := waitCommand(cmd, runCtx); err != nil {
-		return nil, err
+		return nil, commandErrorWithStderr(err, stderr)
 	}
 	return stdout.Bytes(), nil
 }

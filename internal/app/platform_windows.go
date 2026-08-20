@@ -23,7 +23,10 @@ const enableVirtualTerminalProcessing = 0x0004
 func init() {
 	handle := syscall.Handle(os.Stdout.Fd())
 	var mode uint32
-	procGetConsoleMode.Call(uintptr(handle), uintptr(unsafe.Pointer(&mode)))
+	_, _, err := procGetConsoleMode.Call(uintptr(handle), uintptr(unsafe.Pointer(&mode)))
+	if err != nil {
+		return
+	}
 	procSetConsoleMode.Call(uintptr(handle), uintptr(mode|enableVirtualTerminalProcessing))
 }
 
@@ -58,23 +61,6 @@ func applyUpdatePlatform(tmp, dest string) error {
 		_ = os.Remove(tmp)
 		_ = os.Remove(bat)
 		return fmt.Errorf("запуск update-bat: %w", err)
-	}
-	if cmd.Process != nil {
-		_ = cmd.Process.Release()
-	}
-	return nil
-}
-
-func OpenInFileManager(path string) error {
-	var err error
-	path, err = prepareDir(path)
-	if err != nil {
-		return fmt.Errorf("prepare folder: %w", err)
-	}
-
-	cmd := exec.Command("explorer.exe", path)
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("open explorer: %w", err)
 	}
 	if cmd.Process != nil {
 		_ = cmd.Process.Release()

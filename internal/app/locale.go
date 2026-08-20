@@ -43,11 +43,7 @@ func localePath() string {
 }
 
 func LoadLocale() Locale {
-	path := localePath()
-	if path == "" {
-		return LocaleEN
-	}
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(localePath())
 	if err != nil {
 		return LocaleEN
 	}
@@ -55,12 +51,5 @@ func LoadLocale() Locale {
 }
 
 func SaveLocale(l Locale) error {
-	path := localePath()
-	if path == "" {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(l.String()+"\n"), 0o644)
+	return writeAppConfig(localePath(), l.String()+"\n")
 }

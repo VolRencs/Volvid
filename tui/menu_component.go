@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -12,17 +13,11 @@ type menu struct {
 }
 
 func (m *menu) SetItems(items []string) {
-	countChanged := len(m.items) != len(items)
+	if slices.Equal(m.items, items) {
+		return
+	}
 	m.items = append(m.items[:0], items...)
-	if len(m.items) == 0 {
-		m.cursor = 0
-		return
-	}
-	if countChanged {
-		m.cursor = 0
-		return
-	}
-	m.cursor = max(0, min(m.cursor, len(m.items)-1))
+	m.cursor = 0
 }
 
 func (m *menu) SetCursor(index int) {

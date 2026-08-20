@@ -54,16 +54,17 @@ func FetchPlaylistInfoFor(ctx context.Context, url string, l Locale) (*PlaylistI
 		entries = append(entries, entry)
 	})
 
-	if len(entries) == 0 {
-		switch {
-		case err != nil:
-			if errors.Is(err, context.DeadlineExceeded) {
-				return nil, errors.New(strs.PlTimeout)
-			}
-			return nil, err
-		default:
-			return nil, errors.New(strs.PlEmptyPlaylist)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, errors.New(strs.PlTimeout)
 		}
+		if len(entries) > 0 {
+			return nil, fmt.Errorf("%s (%d)", err, len(entries))
+		}
+		return nil, err
+	}
+	if len(entries) == 0 {
+		return nil, errors.New(strs.PlEmptyPlaylist)
 	}
 	title := "playlist"
 	if first != nil {

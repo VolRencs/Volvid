@@ -18,7 +18,7 @@ func resolveDownloadsDir() string {
 	if path := loadSavedDownloadsDir(); path != "" {
 		return path
 	}
-	return cleanAbsPath(systemDownloadsDir())
+	return systemDownloadsDir()
 }
 
 func DownloadsDirLocked() bool {
@@ -64,15 +64,7 @@ func saveDownloadsDir(path string) error {
 	if path == "" {
 		return errors.New("download location is empty")
 	}
-
-	file := downloadsDirPath()
-	if strings.TrimSpace(file) == "" {
-		return errors.New("download location config path is empty")
-	}
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(file, []byte(path+"\n"), 0o644)
+	return writeAppConfig(downloadsDirPath(), path+"\n")
 }
 
 func systemDownloadsDir() string {

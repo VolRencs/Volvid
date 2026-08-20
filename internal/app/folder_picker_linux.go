@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -38,22 +39,25 @@ func pickDirectory(current, title string) (string, error) {
 		return "", fmt.Errorf("resolve session bus name: empty connection names")
 	}
 
+	sender := portalSenderName(senderNames)
+	if sender == "" {
+		return "", fmt.Errorf("resolve session bus name: no unique connection name")
+	}
+
 	token, err := portalHandleToken()
 	if err != nil {
 		return "", err
 	}
-	requestPath := portalRequestPath(senderNames[0], token)
-	match := []dbus.MatchOption{
-		dbus.WithMatchInterface(portalRequestInterface),
-		dbus.WithMatchMember(portalResponseMember),
-		dbus.WithMatchObjectPath(requestPath),
-	}
+	requestPath := portalRequestPath(sender, token)
+	matchList := [][]dbus.MatchOption{portalMatchOptions(requestPath)}
 
-	if err := conn.AddMatchSignal(match...); err != nil {
+	if err := conn.AddMatchSignal(matchList[0]...); err != nil {
 		return "", fmt.Errorf("subscribe portal response: %w", err)
 	}
 	defer func() {
-		_ = conn.RemoveMatchSignal(match...)
+		for _, match := range matchList {
+			_ = conn.RemoveMatchSignal(match...)
+		}
 	}()
 
 	signals := make(chan *dbus.Signal, 8)
@@ -66,7 +70,7 @@ func pickDirectory(current, title string) (string, error) {
 		"modal":        dbus.MakeVariant(true),
 	}
 	if current != "" {
-		options["current_folder"] = dbus.MakeVariant(append([]byte(current), 0))
+		options["current_folder"] = dbus.MakeVariant(currentFolderURI(current))
 	}
 
 	var handle dbus.ObjectPath
@@ -85,13 +89,8 @@ func pickDirectory(current, title string) (string, error) {
 		return "", fmt.Errorf("decode portal file chooser response: %w", err)
 	}
 	if handle != requestPath {
-		_ = conn.RemoveMatchSignal(match...)
-		match = []dbus.MatchOption{
-			dbus.WithMatchInterface(portalRequestInterface),
-			dbus.WithMatchMember(portalResponseMember),
-			dbus.WithMatchObjectPath(handle),
-		}
-		if err := conn.AddMatchSignal(match...); err != nil {
+		matchList = append(matchList, portalMatchOptions(handle))
+		if err := conn.AddMatchSignal(matchList[1]...); err != nil {
 			return "", fmt.Errorf("subscribe actual portal response: %w", err)
 		}
 	}
@@ -107,6 +106,27 @@ func pickDirectory(current, title string) (string, error) {
 			return parsePortalFolderSignal(sig)
 		}
 	}
+}
+
+func portalSenderName(names []string) string {
+	for _, name := range names {
+		if strings.HasPrefix(name, ":") {
+			return name
+		}
+	}
+	return ""
+}
+
+func portalMatchOptions(objectPath dbus.ObjectPath) []dbus.MatchOption {
+	return []dbus.MatchOption{
+		dbus.WithMatchInterface(portalRequestInterface),
+		dbus.WithMatchMember(portalResponseMember),
+		dbus.WithMatchObjectPath(objectPath),
+	}
+}
+
+func currentFolderURI(path string) string {
+	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
 }
 
 func parsePortalFolderSignal(sig *dbus.Signal) (string, error) {

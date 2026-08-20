@@ -42,11 +42,17 @@ func systemDownloadsDirPlatform() string {
 
 		unquoted, err := strconv.Unquote(value)
 		if err != nil {
-			return ""
+			unquoted = strings.Trim(value, `"'`)
 		}
 
+		if home == "" && (strings.Contains(unquoted, "$HOME") || strings.Contains(unquoted, "~")) {
+			return ""
+		}
 		path := strings.ReplaceAll(unquoted, "${HOME}", home)
 		path = strings.ReplaceAll(path, "$HOME", home)
+		if strings.HasPrefix(path, "~/") {
+			path = filepath.Join(home, strings.TrimPrefix(path, "~/"))
+		}
 		return cleanAbsPath(path)
 	}
 

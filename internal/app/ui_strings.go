@@ -49,17 +49,17 @@ type UIStrings struct {
 	MenuAgainY, MenuAgainN, WorkerSeq, WorkerNFmt     string
 	MenuFullVideo, MenuFromURLStart, MenuManualRange  string
 
-	DepLabelFmt, DepTitle, DepSubtitle, DepSystemNote  string
-	DepActionDownloadFmt, DepActionUpdateFmt           string
-	DepActionRefresh, DepActionContinue                string
-	DepActionBack, DepActionExit                       string
-	DepRequirementFmt                                  string
-	DepStatusActive, DepStatusMissing                  string
-	DepStatusNotActive, DepStatusAvailable             string
-	DepStatusChecking                                  string
-	DepRoleRequired, DepRoleOptional                   string
-	DepSourceBundled, DepSourceSystem                  string
-	NoticeInfo, NoticeSuccess, NoticeWarn, NoticeError string
+	DepLabelFmt, DepTitle, DepSubtitle, DepSystemNote string
+	DepActionDownloadFmt, DepActionUpdateFmt          string
+	DepActionRefresh, DepActionContinue               string
+	DepActionBack, DepActionExit                      string
+	DepRequirementFmt                                 string
+	DepStatusActive, DepStatusMissing                 string
+	DepStatusNotActive, DepStatusAvailable            string
+	DepStatusChecking                                 string
+	DepRoleRequired, DepRoleOptional                  string
+	DepSourceBundled, DepSourceSystem                 string
+	NoticeSuccess, NoticeWarn, NoticeError            string
 
 	FallbackFmt string
 	PlaylistTag string
@@ -157,7 +157,6 @@ var strEN = UIStrings{
 	DepRoleOptional:      "optional",
 	DepSourceBundled:     "bundled",
 	DepSourceSystem:      "system",
-	NoticeInfo:           "INFO",
 	NoticeSuccess:        "OK",
 	NoticeWarn:           "WARN",
 	NoticeError:          "ERROR",
@@ -258,7 +257,6 @@ var strRU = UIStrings{
 	DepRoleOptional:      "опционально",
 	DepSourceBundled:     "в комплекте",
 	DepSourceSystem:      "система",
-	NoticeInfo:           "ИНФО",
 	NoticeSuccess:        "OK",
 	NoticeWarn:           "ВНИМ",
 	NoticeError:          "ОШИБКА",

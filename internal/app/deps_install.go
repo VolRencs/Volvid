@@ -451,16 +451,10 @@ func extractArchiveBinariesWithTar(archive string, targets map[string]string) er
 
 func listTarArchive(archive string) ([]string, error) {
 	output, err := commandCombinedOutput(context.Background(), 2*time.Minute, "tar", "-tf", archive)
-	if err == nil {
-		return parseTarListOutput(string(output))
+	if err != nil {
+		return nil, tarCommandError(err, output)
 	}
-	if errors.Is(err, exec.ErrNotFound) {
-		return nil, errors.New("tar is required to extract this archive")
-	}
-	if line := firstNonEmptyLine(string(output)); line != "" {
-		return nil, errors.New(line)
-	}
-	return nil, err
+	return parseTarListOutput(string(output))
 }
 
 func parseTarListOutput(output string) ([]string, error) {
@@ -540,9 +534,13 @@ func extractTarEntriesWithTar(archive, destDir string, entries []string) error {
 	args := []string{"-xf", archive, "-C", destDir, "--no-same-owner", "--no-same-permissions", "--"}
 	args = append(args, entries...)
 	output, err := commandCombinedOutput(context.Background(), 2*time.Minute, "tar", args...)
-	if err == nil {
-		return nil
+	if err != nil {
+		return tarCommandError(err, output)
 	}
+	return nil
+}
+
+func tarCommandError(err error, output []byte) error {
 	if errors.Is(err, exec.ErrNotFound) {
 		return errors.New("tar is required to extract this archive")
 	}

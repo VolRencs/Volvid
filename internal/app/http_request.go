@@ -18,7 +18,7 @@ func doSafeRequest(ctx context.Context, client *http.Client, req *http.Request) 
 		resp, err := client.Do(req.Clone(ctx))
 		if err == nil {
 			if shouldRetryStatus(resp.StatusCode) && attempt+1 < defaultSafeRetryAttempts {
-				io.Copy(io.Discard, resp.Body)
+				_, _ = io.CopyN(io.Discard, resp.Body, 1<<20)
 				resp.Body.Close()
 				if err := sleepWithContext(ctx, retryBackoffForAttempt(attempt)); err != nil {
 					return nil, err

@@ -16,7 +16,6 @@ type noticeKind uint8
 
 const (
 	noticeNone noticeKind = iota
-	noticeInfo
 	noticeSuccess
 	noticeWarn
 	noticeError
@@ -449,8 +448,6 @@ func (m Model) renderNotice(text string, kind noticeKind) string {
 	}
 	tag := noticeTag(m.u(), kind)
 	switch kind {
-	case noticeInfo:
-		return sNoticeInfo.Render(tag + sBody.Render(text))
 	case noticeSuccess:
 		return sNoticeSuccess.Render(tag + sBody.Render(text))
 	case noticeWarn:
@@ -970,8 +967,6 @@ func versionBadgeValue(value string) string {
 
 func noticeTag(u *app.UIStrings, kind noticeKind) string {
 	switch kind {
-	case noticeInfo:
-		return sNoticeTag.Foreground(cInfo).Render(u.NoticeInfo) + " "
 	case noticeSuccess:
 		return sNoticeTag.Foreground(cSuccess).Render(u.NoticeSuccess) + " "
 	case noticeWarn:

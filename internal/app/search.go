@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -44,16 +45,17 @@ func SearchYouTubeContext(ctx context.Context, query string) ([]SearchResult, er
 		results = append(results, result)
 	})
 
-	if len(results) == 0 {
-		switch {
-		case err != nil:
-			if errors.Is(err, context.DeadlineExceeded) {
-				return nil, errors.New("yt-dlp: search timeout")
-			}
-			return nil, err
-		default:
-			return nil, errors.New("search returned no results")
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, errors.New("yt-dlp: search timeout")
 		}
+		if len(results) > 0 {
+			return nil, fmt.Errorf("%s (%d)", err, len(results))
+		}
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, errors.New("search returned no results")
 	}
 	return results, nil
 }

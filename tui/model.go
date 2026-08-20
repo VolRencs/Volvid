@@ -168,7 +168,8 @@ type Model struct {
 
 	menu menu
 
-	menuDigits string
+	menuDigits       string
+	menuDigitsScreen screen
 
 	mode           app.DownloadMode
 	profile        app.OutputProfile
@@ -355,6 +356,9 @@ func (m Model) canOpenDependencyScreen() bool {
 }
 
 func (m Model) canOpenDownloadsFolder() bool {
+	if m.screen == scrURL {
+		return true
+	}
 	return m.screen == scrSummary && (m.singleOK || m.dlDone > 0)
 }
 
@@ -395,6 +399,9 @@ func (m Model) restoreActiveScreen() (tea.Model, tea.Cmd) {
 
 func (m Model) workerMenuOptions(n int) []string {
 	u := m.u()
+	if n <= 0 {
+		return nil
+	}
 	opts := make([]string, n)
 	opts[0] = u.WorkerSeq
 	for i := 1; i < n; i++ {
@@ -826,19 +833,10 @@ func (m Model) gotoChecks() (tea.Model, tea.Cmd) {
 	return m.gotoURLWithDeps(deps)
 }
 
-func (m Model) gotoURL() (tea.Model, tea.Cmd) {
-	return m.gotoURLWithDeps(app.DetectDeps())
-}
-
 func (m Model) gotoURLWithDeps(deps app.CheckDepsResult) (tea.Model, tea.Cmd) {
 	m.deps = deps
 	m.screen = scrURL
 	return m, m.urlInput.Focus()
-}
-
-func (m Model) withDeps(deps app.CheckDepsResult) Model {
-	m.deps = deps
-	return m
 }
 
 func (m Model) openDependencyScreen(mode depScreenMode) (tea.Model, tea.Cmd) {
@@ -1050,10 +1048,6 @@ func (m Model) exitToURL() (tea.Model, tea.Cmd) {
 	return m, m.urlInput.Focus()
 }
 
-func (m Model) gotoModeSelection() (tea.Model, tea.Cmd) {
-	return m.startModeSelection()
-}
-
 func (m Model) gotoQualitySelection() (tea.Model, tea.Cmd) {
 	m.screen = scrQuality
 	m = m.syncMenu()
@@ -1071,10 +1065,6 @@ func (m Model) gotoWorkersBack() (tea.Model, tea.Cmd) {
 	}
 	m = m.syncMenu()
 	return m, nil
-}
-
-func (m Model) startModeSelection() (tea.Model, tea.Cmd) {
-	return m.startModeSelectionWithNotice("")
 }
 
 func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) {

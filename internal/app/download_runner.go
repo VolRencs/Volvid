@@ -65,13 +65,18 @@ func deleteDownloadArtifacts(path string) {
 	if path == "" {
 		return
 	}
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	stem := strings.TrimSuffix(base, filepath.Ext(base))
 	_ = os.Remove(path)
 	_ = os.Remove(path + ".part")
 	_ = os.Remove(path + ".ytdl")
 	for _, pattern := range []string{
 		path + ".part-*",
-		filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".backup-*"),
-		filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".transcode-*"),
+		filepath.Join(dir, stem+".*.part*"),
+		filepath.Join(dir, stem+".*.ytdl"),
+		filepath.Join(dir, "."+base+".backup-*"),
+		filepath.Join(dir, "."+base+".transcode-*"),
 	} {
 		matches, _ := filepath.Glob(pattern)
 		for _, match := range matches {
@@ -157,7 +162,7 @@ func transcodeDownloadedVideo(
 		}
 		out, err := commandCombinedOutput(ctx, 0, ffmpeg, command.Args...)
 		if err == nil {
-			if err := replaceFile(outputPath, tmp); err != nil {
+			if err := replaceDownloadedFile(tmp, outputPath); err != nil {
 				return fmt.Errorf("video transcoding failed: %w", err)
 			}
 			return nil
@@ -200,12 +205,10 @@ func transcodeTempPath(outputPath, container string) (string, error) {
 }
 
 type videoTranscodeCommand struct {
-	Label string
-	Args  []string
+	Args []string
 }
 
 type hardwareVideoEncoder struct {
-	Name   string
 	Codec  string
 	Family string
 }
@@ -216,13 +219,11 @@ func ffmpegVideoTranscodeCommands(ctx context.Context, ffmpeg, inputPath, output
 		hwProfile := profile
 		hwProfile.VideoCodec = encoder.Codec
 		commands = append(commands, videoTranscodeCommand{
-			Label: encoder.Name,
-			Args:  ffmpegVideoTranscodeArgs(inputPath, outputPath, hwProfile, encoder.Family),
+			Args: ffmpegVideoTranscodeArgs(inputPath, outputPath, hwProfile, encoder.Family),
 		})
 	}
 	commands = append(commands, videoTranscodeCommand{
-		Label: "cpu",
-		Args:  ffmpegVideoTranscodeArgs(inputPath, outputPath, profile, ""),
+		Args: ffmpegVideoTranscodeArgs(inputPath, outputPath, profile, ""),
 	})
 	return commands
 }
@@ -319,21 +320,21 @@ func hardwareEncoderCandidates(codec string) []hardwareVideoEncoder {
 	switch codec {
 	case "h264":
 		return []hardwareVideoEncoder{
-			{Name: "NVIDIA NVENC H.264", Codec: "h264_nvenc", Family: "nvenc"},
-			{Name: "Intel Quick Sync H.264", Codec: "h264_qsv", Family: "qsv"},
-			{Name: "AMD AMF H.264", Codec: "h264_amf", Family: "amf"},
+			{Codec: "h264_nvenc", Family: "nvenc"},
+			{Codec: "h264_qsv", Family: "qsv"},
+			{Codec: "h264_amf", Family: "amf"},
 		}
 	case "hevc":
 		return []hardwareVideoEncoder{
-			{Name: "NVIDIA NVENC H.265", Codec: "hevc_nvenc", Family: "nvenc"},
-			{Name: "Intel Quick Sync H.265", Codec: "hevc_qsv", Family: "qsv"},
-			{Name: "AMD AMF H.265", Codec: "hevc_amf", Family: "amf"},
+			{Codec: "hevc_nvenc", Family: "nvenc"},
+			{Codec: "hevc_qsv", Family: "qsv"},
+			{Codec: "hevc_amf", Family: "amf"},
 		}
 	case "av1":
 		return []hardwareVideoEncoder{
-			{Name: "NVIDIA NVENC AV1", Codec: "av1_nvenc", Family: "nvenc"},
-			{Name: "Intel Quick Sync AV1", Codec: "av1_qsv", Family: "qsv"},
-			{Name: "AMD AMF AV1", Codec: "av1_amf", Family: "amf"},
+			{Codec: "av1_nvenc", Family: "nvenc"},
+			{Codec: "av1_qsv", Family: "qsv"},
+			{Codec: "av1_amf", Family: "amf"},
 		}
 	default:
 		return nil
@@ -380,28 +381,6 @@ func parseFFmpegVideoEncoders(output string) map[string]bool {
 		encoders[fields[1]] = true
 	}
 	return encoders
-}
-
-func replaceFile(dst, src string) error {
-	backupFile, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".backup-*")
-	if err != nil {
-		return err
-	}
-	backup := backupFile.Name()
-	if err := backupFile.Close(); err != nil {
-		_ = os.Remove(backup)
-		return err
-	}
-	_ = os.Remove(backup)
-
-	if err := os.Rename(dst, backup); err != nil {
-		return err
-	}
-	if err := os.Rename(src, dst); err != nil {
-		_ = os.Rename(backup, dst)
-		return err
-	}
-	return os.Remove(backup)
 }
 
 func downloadFormats(req DownloadRequest) ([]string, []string) {
