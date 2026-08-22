@@ -59,7 +59,7 @@ func DefaultVideoProfile(l Locale) OutputProfile {
 		Key:           "best",
 		Label:         StringsFor(l).QBest,
 		Mode:          ModeVideo,
-		VideoFmtChain: QualityChainAt(0),
+		VideoFmtChain: qualityChainAt(0),
 	}
 }
 
@@ -72,6 +72,11 @@ func PrepareDownloadRequest(req DownloadRequest) (DownloadRequest, error) {
 		return DownloadRequest{}, err
 	}
 	return req, nil
+}
+
+func ValidateDownloadRequest(req DownloadRequest) error {
+	_, err := PrepareDownloadRequest(req)
+	return err
 }
 
 func normalizeDownloadRequest(req DownloadRequest) DownloadRequest {

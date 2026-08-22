@@ -37,7 +37,7 @@ func normalizeVideoBaseProfile(base OutputProfile, l Locale) OutputProfile {
 		base.Label = StringsFor(l).QBest
 	}
 	if len(base.VideoFmtChain) == 0 {
-		base.VideoFmtChain = QualityChainAt(0)
+		base.VideoFmtChain = qualityChainAt(0)
 	}
 	return base
 }

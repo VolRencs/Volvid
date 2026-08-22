@@ -8,7 +8,7 @@ var qualityChains = [3][]string{
 	nil,
 }
 
-func QualityChainAt(idx int) []string {
+func qualityChainAt(idx int) []string {
 	if idx < 0 || idx >= len(qualityChains) {
 		return nil
 	}

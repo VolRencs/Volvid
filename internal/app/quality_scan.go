@@ -38,17 +38,17 @@ type videoQualityInfo struct {
 
 func DefaultQualityChoices() []QualityChoice {
 	return []QualityChoice{
-		{Key: "best", Best: true, FmtChain: QualityChainAt(0)},
+		{Key: "best", Best: true, FmtChain: qualityChainAt(0)},
 		{
 			Key:       "worst",
 			Worst:     true,
-			FmtChain:  QualityChainAt(1),
+			FmtChain:  qualityChainAt(1),
 			FmtLabels: []string{"worst", "360p", "worst"},
 		},
 	}
 }
 
-func ShouldScanQualityChoices(n int) bool {
+func shouldScanQualityChoices(n int) bool {
 	return n > 0 && n <= maxDetailedQualityURLs
 }
 
@@ -61,11 +61,11 @@ func ResolveQualityChoicesContext(ctx context.Context, urls []string) ([]Quality
 	if len(urls) == 0 {
 		return nil, errors.New("quality scan: empty input")
 	}
-	if !ShouldScanQualityChoices(len(urls)) {
+	if !shouldScanQualityChoices(len(urls)) {
 		return DefaultQualityChoices(), nil
 	}
 
-	choices, err := ScanQualityChoicesContext(ctx, urls)
+	choices, err := scanQualityChoicesContext(ctx, urls)
 	if err != nil || len(choices) == 0 {
 		return DefaultQualityChoices(), err
 	}
@@ -132,7 +132,7 @@ type qualityScanResult struct {
 	err  error
 }
 
-func ScanQualityChoicesContext(ctx context.Context, urls []string) ([]QualityChoice, error) {
+func scanQualityChoicesContext(ctx context.Context, urls []string) ([]QualityChoice, error) {
 	urls = compactQualityURLs(urls)
 	if len(urls) == 0 {
 		return nil, errors.New("quality scan: empty input")
@@ -230,7 +230,7 @@ func scanVideoInfoContext(ctx context.Context, url string) (videoQualityInfo, er
 		return videoQualityInfo{}, err
 	}
 
-	probe, err := ProbeMediaContext(ctx, target)
+	probe, err := probeMediaContext(ctx, target)
 	if err != nil {
 		return videoQualityInfo{}, err
 	}

@@ -51,14 +51,14 @@ func (r CheckDepsResult) Dependencies() []DependencyInfo {
 	return []DependencyInfo{r.YTDLP, r.FFmpeg, r.Node}
 }
 
-func (r CheckDepsResult) MissingRequiredDeps() []DependencyInfo {
+func (r CheckDepsResult) missingRequiredDeps() []DependencyInfo {
 	return filterDependencies(r.Dependencies(), func(dep DependencyInfo) bool {
 		return dep.Required && !dep.Available
 	})
 }
 
 func (r CheckDepsResult) MissingRequired() bool {
-	return len(r.MissingRequiredDeps()) > 0
+	return len(r.missingRequiredDeps()) > 0
 }
 
 func (r CheckDepsResult) ActionableDependencies() []DependencyInfo {

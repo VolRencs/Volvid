@@ -93,7 +93,7 @@ func (i *inputField) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	beforeLen := len(i.value)
 
 	if isClipboardPasteKey(msg) {
-		return pasteClipboardCmd(i.target)
+		return pasteClipboardCmd()
 	}
 
 	switch msg.String() {
@@ -268,7 +268,7 @@ func blinkInputCmd(target inputTarget, tag int) tea.Cmd {
 	})
 }
 
-func pasteClipboardCmd(_ inputTarget) tea.Cmd {
+func pasteClipboardCmd() tea.Cmd {
 	return func() tea.Msg {
 		return tea.ReadClipboard()
 	}

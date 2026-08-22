@@ -11,7 +11,6 @@ const (
 	appDirName      = "VolRenDownloader"
 	envConfigDir    = "VOLREN_CONFIG_DIR"
 	envDataDir      = "VOLREN_DATA_DIR"
-	envCacheDir     = "VOLREN_CACHE_DIR"
 	envDownloadsDir = "VOLREN_DOWNLOADS_DIR"
 	envDepsDir      = "VOLREN_DEPS_DIR"
 )
@@ -20,7 +19,6 @@ func initRuntimePaths(exeDir string) {
 	AppDir = cleanAbsPath(exeDir)
 	ConfigDir = resolveConfigDir()
 	DataDir = resolveDataDir()
-	CacheDir = resolveCacheDir()
 	DepsDir = resolveArtifactDir(envDepsDir, filepath.Join(DataDir, "deps"))
 	DlDir = resolveDownloadsDir()
 }
@@ -45,16 +43,6 @@ func resolveDataDir() string {
 	return filepath.Join(AppDir, ".volren", "data")
 }
 
-func resolveCacheDir() string {
-	if path := envPath(envCacheDir); path != "" {
-		return path
-	}
-	if root, ok := userCacheRoot(); ok {
-		return filepath.Join(root, appDirName)
-	}
-	return filepath.Join(AppDir, ".volren", "cache")
-}
-
 func resolveArtifactDir(envKey, defaultPath string) string {
 	if path := envPath(envKey); path != "" {
 		return path
@@ -64,14 +52,6 @@ func resolveArtifactDir(envKey, defaultPath string) string {
 
 func userConfigRoot() (string, bool) {
 	root, err := os.UserConfigDir()
-	if err != nil || strings.TrimSpace(root) == "" {
-		return "", false
-	}
-	return root, true
-}
-
-func userCacheRoot() (string, bool) {
-	root, err := os.UserCacheDir()
 	if err != nil || strings.TrimSpace(root) == "" {
 		return "", false
 	}

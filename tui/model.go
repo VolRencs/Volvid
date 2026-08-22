@@ -703,9 +703,6 @@ func (m Model) openSearchInput() (tea.Model, tea.Cmd) {
 	m.screen = scrSearchInput
 	m.searchErr = ""
 	m.searchResults = nil
-	if strings.TrimSpace(m.searchInput.Value()) == "" {
-		m.searchInput.SetValue("")
-	}
 	return m, m.searchInput.Focus()
 }
 
@@ -1120,7 +1117,7 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 		return m.openDependencyScreenWithError(depModeManage, m.depRequirementText(deps.FFmpeg.Name))
 	}
 
-	req, err := app.PrepareDownloadRequest(app.DownloadRequest{
+	req := app.DownloadRequest{
 		Target:        m.target,
 		Profile:       m.currentProfile(),
 		Fragment:      m.fragment,
@@ -1131,8 +1128,8 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 		Workers:       max(m.numWorkers, 1),
 		OutputDir:     app.DlDir,
 		Locale:        m.locale,
-	})
-	if err != nil {
+	}
+	if err := app.ValidateDownloadRequest(req); err != nil {
 		m.flowErr = err.Error()
 		m.restoreDownloadConfigScreen()
 		m = m.syncMenu()

@@ -36,7 +36,6 @@ var (
 	AppDir    string
 	ConfigDir string
 	DataDir   string
-	CacheDir  string
 
 	DepsDir string
 	DlDir   string

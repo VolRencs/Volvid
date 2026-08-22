@@ -50,7 +50,7 @@ func ProbeMediaDuration(target ParsedTarget) (int, error) {
 }
 
 func ProbeMediaDurationContext(ctx context.Context, target ParsedTarget) (int, error) {
-	probe, err := ProbeMediaContext(ctx, target)
+	probe, err := probeMediaContext(ctx, target)
 	if err != nil {
 		return 0, err
 	}
@@ -60,7 +60,7 @@ func ProbeMediaDurationContext(ctx context.Context, target ParsedTarget) (int, e
 	return probe.Duration, nil
 }
 
-func ProbeMediaContext(ctx context.Context, target ParsedTarget) (*MediaProbe, error) {
+func probeMediaContext(ctx context.Context, target ParsedTarget) (*MediaProbe, error) {
 	if !target.IsVideo() {
 		return nil, errors.New("probe requires video target")
 	}
