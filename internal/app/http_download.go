@@ -14,22 +14,26 @@ import (
 	"time"
 )
 
-func DownloadFile(url, dest string, l Locale, ch chan<- FileProgress) error {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultFileDownloadTimeout)
+func DownloadFileContext(
+	ctx context.Context,
+	url, dest string,
+	l Locale,
+	ch chan<- FileProgress,
+) error {
+	ctx = resolveContext(ctx)
+	ctx, cancel := context.WithTimeout(ctx, defaultFileDownloadTimeout)
 	defer cancel()
-	return DownloadFileContext(ctx, dlClient, url, dest, l, ch)
+	return downloadFileWith(ctx, dlClient, url, dest, l, ch)
 }
 
-func DownloadFileContext(
+func downloadFileWith(
 	ctx context.Context,
 	client *http.Client,
 	url, dest string,
 	l Locale,
 	ch chan<- FileProgress,
 ) error {
-	ctx = resolveContext(ctx)
 	client = resolveDownloadHTTPClient(client)
-
 	if err := ensureDownloadDir(dest); err != nil {
 		return err
 	}

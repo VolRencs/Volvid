@@ -16,15 +16,15 @@ import (
 	"time"
 )
 
-func InstallDependencyFor(key string, l Locale, ch chan<- FileProgress) error {
+func InstallDependencyFor(ctx context.Context, key string, l Locale, ch chan<- FileProgress) error {
 	var err error
 	switch strings.TrimSpace(key) {
 	case "ytdlp":
-		err = InstallYtDlpFor(l, ch)
+		err = InstallYtDlpFor(ctx, l, ch)
 	case "ffmpeg":
-		err = InstallFFmpegFor(l, ch)
+		err = InstallFFmpegFor(ctx, l, ch)
 	case "node":
-		err = InstallNodeFor(l, ch)
+		err = InstallNodeFor(ctx, l, ch)
 	default:
 		return fmt.Errorf("unsupported dependency: %s", key)
 	}
@@ -35,12 +35,12 @@ func InstallDependencyFor(key string, l Locale, ch chan<- FileProgress) error {
 	return nil
 }
 
-func InstallYtDlpFor(l Locale, ch chan<- FileProgress) error {
+func InstallYtDlpFor(ctx context.Context, l Locale, ch chan<- FileProgress) error {
 	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
 	}
 
-	url, _, checksum, err := ytdlpDownloadAsset()
+	url, _, checksum, err := ytdlpDownloadAsset(ctx)
 	if err != nil {
 		return err
 	}
@@ -51,7 +51,7 @@ func InstallYtDlpFor(l Locale, ch chan<- FileProgress) error {
 	defer os.RemoveAll(staging)
 
 	stagedYtdlp := filepath.Join(staging, binaryBaseName(YtdlpBin))
-	if err := DownloadFile(url, stagedYtdlp, l, ch); err != nil {
+	if err := DownloadFileContext(ctx, url, stagedYtdlp, l, ch); err != nil {
 		return err
 	}
 	if err := verifyFileSHA256(stagedYtdlp, checksum); err != nil {
@@ -116,7 +116,7 @@ func extractZipEntry(zf *zip.File, dest string) error {
 	return os.Rename(tmpName, dest)
 }
 
-func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
+func InstallFFmpegFor(ctx context.Context, l Locale, ch chan<- FileProgress) error {
 	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
 	}
@@ -132,7 +132,7 @@ func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
 		return err
 	}
 	archive := filepath.Join(tmp, archiveName)
-	if err := DownloadFile(archiveURL, archive, l, ch); err != nil {
+	if err := DownloadFileContext(ctx, archiveURL, archive, l, ch); err != nil {
 		return err
 	}
 
@@ -152,11 +152,11 @@ func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
 	}
 
 	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
-		if err := extractZipBinaries(archive, targets); err != nil {
+		if err := extractZipBinaries(ctx, archive, targets); err != nil {
 			return err
 		}
 	} else {
-		if err := extractArchiveBinariesWithTar(archive, targets); err != nil {
+		if err := extractArchiveBinariesWithTar(ctx, archive, targets); err != nil {
 			return err
 		}
 	}
@@ -176,8 +176,8 @@ func InstallFFmpegFor(l Locale, ch chan<- FileProgress) error {
 	return nil
 }
 
-func InstallNodeFor(l Locale, ch chan<- FileProgress) error {
-	url, filename, checksum, err := nodeDownloadAsset()
+func InstallNodeFor(ctx context.Context, l Locale, ch chan<- FileProgress) error {
+	url, filename, checksum, err := nodeDownloadAsset(ctx)
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func InstallNodeFor(l Locale, ch chan<- FileProgress) error {
 	defer os.RemoveAll(tmp)
 
 	archive := filepath.Join(tmp, filename)
-	if err := DownloadFile(url, archive, l, ch); err != nil {
+	if err := DownloadFileContext(ctx, url, archive, l, ch); err != nil {
 		return err
 	}
 	if checksum != "" {
@@ -210,13 +210,13 @@ func InstallNodeFor(l Locale, ch chan<- FileProgress) error {
 	nodeName := binaryBaseName(NodeBin)
 	stagedNode := filepath.Join(staging, nodeName)
 	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
-		if err := extractZipBinaries(archive, map[string]string{
+		if err := extractZipBinaries(ctx, archive, map[string]string{
 			nodeName: stagedNode,
 		}); err != nil {
 			return err
 		}
 	} else {
-		if err := extractArchiveBinariesWithTar(archive, map[string]string{
+		if err := extractArchiveBinariesWithTar(ctx, archive, map[string]string{
 			nodeName: stagedNode,
 		}); err != nil {
 			return err
@@ -244,15 +244,15 @@ func ffmpegArchiveAsset() (string, string, error) {
 	return url, filepath.Base(url), nil
 }
 
-func nodeDownloadAsset() (string, string, string, error) {
-	filename, checksum, err := nodeAssetFilename()
+func nodeDownloadAsset(ctx context.Context) (string, string, string, error) {
+	filename, checksum, err := nodeAssetFilename(ctx)
 	if err != nil {
 		return "", "", "", err
 	}
 	return nodeLatestURL + filename, filename, checksum, nil
 }
 
-func ytdlpDownloadAsset() (string, string, string, error) {
+func ytdlpDownloadAsset(ctx context.Context) (string, string, string, error) {
 	platform, err := currentPlatform()
 	if err != nil {
 		return "", "", "", err
@@ -261,15 +261,15 @@ func ytdlpDownloadAsset() (string, string, string, error) {
 	if asset == "" {
 		return "", "", "", fmt.Errorf("yt-dlp asset name is empty")
 	}
-	checksum, err := ytdlpAssetChecksum(asset)
+	checksum, err := ytdlpAssetChecksum(ctx, asset)
 	if err != nil {
 		return "", "", "", err
 	}
 	return ytdlpBase + asset, asset, checksum, nil
 }
 
-func ytdlpAssetChecksum(asset string) (string, error) {
-	manifest, err := downloadText(ytdlpBase + "SHA2-256SUMS")
+func ytdlpAssetChecksum(ctx context.Context, asset string) (string, error) {
+	manifest, err := downloadText(ctx, ytdlpBase+"SHA2-256SUMS")
 	if err != nil {
 		return "", fmt.Errorf("yt-dlp checksum manifest: %w", err)
 	}
@@ -280,8 +280,8 @@ func ytdlpAssetChecksum(asset string) (string, error) {
 	return checksum, nil
 }
 
-func nodeAssetFilename() (string, string, error) {
-	manifest, err := downloadText(nodeLatestURL + "SHASUMS256.txt")
+func nodeAssetFilename(ctx context.Context) (string, string, error) {
+	manifest, err := downloadText(ctx, nodeLatestURL+"SHASUMS256.txt")
 	if err != nil {
 		return "", "", fmt.Errorf("node manifest: %w", err)
 	}
@@ -339,8 +339,9 @@ func nodeAssetSuffix() (string, error) {
 	return platform.NodeAssetSuffix, nil
 }
 
-func downloadText(url string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func downloadText(ctx context.Context, url string) (string, error) {
+	ctx = resolveContext(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	req, err := newDownloadRequest(ctx, url)
@@ -399,7 +400,7 @@ func verifyFileSHA256(path, expected string) error {
 	return nil
 }
 
-func extractZipBinaries(archive string, targets map[string]string) error {
+func extractZipBinaries(ctx context.Context, archive string, targets map[string]string) error {
 	zr, err := zip.OpenReader(archive)
 	if err != nil {
 		return fmt.Errorf("открытие архива: %w", err)
@@ -427,8 +428,8 @@ func extractZipBinaries(archive string, targets map[string]string) error {
 	return nil
 }
 
-func extractArchiveBinariesWithTar(archive string, targets map[string]string) error {
-	entries, err := listTarArchive(archive)
+func extractArchiveBinariesWithTar(ctx context.Context, archive string, targets map[string]string) error {
+	entries, err := listTarArchive(ctx, archive)
 	if err != nil {
 		return err
 	}
@@ -443,14 +444,14 @@ func extractArchiveBinariesWithTar(archive string, targets map[string]string) er
 	}
 	defer os.RemoveAll(destDir)
 
-	if err := extractTarEntriesWithTar(archive, destDir, selected); err != nil {
+	if err := extractTarEntriesWithTar(ctx, archive, destDir, selected); err != nil {
 		return err
 	}
 	return copyExtractedBinaries(destDir, targets)
 }
 
-func listTarArchive(archive string) ([]string, error) {
-	output, err := commandCombinedOutput(context.Background(), 2*time.Minute, "tar", "-tf", archive)
+func listTarArchive(ctx context.Context, archive string) ([]string, error) {
+	output, err := commandCombinedOutput(resolveContext(ctx), tarCommandTimeout, "tar", "-tf", archive)
 	if err != nil {
 		return nil, tarCommandError(err, output)
 	}
@@ -527,13 +528,13 @@ func validateArchiveMemberPath(raw string) (string, error) {
 	return clean, nil
 }
 
-func extractTarEntriesWithTar(archive, destDir string, entries []string) error {
+func extractTarEntriesWithTar(ctx context.Context, archive, destDir string, entries []string) error {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return err
 	}
 	args := []string{"-xf", archive, "-C", destDir, "--no-same-owner", "--no-same-permissions", "--"}
 	args = append(args, entries...)
-	output, err := commandCombinedOutput(context.Background(), 2*time.Minute, "tar", args...)
+	output, err := commandCombinedOutput(resolveContext(ctx), tarCommandTimeout, "tar", args...)
 	if err != nil {
 		return tarCommandError(err, output)
 	}

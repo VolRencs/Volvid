@@ -98,18 +98,22 @@ type (
 	msgPlaylistFetched struct {
 		info *app.PlaylistInfo
 		err  error
+		gen  int
 	}
 	msgSearchResults struct {
 		results []app.SearchResult
 		err     error
+		gen     int
 	}
 	msgQualityScanned struct {
 		choices []app.QualityChoice
 		err     error
+		gen     int
 	}
 	msgFragmentDuration struct {
 		duration int
 		err      error
+		gen      int
 	}
 	msgDlUpdate             struct{ update app.DlUpdate }
 	msgOpenDownloadsDirDone struct{ err error }
@@ -198,18 +202,44 @@ type Model struct {
 	depRefreshToken int
 	depUpdateDone   bool
 
+	baseCtx  context.Context
+	opCancel context.CancelFunc
+	opGen    int
+
 	dlCancel    context.CancelFunc
+	depCancel   context.CancelFunc
 	dlCancelled bool
 }
 
-func New() tea.Model {
-	return newModel()
+func New(ctx context.Context) tea.Model {
+	m := newModel()
+	if ctx != nil {
+		m.baseCtx = ctx
+	}
+	return m
+}
+
+func (m Model) cancelOps() Model {
+	m.opGen++
+	if m.opCancel != nil {
+		m.opCancel()
+		m.opCancel = nil
+	}
+	return m
+}
+
+func (m Model) nextOpCtx() (Model, context.Context) {
+	m = m.cancelOps()
+	ctx, cancel := context.WithCancel(m.baseCtx)
+	m.opCancel = cancel
+	return m, ctx
 }
 
 func newModel() Model {
 	loc := app.LoadLocale()
 
 	m := Model{
+		baseCtx:     context.Background(),
 		screen:      scrUpdateCheck,
 		locale:      loc,
 		urlInput:    newInput(inputURL, "https://youtu.be/...", inputW, 300),
@@ -682,6 +712,9 @@ func (m Model) resetForNext() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleSearchResultsMsg(msg msgSearchResults) (tea.Model, tea.Cmd) {
+	if msg.gen != m.opGen {
+		return m, nil
+	}
 	if msg.err != nil {
 		m.screen = scrSearchInput
 		m.searchErr = m.u().SearchErrFailed + ": " + msg.err.Error()
@@ -716,8 +749,10 @@ func (m Model) submitSearchInput() (tea.Model, tea.Cmd) {
 	m.searchQuery = query
 	m.searchErr = ""
 	m.searchResults = nil
+	var ctx context.Context
+	m, ctx = m.nextOpCtx()
 	m.screen = scrSearchFetch
-	return m, searchYouTubeCmd(query)
+	return m, searchYouTubeCmd(ctx, query, m.opGen)
 }
 
 func (m Model) activateSearchResult(idx int) (tea.Model, tea.Cmd) {
@@ -744,6 +779,7 @@ func (m Model) activateSearchResult(idx int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) exitSearch() (tea.Model, tea.Cmd) {
+	m = m.cancelOps()
 	m.screen = scrURL
 	m.searchErr = ""
 	m.searchResults = nil
@@ -752,6 +788,9 @@ func (m Model) exitSearch() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handlePlaylistFetched(msg msgPlaylistFetched) (tea.Model, tea.Cmd) {
+	if msg.gen != m.opGen {
+		return m, nil
+	}
 	if msg.err != nil || msg.info == nil {
 		m.forceSingle = true
 		return m.startModeSelectionWithNotice("")
@@ -775,7 +814,7 @@ func (m Model) submitURLInput() (tea.Model, tea.Cmd) {
 
 	target, err := app.ParseTarget(rawURL)
 	if err != nil {
-		m.urlErr = m.u().URLErrBad
+		m.urlErr = m.u().URLErrBad + ": " + err.Error()
 		return m, nil
 	}
 
@@ -795,8 +834,10 @@ func (m Model) startTargetFlow(rawURL string, target app.ParsedTarget) (tea.Mode
 			m = m.syncMenu()
 			return m, nil
 		}
+		var ctx context.Context
+		m, ctx = m.nextOpCtx()
 		m.screen = scrPlaylistFetch
-		return m, fetchPlaylistCmd(rawURL, m.locale)
+		return m, fetchPlaylistCmd(ctx, rawURL, m.locale, m.opGen)
 	}
 
 	return m.startFragmentFlow()
@@ -804,11 +845,16 @@ func (m Model) startTargetFlow(rawURL string, target app.ParsedTarget) (tea.Mode
 
 func (m Model) startFragmentFlow() (tea.Model, tea.Cmd) {
 	m.resetFragmentState()
+	var ctx context.Context
+	m, ctx = m.nextOpCtx()
 	m.screen = scrFragmentProbe
-	return m, probeFragmentDurationCmd(m.target)
+	return m, probeFragmentDurationCmd(ctx, m.target, m.opGen)
 }
 
 func (m Model) handleFragmentDurationMsg(msg msgFragmentDuration) (tea.Model, tea.Cmd) {
+	if msg.gen != m.opGen {
+		return m, nil
+	}
 	if msg.err != nil || msg.duration <= 0 {
 		m.mediaDuration = 0
 		m.fragment = nil
@@ -913,7 +959,7 @@ func (m Model) startDependencyDownload(
 	screen screen,
 	label string,
 	isUpdate bool,
-	fn func(chan<- app.FileProgress) error,
+	fn func(context.Context, chan<- app.FileProgress) error,
 ) (tea.Model, tea.Cmd) {
 	m.depLabel = label
 	m.depProgress = app.FileProgress{}
@@ -921,7 +967,7 @@ func (m Model) startDependencyDownload(
 	m.screen = screen
 
 	var cmd tea.Cmd
-	m.depCh, cmd = launchProgress(fn, isUpdate)
+	m.depCh, cmd, m.depCancel = launchProgress(m.baseCtx, fn, isUpdate)
 	return m, cmd
 }
 
@@ -1040,6 +1086,7 @@ func (m Model) downloadLabel() string {
 }
 
 func (m Model) exitToURL() (tea.Model, tea.Cmd) {
+	m = m.cancelOps()
 	m.resetTargetFlowState()
 	m.screen = scrURL
 	return m, m.urlInput.Focus()
@@ -1081,8 +1128,10 @@ func (m Model) startQualityScan() (tea.Model, tea.Cmd) {
 	m.videoProfiles = nil
 	m.profile = app.OutputProfile{}
 	m.flowErr = ""
+	var ctx context.Context
+	m, ctx = m.nextOpCtx()
 	m.screen = scrQualityFetch
-	return m, loadQualityChoicesCmd(m.qualityScanURLs())
+	return m, loadQualityChoicesCmd(ctx, m.qualityScanURLs(), m.opGen)
 }
 
 func (m Model) qualityScanURLs() []string {

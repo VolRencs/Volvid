@@ -59,7 +59,7 @@ func FetchPlaylistInfoFor(ctx context.Context, url string, l Locale) (*PlaylistI
 			return nil, errors.New(strs.PlTimeout)
 		}
 		if len(entries) > 0 {
-			return nil, fmt.Errorf("%s (%d)", err, len(entries))
+			return nil, fmt.Errorf("%w (%d)", err, len(entries))
 		}
 		return nil, err
 	}

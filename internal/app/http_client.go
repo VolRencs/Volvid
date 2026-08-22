@@ -16,6 +16,7 @@ const (
 	defaultExpectContinueTimeout = time.Second
 	defaultResponseHeaderTimeout = 60 * time.Second
 	defaultFileDownloadTimeout   = 2 * time.Hour
+	tarCommandTimeout            = 2 * time.Minute
 	defaultSafeRetryAttempts     = 3
 	defaultSafeRetryBackoff      = 250 * time.Millisecond
 )

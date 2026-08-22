@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"time"
 
@@ -126,6 +127,17 @@ func (m *Model) updateElapsed() {
 }
 
 func (m Model) handleDepDone(msg msgDepDone) (tea.Model, tea.Cmd) {
+	if errors.Is(msg.err, context.Canceled) {
+		m.depErr = ""
+		if m.screen == scrDepDl {
+			m.screen = scrDepUpdate
+			m = m.syncMenu()
+		} else if m.screen == scrUpdateDl {
+			m.screen = scrUpdateReady
+			m = m.syncMenu()
+		}
+		return m, nil
+	}
 	if msg.err != nil {
 		m.depErr = msg.err.Error()
 		if m.screen == scrDepDl {
@@ -153,6 +165,9 @@ func (m Model) handleDepDone(msg msgDepDone) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleQualityScanned(msg msgQualityScanned) (tea.Model, tea.Cmd) {
+	if msg.gen != m.opGen {
+		return m, nil
+	}
 	m.qualityChoices = msg.choices
 	if len(m.qualityChoices) == 0 {
 		m.qualityChoices = app.DefaultQualityChoices()
@@ -202,12 +217,21 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	if k == "esc" {
 		switch m.screen {
-		case scrSearchInput, scrSearchResults:
+		case scrSearchInput, scrSearchResults, scrSearchFetch:
 			return m.exitSearch()
 		case scrPlaylistAsk, scrPlaylist:
 			return m.exitToURL()
+		case scrPlaylistFetch:
+			m = m.cancelOps()
+			return m.exitToURL()
 		case scrFragmentChoice:
 			return m.exitToURL()
+		case scrFragmentProbe:
+			m = m.cancelOps()
+			return m.exitToURL()
+		case scrQualityFetch:
+			m = m.cancelOps()
+			return m.startModeSelectionWithNotice("")
 		case scrMode:
 			return m.exitToURL()
 		case scrFragmentInput:
@@ -226,6 +250,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m.resetForNext()
 		case scrDepUpdate:
 			return m.returnFromDependencyScreen()
+		case scrUpdateDl, scrDepDl:
+			if m.depCancel != nil {
+				m.depCancel()
+			}
+			return m, nil
 		}
 	}
 
@@ -521,8 +550,8 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 	case scrUpdateReady:
 		if idx == 0 {
 			info := m.updateInfo
-			return m.startDependencyDownload(scrUpdateDl, "", true, func(ch chan<- app.FileProgress) error {
-				return app.ApplyUpdateFor(m.locale, info, ch)
+			return m.startDependencyDownload(scrUpdateDl, "", true, func(ctx context.Context, ch chan<- app.FileProgress) error {
+				return app.ApplyUpdateFor(ctx, m.locale, info, ch)
 			})
 		}
 		return m.gotoChecks()
@@ -535,8 +564,8 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		action := actions[idx]
 		switch action.Kind {
 		case depActionInstall:
-			return m.startDependencyDownload(scrDepDl, action.Key, false, func(ch chan<- app.FileProgress) error {
-				return app.InstallDependencyFor(action.Key, m.locale, ch)
+			return m.startDependencyDownload(scrDepDl, action.Key, false, func(ctx context.Context, ch chan<- app.FileProgress) error {
+				return app.InstallDependencyFor(ctx, action.Key, m.locale, ch)
 			})
 		case depActionRefresh:
 			return m.startDepsRefresh()
@@ -553,8 +582,10 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 			m.forceSingle = true
 			return m.startFragmentFlow()
 		}
+		var ctx context.Context
+		m, ctx = m.nextOpCtx()
 		m.screen = scrPlaylistFetch
-		return m, fetchPlaylistCmd(m.url, m.locale)
+		return m, fetchPlaylistCmd(ctx, m.url, m.locale, m.opGen)
 
 	case scrSummary:
 		if idx == 0 {
@@ -678,8 +709,14 @@ func streamFileProgressCmd(ch <-chan app.FileProgress, isUpdate bool) tea.Cmd {
 	}
 }
 
-func launchProgress(fn func(chan<- app.FileProgress) error, isUpdate bool) (<-chan app.FileProgress, tea.Cmd) {
+func launchProgress(
+	base context.Context,
+	fn func(context.Context, chan<- app.FileProgress) error,
+	isUpdate bool,
+) (<-chan app.FileProgress, tea.Cmd, context.CancelFunc) {
 	ch := make(chan app.FileProgress, 16)
+	ctx, cancel := context.WithCancel(base)
+
 	go func() {
 		defer close(ch)
 
@@ -688,23 +725,32 @@ func launchProgress(fn func(chan<- app.FileProgress) error, isUpdate bool) (<-ch
 
 		go func() {
 			defer close(progressCh)
-			doneCh <- fn(progressCh)
+			doneCh <- fn(ctx, progressCh)
 		}()
 
 		for progress := range progressCh {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			progress.Done = false
 			progress.Err = nil
 			ch <- progress
 		}
 
 		if err := <-doneCh; err != nil {
+			if ctx.Err() != nil {
+				err = context.Canceled
+			}
 			ch <- app.FileProgress{Done: true, Err: err}
 			return
 		}
 
 		ch <- app.FileProgress{Done: true}
 	}()
-	return ch, streamFileProgressCmd(ch, isUpdate)
+
+	return ch, streamFileProgressCmd(ch, isUpdate), cancel
 }
 
 func refreshDepsCmd(token int) tea.Cmd {
@@ -713,31 +759,31 @@ func refreshDepsCmd(token int) tea.Cmd {
 	}
 }
 
-func fetchPlaylistCmd(url string, l app.Locale) tea.Cmd {
+func fetchPlaylistCmd(ctx context.Context, url string, l app.Locale, gen int) tea.Cmd {
 	return func() tea.Msg {
-		info, err := app.FetchPlaylistInfoFor(context.Background(), url, l)
-		return msgPlaylistFetched{info: info, err: err}
+		info, err := app.FetchPlaylistInfoFor(ctx, url, l)
+		return msgPlaylistFetched{info: info, err: err, gen: gen}
 	}
 }
 
-func searchYouTubeCmd(query string) tea.Cmd {
+func searchYouTubeCmd(ctx context.Context, query string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		results, err := app.SearchYouTube(query)
-		return msgSearchResults{results: results, err: err}
+		results, err := app.SearchYouTubeContext(ctx, query)
+		return msgSearchResults{results: results, err: err, gen: gen}
 	}
 }
 
-func loadQualityChoicesCmd(urls []string) tea.Cmd {
+func loadQualityChoicesCmd(ctx context.Context, urls []string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		choices, err := app.ResolveQualityChoices(urls)
-		return msgQualityScanned{choices: choices, err: err}
+		choices, err := app.ResolveQualityChoicesContext(ctx, urls)
+		return msgQualityScanned{choices: choices, err: err, gen: gen}
 	}
 }
 
-func probeFragmentDurationCmd(target app.ParsedTarget) tea.Cmd {
+func probeFragmentDurationCmd(ctx context.Context, target app.ParsedTarget, gen int) tea.Cmd {
 	return func() tea.Msg {
-		duration, err := app.ProbeMediaDuration(target)
-		return msgFragmentDuration{duration: duration, err: err}
+		duration, err := app.ProbeMediaDurationContext(ctx, target)
+		return msgFragmentDuration{duration: duration, err: err, gen: gen}
 	}
 }
 

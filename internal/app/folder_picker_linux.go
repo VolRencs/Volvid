@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -25,7 +24,7 @@ const (
 )
 
 func pickDirectory(current, title string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), folderPickerTimeout)
 	defer cancel()
 
 	conn, err := dbus.ConnectSessionBus()

@@ -4,6 +4,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"os/exec"
@@ -24,7 +25,11 @@ func pickDirectory(current, title string) (string, error) {
 		"}",
 	}, "\n")
 
-	cmd := exec.Command(
+	ctx, cancel := context.WithTimeout(context.Background(), folderPickerTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(
+		ctx,
 		"powershell.exe",
 		"-NoLogo",
 		"-NoProfile",

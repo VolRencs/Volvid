@@ -1,6 +1,11 @@
 package app
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
+
+const folderPickerTimeout = 2 * time.Minute
 
 var (
 	ErrFolderPickerCancelled   = errors.New("folder selection canceled")

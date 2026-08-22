@@ -50,7 +50,7 @@ func SearchYouTubeContext(ctx context.Context, query string) ([]SearchResult, er
 			return nil, errors.New("yt-dlp: search timeout")
 		}
 		if len(results) > 0 {
-			return nil, fmt.Errorf("%s (%d)", err, len(results))
+			return nil, fmt.Errorf("%w (%d)", err, len(results))
 		}
 		return nil, err
 	}

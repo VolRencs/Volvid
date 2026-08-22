@@ -99,7 +99,7 @@ func validUpdateDownloadURL(raw, assetName string) bool {
 	return strings.HasPrefix(cleanPath, "/VolRencs/YouTubeDownloader/releases/download/")
 }
 
-func ApplyUpdateFor(l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
+func ApplyUpdateFor(ctx context.Context, l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
 	if info == nil || strings.TrimSpace(info.DlURL) == "" {
 		return fmt.Errorf("update info is empty")
 	}
@@ -114,13 +114,13 @@ func ApplyUpdateFor(l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
 	}
 	if IsWindows {
 		tmp := strings.TrimSuffix(dest, ".exe") + ".new.exe"
-		if err := DownloadFile(info.DlURL, tmp, l, ch); err != nil {
+		if err := DownloadFileContext(ctx, info.DlURL, tmp, l, ch); err != nil {
 			return err
 		}
 		return applyUpdatePlatform(tmp, dest)
 	}
 	tmp := dest + ".new"
-	if err := DownloadFile(info.DlURL, tmp, l, ch); err != nil {
+	if err := DownloadFileContext(ctx, info.DlURL, tmp, l, ch); err != nil {
 		return err
 	}
 	return applyUpdatePlatform(tmp, dest)

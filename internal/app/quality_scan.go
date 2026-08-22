@@ -145,12 +145,10 @@ func scanQualityChoicesContext(ctx context.Context, urls []string) ([]QualityCho
 	}
 
 	results := runQualityScan(ctx, urls)
-	heights, counts, videos, scanned, firstErr := collectQualityScanResults(results, len(urls))
 	if err := ctx.Err(); err != nil {
-		if firstErr == nil {
-			firstErr = err
-		}
+		return nil, err
 	}
+	heights, counts, videos, scanned, firstErr := collectQualityScanResults(results, len(urls))
 	if scanned == 0 {
 		if firstErr != nil {
 			return nil, firstErr

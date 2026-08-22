@@ -16,7 +16,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	p := tea.NewProgram(tui.New(), tea.WithContext(ctx))
+	p := tea.NewProgram(tui.New(ctx), tea.WithContext(ctx))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

@@ -171,8 +171,8 @@ func (i *inputField) ensureCursorVisible() {
 	if i.cursor < i.offset {
 		i.offset = i.cursor
 	}
-	if i.cursor > i.offset+maxVisible {
-		i.offset = i.cursor - maxVisible
+	if i.cursor >= i.offset+maxVisible {
+		i.offset = i.cursor - maxVisible + 1
 	}
 	i.offset = max(0, min(i.offset, len(i.value)))
 }

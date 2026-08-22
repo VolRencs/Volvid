@@ -42,26 +42,24 @@ func interruptProcessTree(cmd *exec.Cmd, grace time.Duration) error {
 
 	err := signalProcessGroup(pid, syscall.SIGTERM)
 	if grace > 0 {
-		go func() {
-			timer := time.NewTimer(grace)
-			defer timer.Stop()
-			<-timer.C
+		time.AfterFunc(grace, func() {
 			_ = signalProcessGroup(pid, syscall.SIGKILL)
-		}()
+		})
 	}
 	return err
 }
 
 func signalProcessGroup(pid int, sig syscall.Signal) error {
-	if err := syscall.Kill(-pid, sig); err == nil || errors.Is(err, syscall.ESRCH) {
+	err := syscall.Kill(-pid, sig)
+	if err == nil || errors.Is(err, syscall.ESRCH) {
 		return nil
-	} else if !errors.Is(err, syscall.EPERM) {
+	}
+	if !errors.Is(err, syscall.EPERM) {
 		return err
 	}
-
-	if err := syscall.Kill(pid, sig); err == nil || errors.Is(err, syscall.ESRCH) {
+	err = syscall.Kill(pid, sig)
+	if err == nil || errors.Is(err, syscall.ESRCH) {
 		return nil
-	} else {
-		return err
 	}
+	return err
 }
