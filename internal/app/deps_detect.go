@@ -56,7 +56,14 @@ var (
 	depsCacheReady        bool
 	depsCacheFlight       *depsDetectCall
 	depsCacheGeneration   uint64
+
+	runtimeDepsMu     sync.Mutex
+	runtimeDepsValue  CheckDepsResult
+	runtimeDepsExpiry time.Time
+	runtimeDepsFlight *depsDetectCall
 )
+
+const runtimeDepsTTL = 15 * time.Second
 
 func DetectDeps() CheckDepsResult  { return loadDeps(false) }
 func RefreshDeps() CheckDepsResult { return loadDeps(true) }
@@ -102,6 +109,11 @@ func InvalidateDepsCache() {
 	depsCacheReady = false
 	depsCacheGeneration++
 	depsCacheMu.Unlock()
+
+	runtimeDepsMu.Lock()
+	runtimeDepsValue = CheckDepsResult{}
+	runtimeDepsExpiry = time.Time{}
+	runtimeDepsMu.Unlock()
 }
 
 func detectDeps(withVersions bool) CheckDepsResult {
@@ -615,7 +627,33 @@ func uniquePaths(paths []string) []string {
 }
 
 func resolveRuntimeDeps() CheckDepsResult {
-	return detectDeps(false)
+	runtimeDepsMu.Lock()
+	if time.Now().Before(runtimeDepsExpiry) {
+		deps := runtimeDepsValue
+		runtimeDepsMu.Unlock()
+		return deps
+	}
+	if call := runtimeDepsFlight; call != nil {
+		runtimeDepsMu.Unlock()
+		<-call.done
+		return call.result
+	}
+	call := &depsDetectCall{done: make(chan struct{})}
+	runtimeDepsFlight = call
+	runtimeDepsMu.Unlock()
+
+	deps := detectDeps(false)
+
+	runtimeDepsMu.Lock()
+	runtimeDepsValue = deps
+	runtimeDepsExpiry = time.Now().Add(runtimeDepsTTL)
+	if runtimeDepsFlight == call {
+		runtimeDepsFlight = nil
+	}
+	call.result = deps
+	close(call.done)
+	runtimeDepsMu.Unlock()
+	return deps
 }
 
 func ytdlpCommandArgsFor(deps CheckDepsResult, base []string) []string {
