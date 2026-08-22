@@ -2,9 +2,14 @@ package app
 
 import "slices"
 
+const (
+	ytdlpBestFormat     = "bestvideo+bestaudio/best"
+	ytdlpWorst360Format = "bestvideo[height<=360]+bestaudio/best[height<=360]"
+)
+
 var qualityChains = [3][]string{
-	{"bestvideo+bestaudio/best", "bestvideo+bestaudio", "best"},
-	{"bestvideo[height<=360]+bestaudio/best[height<=360]", "best[height<=360]", "worst"},
+	{ytdlpBestFormat, "bestvideo+bestaudio", "best"},
+	{ytdlpWorst360Format, "best[height<=360]", "worst"},
 	nil,
 }
 

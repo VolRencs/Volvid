@@ -212,11 +212,7 @@ func formatProgressSpeed(raw string, l Locale) string {
 	if value <= 0 {
 		return ""
 	}
-	suffix := "/s"
-	if l == LocaleRU {
-		suffix = "/с"
-	}
-	return FmtBytesFor(value, l) + suffix
+	return FmtSpeedFor(value, l)
 }
 
 func parseDownloadInt(raw string) int64 {

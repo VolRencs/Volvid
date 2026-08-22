@@ -209,24 +209,45 @@ func replaceDownloadedFile(tmp, dest string) error {
 	if err := os.Rename(tmp, dest); err == nil {
 		return nil
 	}
-
-	backup := replacementBackupPath(dest)
-	hadDest := true
-	if err := os.Rename(dest, backup); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("подготовка замены файла %s: %w", dest, err)
-		}
-		hadDest = false
-	}
-
-	if err := os.Rename(tmp, dest); err != nil {
-		if hadDest {
-			_ = os.Rename(backup, dest)
-		}
+	if err := replaceFilesWithBackup(map[string]string{tmp: dest}); err != nil {
 		return fmt.Errorf("замена файла %s: %w", dest, err)
 	}
-	if hadDest {
-		_ = os.Remove(backup)
+	return nil
+}
+
+func replaceFilesWithBackup(paths map[string]string) error {
+	type backupEntry struct{ dest, backup string }
+	var backups []backupEntry
+	rollback := func() {
+		for _, b := range backups {
+			_ = os.Rename(b.backup, b.dest)
+		}
+	}
+
+	for src, dest := range paths {
+		backup := replacementBackupPath(dest)
+		hadDest := true
+		if err := os.Rename(dest, backup); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				rollback()
+				return fmt.Errorf("%s: %w", filepath.Base(dest), err)
+			}
+			hadDest = false
+		}
+		if err := os.Rename(src, dest); err != nil {
+			if hadDest {
+				_ = os.Rename(backup, dest)
+			}
+			rollback()
+			return fmt.Errorf("%s: %w", filepath.Base(dest), err)
+		}
+		if hadDest {
+			backups = append(backups, backupEntry{dest: dest, backup: backup})
+		}
+	}
+
+	for _, b := range backups {
+		_ = os.Remove(b.backup)
 	}
 	return nil
 }

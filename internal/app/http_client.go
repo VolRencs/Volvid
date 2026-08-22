@@ -56,16 +56,10 @@ func newDownloadHTTPClient() *http.Client {
 }
 
 func downloadHTTPClientConfig() HTTPClientConfig {
-	return HTTPClientConfig{
-		DialTimeout:           defaultDialTimeout,
-		KeepAlive:             defaultKeepAlive,
-		IdleConnTimeout:       defaultIdleConnTimeout,
-		ResponseHeaderTimeout: defaultResponseHeaderTimeout,
-		TLSHandshakeTimeout:   defaultTLSHandshakeTimeout,
-		ExpectContinueTimeout: defaultExpectContinueTimeout,
-		MaxIdleConns:          16,
-		MaxIdleConnsPerHost:   8,
-	}
+	cfg := defaultHTTPClientConfig(0)
+	cfg.MaxIdleConns = 16
+	cfg.MaxIdleConnsPerHost = 8
+	return cfg
 }
 
 func newHTTPClient(cfg HTTPClientConfig) *http.Client {

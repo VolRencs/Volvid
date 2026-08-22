@@ -217,7 +217,7 @@ func downloadModeArgs(profile OutputProfile, format string) ([]string, error) {
 		return args, nil
 	case ModeVideo:
 		if format == "" {
-			format = "bestvideo+bestaudio/best"
+			format = ytdlpBestFormat
 		}
 		return videoModeArgs(profile, format), nil
 	default:

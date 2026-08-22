@@ -47,40 +47,38 @@ func commandErrorWithStderr(err error, stderr limitedBuffer) error {
 }
 
 func commandOutput(ctx context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
+	return runCommandOutput(ctx, timeout, false, name, args...)
+}
+
+func commandCombinedOutput(ctx context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
+	return runCommandOutput(ctx, timeout, true, name, args...)
+}
+
+func runCommandOutput(ctx context.Context, timeout time.Duration, merge bool, name string, args ...string) ([]byte, error) {
 	runCtx, cancel := commandContext(ctx, timeout)
 	defer cancel()
 
 	cmd := newProcessTreeCommand(runCtx, name, args...)
 	var stdout bytes.Buffer
 	var stderr limitedBuffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	if merge {
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stdout
+	} else {
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+	}
 
 	if err := startCommand(cmd, runCtx); err != nil {
 		return nil, err
 	}
 	if err := waitCommand(cmd, runCtx); err != nil {
+		if merge {
+			return stdout.Bytes(), err
+		}
 		return nil, commandErrorWithStderr(err, stderr)
 	}
 	return stdout.Bytes(), nil
-}
-
-func commandCombinedOutput(ctx context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
-	runCtx, cancel := commandContext(ctx, timeout)
-	defer cancel()
-
-	cmd := newProcessTreeCommand(runCtx, name, args...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-
-	if err := startCommand(cmd, runCtx); err != nil {
-		return nil, err
-	}
-	if err := waitCommand(cmd, runCtx); err != nil {
-		return out.Bytes(), err
-	}
-	return out.Bytes(), nil
 }
 
 func startMergedOutputCommand(

@@ -48,6 +48,14 @@ func FmtDuration(secs int) string {
 	return fmt.Sprintf("%d:%02d", m, s)
 }
 
+func FmtSpeedFor(bytesPerSec int64, l Locale) string {
+	suffix := "/s"
+	if l == LocaleRU {
+		suffix = "/с"
+	}
+	return FmtBytesFor(bytesPerSec, l) + suffix
+}
+
 var (
 	invalidFilenameRE    = regexp.MustCompile(`[<>:"/\\|?*]`)
 	windowsReservedNames = map[string]bool{

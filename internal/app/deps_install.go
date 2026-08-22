@@ -293,39 +293,50 @@ func nodeAssetFilename(ctx context.Context) (string, string, error) {
 	return nodeAssetFromManifest(manifest, suffix)
 }
 
-func nodeAssetFromManifest(manifest, suffix string) (string, string, error) {
+func scanChecksumManifest(manifest string, match func(asset string) bool) (string, string, error) {
 	for _, line := range strings.Split(strings.ReplaceAll(manifest, "\r\n", "\n"), "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) < 2 {
 			continue
 		}
-		name := fields[len(fields)-1]
-		if strings.HasSuffix(name, suffix) {
-			checksum, err := normalizeSHA256(fields[0])
-			if err != nil {
-				return "", "", fmt.Errorf("node checksum for %s: %w", name, err)
-			}
-			return name, checksum, nil
-		}
-	}
-
-	return "", "", fmt.Errorf("node asset with suffix %s not found", suffix)
-}
-
-func checksumFromManifest(manifest, name string) (string, error) {
-	name = strings.TrimSpace(name)
-	for _, line := range strings.Split(strings.ReplaceAll(manifest, "\r\n", "\n"), "\n") {
-		fields := strings.Fields(strings.TrimSpace(line))
-		if len(fields) < 2 || fields[len(fields)-1] != name {
+		asset := fields[len(fields)-1]
+		if !match(asset) {
 			continue
 		}
 		checksum, err := normalizeSHA256(fields[0])
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		return checksum, nil
+		return asset, checksum, nil
 	}
-	return "", fmt.Errorf("asset %s not found", name)
+	return "", "", nil
+}
+
+func nodeAssetFromManifest(manifest, suffix string) (string, string, error) {
+	name, checksum, err := scanChecksumManifest(manifest, func(asset string) bool {
+		return strings.HasSuffix(asset, suffix)
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("node checksum for %s: %w", name, err)
+	}
+	if name == "" {
+		return "", "", fmt.Errorf("node asset with suffix %s not found", suffix)
+	}
+	return name, checksum, nil
+}
+
+func checksumFromManifest(manifest, name string) (string, error) {
+	target := strings.TrimSpace(name)
+	found, checksum, err := scanChecksumManifest(manifest, func(asset string) bool {
+		return asset == target
+	})
+	if err != nil {
+		return "", err
+	}
+	if found == "" {
+		return "", fmt.Errorf("asset %s not found", name)
+	}
+	return checksum, nil
 }
 
 func nodeAssetSuffix() (string, error) {
@@ -624,42 +635,7 @@ func copyExtractedFile(src, dest string) error {
 }
 
 func replaceInstalledBinaries(paths map[string]string) error {
-	type rollback struct {
-		origDest string
-		backup   string
-	}
-	var rollbacks []rollback
-
-	for src, dest := range paths {
-		backup := replacementBackupPath(dest)
-		hadDest := true
-		if err := os.Rename(dest, backup); err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				for _, r := range rollbacks {
-					_ = os.Rename(r.backup, r.origDest)
-				}
-				return fmt.Errorf("установка %s: %w", filepath.Base(dest), err)
-			}
-			hadDest = false
-		}
-		if err := os.Rename(src, dest); err != nil {
-			if hadDest {
-				_ = os.Rename(backup, dest)
-			}
-			for _, r := range rollbacks {
-				_ = os.Rename(r.backup, r.origDest)
-			}
-			return fmt.Errorf("установка %s: %w", filepath.Base(dest), err)
-		}
-		if hadDest {
-			rollbacks = append(rollbacks, rollback{origDest: dest, backup: backup})
-		}
-	}
-
-	for _, r := range rollbacks {
-		_ = os.Remove(r.backup)
-	}
-	return nil
+	return replaceFilesWithBackup(paths)
 }
 
 func binaryBaseName(path string) string {

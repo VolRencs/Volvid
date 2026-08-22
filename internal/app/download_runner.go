@@ -390,7 +390,7 @@ func downloadFormats(req DownloadRequest) ([]string, []string) {
 
 	formats := req.Profile.VideoFmtChain
 	if len(formats) == 0 {
-		formats = []string{"bestvideo+bestaudio/best"}
+		formats = []string{ytdlpBestFormat}
 	}
 	return formats, req.Profile.VideoFmtLabels
 }
