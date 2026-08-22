@@ -11,21 +11,21 @@ const downloadsDirFileName = ".volren_downloads_dir"
 
 var ErrDownloadsDirLocked = errors.New("download location is fixed by VOLREN_DOWNLOADS_DIR")
 
-func resolveDownloadsDir() string {
+func resolveDownloadsDir(env *Env) string {
 	if path := envPath(envDownloadsDir); path != "" {
 		return path
 	}
-	if path := loadSavedDownloadsDir(); path != "" {
+	if path := loadSavedDownloadsDir(env); path != "" {
 		return path
 	}
-	return systemDownloadsDir()
+	return systemDownloadsDir(env)
 }
 
 func DownloadsDirLocked() bool {
 	return envPath(envDownloadsDir) != ""
 }
 
-func SetDownloadsDir(path string) error {
+func SetDownloadsDir(env *Env, path string) error {
 	if DownloadsDirLocked() {
 		return ErrDownloadsDirLocked
 	}
@@ -34,20 +34,20 @@ func SetDownloadsDir(path string) error {
 	if err != nil {
 		return err
 	}
-	if err := saveDownloadsDir(path); err != nil {
+	if err := saveDownloadsDir(env, path); err != nil {
 		return err
 	}
 
-	DlDir = path
+	env.setDownloadsDir(path)
 	return nil
 }
 
-func downloadsDirPath() string {
-	return filepath.Join(ConfigDir, downloadsDirFileName)
+func downloadsDirPath(env *Env) string {
+	return filepath.Join(env.ConfigDir, downloadsDirFileName)
 }
 
-func loadSavedDownloadsDir() string {
-	path := downloadsDirPath()
+func loadSavedDownloadsDir(env *Env) string {
+	path := downloadsDirPath(env)
 	if strings.TrimSpace(path) == "" {
 		return ""
 	}
@@ -59,20 +59,20 @@ func loadSavedDownloadsDir() string {
 	return cleanAbsPath(string(b))
 }
 
-func saveDownloadsDir(path string) error {
+func saveDownloadsDir(env *Env, path string) error {
 	path = cleanAbsPath(path)
 	if path == "" {
 		return errors.New("download location is empty")
 	}
-	return writeAppConfig(downloadsDirPath(), path+"\n")
+	return writeAppConfig(downloadsDirPath(env), path+"\n")
 }
 
-func systemDownloadsDir() string {
+func systemDownloadsDir(env *Env) string {
 	if path := systemDownloadsDirPlatform(); path != "" {
 		return path
 	}
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
 		return filepath.Join(home, "Downloads")
 	}
-	return filepath.Join(DataDir, "downloads")
+	return filepath.Join(env.DataDir, "downloads")
 }

@@ -239,7 +239,7 @@ func (m Model) renderHomeInput() string {
 
 func (m Model) renderDownloadsLocation() string {
 	pathWidth := max(18, m.cardBodyWidth()-10)
-	body := renderFileLink(trunc(app.DlDir, pathWidth))
+	body := renderFileLink(trunc(m.env.DownloadsDir(), pathWidth))
 	return m.renderSectionBlock(m.u().HomeOutputTitle, body)
 }
 
@@ -507,7 +507,7 @@ func (m Model) depScreenSubtitle() string {
 }
 
 func (m Model) renderUpdateDone() string {
-	if app.IsWindows {
+	if m.env.IsWindows {
 		return m.renderSectionBlock("", sMeta.Render(m.u().UpdateAppliedWin))
 	}
 	return m.renderSectionBlock("", sMeta.Render(m.u().UpdateAppliedUnix))
@@ -865,7 +865,7 @@ func (m Model) viewSummary() string {
 	var parts []string
 
 	if m.singleOK || m.dlDone > 0 {
-		parts = append(parts, m.renderSectionBlock(m.u().SummaryLocation, renderFileLink(app.DlDir)))
+		parts = append(parts, m.renderSectionBlock(m.u().SummaryLocation, renderFileLink(m.env.DownloadsDir())))
 	}
 	if m.dlTotal > 0 {
 		playlistLine := sValue.Render(m.u().SummaryPlaylistTitle) + "  " +
@@ -950,9 +950,9 @@ func openDownloadsDirCmd(path string) tea.Cmd {
 	}
 }
 
-func pickDownloadsDirCmd(path string, locale app.Locale) tea.Cmd {
+func pickDownloadsDirCmd(env *app.Env, path string, locale app.Locale) tea.Cmd {
 	return func() tea.Msg {
-		dir, err := app.PickDownloadsDir(path, locale)
+		dir, err := app.PickDownloadsDir(env, path, locale)
 		return msgPickDownloadsDirDone{path: dir, err: err}
 	}
 }

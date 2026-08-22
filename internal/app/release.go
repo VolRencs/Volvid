@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type UpdateInfo struct {
@@ -31,19 +30,19 @@ func assetName() (string, error) {
 	return platform.UpdateAsset, nil
 }
 
-func CheckUpdate() *UpdateInfo {
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+func CheckUpdate(env *Env) *UpdateInfo {
+	ctx, cancel := context.WithTimeout(context.Background(), apiClientTimeout)
 	defer cancel()
-	return CheckUpdateContext(ctx)
+	return CheckUpdateContext(env, ctx)
 }
 
-func CheckUpdateContext(ctx context.Context) *UpdateInfo {
+func CheckUpdateContext(env *Env, ctx context.Context) *UpdateInfo {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubAPIURL, nil)
 	if err != nil {
 		return nil
 	}
 	req.Header.Set("User-Agent", "VolRenDownloader/"+Version)
-	resp, err := doSafeRequest(ctx, apiClient, req)
+	resp, err := doSafeRequest(ctx, env.apiClient, req)
 	if err != nil {
 		return nil
 	}
@@ -99,7 +98,7 @@ func validUpdateDownloadURL(raw, assetName string) bool {
 	return strings.HasPrefix(cleanPath, "/VolRencs/YouTubeDownloader/releases/download/")
 }
 
-func ApplyUpdateFor(ctx context.Context, l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
+func ApplyUpdateFor(env *Env, ctx context.Context, l Locale, info *UpdateInfo, ch chan<- FileProgress) error {
 	if info == nil || strings.TrimSpace(info.DlURL) == "" {
 		return fmt.Errorf("update info is empty")
 	}
@@ -112,15 +111,15 @@ func ApplyUpdateFor(ctx context.Context, l Locale, info *UpdateInfo, ch chan<- F
 	if err != nil {
 		return fmt.Errorf("абсолютный путь: %w", err)
 	}
-	if IsWindows {
+	if env.IsWindows {
 		tmp := strings.TrimSuffix(dest, ".exe") + ".new.exe"
-		if err := DownloadFileContext(ctx, info.DlURL, tmp, l, ch); err != nil {
+		if err := DownloadFileContext(env, ctx, info.DlURL, tmp, l, ch); err != nil {
 			return err
 		}
 		return applyUpdatePlatform(tmp, dest)
 	}
 	tmp := dest + ".new"
-	if err := DownloadFileContext(ctx, info.DlURL, tmp, l, ch); err != nil {
+	if err := DownloadFileContext(env, ctx, info.DlURL, tmp, l, ch); err != nil {
 		return err
 	}
 	return applyUpdatePlatform(tmp, dest)

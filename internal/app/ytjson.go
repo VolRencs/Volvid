@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-func scanYTDLPJSONLines(ctx context.Context, timeout time.Duration, args []string, handle func(map[string]any)) error {
-	cmd, stdout, runCtx, cancel, err := startYTDLPMergedOutputCommand(ctx, timeout, args...)
+func scanYTDLPJSONLines(env *Env, ctx context.Context, timeout time.Duration, args []string, handle func(map[string]any)) error {
+	cmd, stdout, runCtx, cancel, err := startYTDLPMergedOutputCommand(env, ctx, timeout, args...)
 	if err != nil {
 		return fmt.Errorf("yt-dlp start: %w", err)
 	}

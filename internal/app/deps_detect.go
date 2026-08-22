@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -48,78 +47,60 @@ type depsDetectCall struct {
 	generation uint64
 }
 
-var (
-	firefoxUserAgentOnce  sync.Once
-	firefoxUserAgentCache string
-	depsCacheMu           sync.Mutex
-	depsCache             CheckDepsResult
-	depsCacheReady        bool
-	depsCacheFlight       *depsDetectCall
-	depsCacheGeneration   uint64
-
-	runtimeDepsMu     sync.Mutex
-	runtimeDepsValue  CheckDepsResult
-	runtimeDepsExpiry time.Time
-	runtimeDepsFlight *depsDetectCall
-)
-
 const runtimeDepsTTL = 15 * time.Second
 
-func DetectDeps() CheckDepsResult  { return loadDeps(false) }
-func RefreshDeps() CheckDepsResult { return loadDeps(true) }
+func DetectDeps(env *Env) CheckDepsResult  { return loadDeps(env, false) }
+func RefreshDeps(env *Env) CheckDepsResult { return loadDeps(env, true) }
 
-func loadDeps(force bool) CheckDepsResult {
-	depsCacheMu.Lock()
-	if depsCacheReady && !force {
-		deps := depsCache
-		depsCacheMu.Unlock()
+func loadDeps(env *Env, force bool) CheckDepsResult {
+	env.depsCacheMu.Lock()
+	if env.depsCacheReady && !force {
+		deps := env.depsCache
+		env.depsCacheMu.Unlock()
 		return deps
 	}
-	if call := depsCacheFlight; call != nil && call.generation == depsCacheGeneration {
-		depsCacheMu.Unlock()
+	if call := env.depsCacheFlight; call != nil && call.generation == env.depsCacheGeneration {
+		env.depsCacheMu.Unlock()
 		<-call.done
 		return call.result
 	}
 	call := &depsDetectCall{
 		done:       make(chan struct{}),
-		generation: depsCacheGeneration,
+		generation: env.depsCacheGeneration,
 	}
-	depsCacheFlight = call
-	depsCacheMu.Unlock()
+	env.depsCacheFlight = call
+	env.depsCacheMu.Unlock()
 
-	deps := detectDeps(true)
+	deps := detectDeps(env, true)
 
-	depsCacheMu.Lock()
-	if depsCacheFlight == call {
-		depsCacheFlight = nil
+	env.depsCacheMu.Lock()
+	if env.depsCacheFlight == call {
+		env.depsCacheFlight = nil
 	}
-	if depsCacheGeneration == call.generation {
-		depsCache = deps
-		depsCacheReady = true
+	if env.depsCacheGeneration == call.generation {
+		env.depsCache = deps
+		env.depsCacheReady = true
 	}
 	call.result = deps
 	close(call.done)
-	depsCacheMu.Unlock()
+	env.depsCacheMu.Unlock()
 	return deps
 }
 
-func InvalidateDepsCache() {
-	depsCacheMu.Lock()
-	depsCache = CheckDepsResult{}
-	depsCacheReady = false
-	depsCacheGeneration++
-	depsCacheMu.Unlock()
+func InvalidateDepsCache(env *Env) {
+	env.depsCacheMu.Lock()
+	env.depsCache = CheckDepsResult{}
+	env.depsCacheReady = false
+	env.depsCacheGeneration++
+	env.depsCacheMu.Unlock()
 
-	runtimeDepsMu.Lock()
-	runtimeDepsValue = CheckDepsResult{}
-	runtimeDepsExpiry = time.Time{}
-	runtimeDepsMu.Unlock()
+	env.runtimeDepsExpiry = time.Time{}
 }
 
-func detectDeps(withVersions bool) CheckDepsResult {
-	ytdlp := detectExecutableDependency("ytdlp", "yt-dlp", true, true, []string{"yt-dlp"}, YtdlpBin, []string{"--version"}, firstNonEmptyLine, withVersions)
-	ffmpeg := detectExecutableDependency("ffmpeg", "ffmpeg", true, true, []string{"ffmpeg"}, FFmpegBin, []string{"-version"}, ffmpegVersionFromLine, withVersions)
-	node := detectExecutableDependency("node", "node", false, true, []string{"node"}, NodeBin, []string{"--version"}, firstNonEmptyLine, withVersions)
+func detectDeps(env *Env, withVersions bool) CheckDepsResult {
+	ytdlp := detectExecutableDependency("ytdlp", "yt-dlp", true, true, []string{"yt-dlp"}, env.YtdlpBin, []string{"--version"}, firstNonEmptyLine, withVersions)
+	ffmpeg := detectExecutableDependency("ffmpeg", "ffmpeg", true, true, []string{"ffmpeg"}, env.FFmpegBin, []string{"-version"}, ffmpegVersionFromLine, withVersions)
+	node := detectExecutableDependency("node", "node", false, true, []string{"node"}, env.NodeBin, []string{"--version"}, firstNonEmptyLine, withVersions)
 
 	deps := CheckDepsResult{YTDLP: ytdlp, FFmpeg: ffmpeg, Node: node}
 	deps.Cookies = detectBrowserCookies(currentUserHome(), currentGOOS())
@@ -626,37 +607,37 @@ func uniquePaths(paths []string) []string {
 	return out
 }
 
-func resolveRuntimeDeps() CheckDepsResult {
-	runtimeDepsMu.Lock()
-	if time.Now().Before(runtimeDepsExpiry) {
-		deps := runtimeDepsValue
-		runtimeDepsMu.Unlock()
+func resolveRuntimeDeps(env *Env) CheckDepsResult {
+	env.depsCacheMu.Lock()
+	if time.Now().Before(env.runtimeDepsExpiry) {
+		deps := env.runtimeDepsValue
+		env.depsCacheMu.Unlock()
 		return deps
 	}
-	if call := runtimeDepsFlight; call != nil {
-		runtimeDepsMu.Unlock()
+	if call := env.runtimeDepsFlight; call != nil {
+		env.depsCacheMu.Unlock()
 		<-call.done
 		return call.result
 	}
 	call := &depsDetectCall{done: make(chan struct{})}
-	runtimeDepsFlight = call
-	runtimeDepsMu.Unlock()
+	env.runtimeDepsFlight = call
+	env.depsCacheMu.Unlock()
 
-	deps := detectDeps(false)
+	deps := detectDeps(env, false)
 
-	runtimeDepsMu.Lock()
-	runtimeDepsValue = deps
-	runtimeDepsExpiry = time.Now().Add(runtimeDepsTTL)
-	if runtimeDepsFlight == call {
-		runtimeDepsFlight = nil
+	env.depsCacheMu.Lock()
+	env.runtimeDepsValue = deps
+	env.runtimeDepsExpiry = time.Now().Add(runtimeDepsTTL)
+	if env.runtimeDepsFlight == call {
+		env.runtimeDepsFlight = nil
 	}
 	call.result = deps
 	close(call.done)
-	runtimeDepsMu.Unlock()
+	env.depsCacheMu.Unlock()
 	return deps
 }
 
-func ytdlpCommandArgsFor(deps CheckDepsResult, base []string) []string {
+func ytdlpCommandArgsFor(env *Env, deps CheckDepsResult, base []string) []string {
 	args := make([]string, 0, len(base)+7)
 	args = append(args, "--ignore-config")
 	if deps.Cookies.Status == StatusActive {
@@ -671,28 +652,28 @@ func ytdlpCommandArgsFor(deps CheckDepsResult, base []string) []string {
 	if deps.Runtime.Status == StatusActive && strings.TrimSpace(deps.Runtime.Path) != "" {
 		args = append(args, "--js-runtimes", "node:"+deps.Runtime.Path)
 	}
-	if ua := runtimeUserAgent(deps); ua != "" {
+	if ua := runtimeUserAgent(env, deps); ua != "" {
 		args = append(args, "--user-agent", ua)
 	}
 	args = append(args, base...)
 	return args
 }
 
-func runtimeUserAgent(deps CheckDepsResult) string {
+func runtimeUserAgent(env *Env, deps CheckDepsResult) string {
 	if deps.Cookies.Status != StatusActive {
 		return ""
 	}
 	if currentGOOS() != "linux" || !strings.EqualFold(strings.TrimSpace(deps.Cookies.Browser), "firefox") {
 		return ""
 	}
-	return firefoxUserAgent()
+	return env.firefoxUserAgent()
 }
 
-func firefoxUserAgent() string {
-	firefoxUserAgentOnce.Do(func() {
-		firefoxUserAgentCache = buildFirefoxUserAgent()
+func (env *Env) firefoxUserAgent() string {
+	env.firefoxUserAgentOnce.Do(func() {
+		env.firefoxUserAgentCache = buildFirefoxUserAgent()
 	})
-	return firefoxUserAgentCache
+	return env.firefoxUserAgentCache
 }
 
 func buildFirefoxUserAgent() string {
@@ -731,28 +712,28 @@ func firefoxUAPlatform() string {
 	return platform.FirefoxUAPlatform
 }
 
-func ytdlpOutput(ctx context.Context, timeout time.Duration, args ...string) ([]byte, error) {
-	return ytdlpOutputFor(ctx, timeout, resolveRuntimeDeps(), args...)
+func ytdlpOutput(env *Env, ctx context.Context, timeout time.Duration, args ...string) ([]byte, error) {
+	return ytdlpOutputFor(env, ctx, timeout, resolveRuntimeDeps(env), args...)
 }
 
-func startYTDLPMergedOutputCommand(ctx context.Context, timeout time.Duration, args ...string) (*exec.Cmd, io.ReadCloser, context.Context, context.CancelFunc, error) {
-	return startYTDLPMergedOutputCommandFor(ctx, timeout, resolveRuntimeDeps(), args...)
+func startYTDLPMergedOutputCommand(env *Env, ctx context.Context, timeout time.Duration, args ...string) (*exec.Cmd, io.ReadCloser, context.Context, context.CancelFunc, error) {
+	return startYTDLPMergedOutputCommandFor(env, ctx, timeout, resolveRuntimeDeps(env), args...)
 }
 
-func ytdlpOutputFor(ctx context.Context, timeout time.Duration, deps CheckDepsResult, args ...string) ([]byte, error) {
+func ytdlpOutputFor(env *Env, ctx context.Context, timeout time.Duration, deps CheckDepsResult, args ...string) ([]byte, error) {
 	bin := strings.TrimSpace(deps.YTDLP.Path)
 	if bin == "" {
 		return nil, fmt.Errorf("yt-dlp is required")
 	}
-	return commandOutput(ctx, timeout, bin, ytdlpCommandArgsFor(deps, args)...)
+	return commandOutput(ctx, timeout, bin, ytdlpCommandArgsFor(env, deps, args)...)
 }
 
-func startYTDLPMergedOutputCommandFor(ctx context.Context, timeout time.Duration, deps CheckDepsResult, args ...string) (*exec.Cmd, io.ReadCloser, context.Context, context.CancelFunc, error) {
+func startYTDLPMergedOutputCommandFor(env *Env, ctx context.Context, timeout time.Duration, deps CheckDepsResult, args ...string) (*exec.Cmd, io.ReadCloser, context.Context, context.CancelFunc, error) {
 	bin := strings.TrimSpace(deps.YTDLP.Path)
 	if bin == "" {
 		return nil, nil, nil, nil, fmt.Errorf("yt-dlp is required")
 	}
-	return startMergedOutputCommand(ctx, timeout, bin, ytdlpCommandArgsFor(deps, args)...)
+	return startMergedOutputCommand(ctx, timeout, bin, ytdlpCommandArgsFor(env, deps, args)...)
 }
 
 func commandVersionLine(bin string, args ...string) string {

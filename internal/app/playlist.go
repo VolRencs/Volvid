@@ -27,14 +27,14 @@ type PlaylistInfo struct {
 	Entries []PlaylistEntry
 }
 
-func FetchPlaylistInfoFor(ctx context.Context, url string, l Locale) (*PlaylistInfo, error) {
+func FetchPlaylistInfoFor(env *Env, ctx context.Context, url string, l Locale) (*PlaylistInfo, error) {
 	var (
 		entries []PlaylistEntry
 		first   map[string]any
 		strs    = StringsFor(l)
 	)
 
-	err := scanYTDLPJSONLines(ctx, playlistFetchTimeout, []string{
+	err := scanYTDLPJSONLines(env, ctx, playlistFetchTimeout, []string{
 		"--flat-playlist",
 		"--dump-json",
 		"--quiet",

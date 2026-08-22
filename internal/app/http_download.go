@@ -15,6 +15,7 @@ import (
 )
 
 func DownloadFileContext(
+	env *Env,
 	ctx context.Context,
 	url, dest string,
 	l Locale,
@@ -23,7 +24,7 @@ func DownloadFileContext(
 	ctx = resolveContext(ctx)
 	ctx, cancel := context.WithTimeout(ctx, defaultFileDownloadTimeout)
 	defer cancel()
-	return downloadFileWith(ctx, dlClient, url, dest, l, ch)
+	return downloadFileWith(ctx, env.dlClient, url, dest, l, ch)
 }
 
 func downloadFileWith(
@@ -80,9 +81,6 @@ func downloadFileWith(
 func resolveDownloadHTTPClient(client *http.Client) *http.Client {
 	if client != nil {
 		return client
-	}
-	if dlClient != nil {
-		return dlClient
 	}
 	return newDownloadHTTPClient()
 }

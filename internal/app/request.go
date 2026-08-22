@@ -63,23 +63,23 @@ func DefaultVideoProfile(l Locale) OutputProfile {
 	}
 }
 
-func PrepareDownloadRequest(req DownloadRequest) (DownloadRequest, error) {
-	req = normalizeDownloadRequest(req)
+func PrepareDownloadRequest(env *Env, req DownloadRequest) (DownloadRequest, error) {
+	req = normalizeDownloadRequest(env, req)
 	if req.Fragment != nil && !downloadRequestAllowsFragment(req) {
 		req.Fragment = nil
 	}
-	if err := validateDownloadRequest(req, resolveRuntimeDeps()); err != nil {
+	if err := validateDownloadRequest(req, resolveRuntimeDeps(env)); err != nil {
 		return DownloadRequest{}, err
 	}
 	return req, nil
 }
 
-func ValidateDownloadRequest(req DownloadRequest) error {
-	_, err := PrepareDownloadRequest(req)
+func ValidateDownloadRequest(env *Env, req DownloadRequest) error {
+	_, err := PrepareDownloadRequest(env, req)
 	return err
 }
 
-func normalizeDownloadRequest(req DownloadRequest) DownloadRequest {
+func normalizeDownloadRequest(env *Env, req DownloadRequest) DownloadRequest {
 	if req.Profile.Mode == 0 {
 		req.Profile = DefaultVideoProfile(req.Locale)
 	}
@@ -87,7 +87,7 @@ func normalizeDownloadRequest(req DownloadRequest) DownloadRequest {
 		req.Locale = LocaleEN
 	}
 	if strings.TrimSpace(req.OutputDir) == "" {
-		req.OutputDir = DlDir
+		req.OutputDir = env.DownloadsDir()
 	}
 	if req.Workers <= 0 {
 		req.Workers = 1

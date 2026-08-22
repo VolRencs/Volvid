@@ -38,18 +38,18 @@ func NextLocale(l Locale) Locale {
 
 const localeFileName = ".volren_locale"
 
-func localePath() string {
-	return filepath.Join(ConfigDir, localeFileName)
+func localePath(env *Env) string {
+	return filepath.Join(env.ConfigDir, localeFileName)
 }
 
-func LoadLocale() Locale {
-	b, err := os.ReadFile(localePath())
+func LoadLocale(env *Env) Locale {
+	b, err := os.ReadFile(localePath(env))
 	if err != nil {
 		return LocaleEN
 	}
 	return parseLocale(string(b))
 }
 
-func SaveLocale(l Locale) error {
-	return writeAppConfig(localePath(), l.String()+"\n")
+func SaveLocale(env *Env, l Locale) error {
+	return writeAppConfig(localePath(env), l.String()+"\n")
 }

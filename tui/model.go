@@ -132,6 +132,7 @@ type (
 )
 
 type Model struct {
+	env    *app.Env
 	screen screen
 
 	width  int
@@ -211,8 +212,11 @@ type Model struct {
 	dlCancelled bool
 }
 
-func New(ctx context.Context) tea.Model {
+func New(env *app.Env, ctx context.Context) tea.Model {
 	m := newModel()
+	if env != nil {
+		m.env = env
+	}
 	if ctx != nil {
 		m.baseCtx = ctx
 	}
@@ -236,9 +240,11 @@ func (m Model) nextOpCtx() (Model, context.Context) {
 }
 
 func newModel() Model {
-	loc := app.LoadLocale()
+	env := app.NewEnv()
+	loc := app.LoadLocale(env)
 
 	m := Model{
+		env:         env,
 		baseCtx:     context.Background(),
 		screen:      scrUpdateCheck,
 		locale:      loc,
@@ -266,7 +272,7 @@ func timerTickCmd() tea.Cmd {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		spinnerTickCmd(),
-		func() tea.Msg { return msgUpdateChecked{info: app.CheckUpdate()} },
+		func() tea.Msg { return msgUpdateChecked{info: app.CheckUpdate(m.env)} },
 	)
 }
 
@@ -400,12 +406,12 @@ func (m Model) startOpenDownloadsDir() (tea.Model, tea.Cmd) {
 	if m.screen == scrURL {
 		m.urlErr = ""
 	}
-	return m, openDownloadsDirCmd(app.DlDir)
+	return m, openDownloadsDirCmd(m.env.DownloadsDir())
 }
 
 func (m Model) startPickDownloadsDir() (tea.Model, tea.Cmd) {
 	m.urlErr = ""
-	return m, pickDownloadsDirCmd(app.DlDir, m.locale)
+	return m, pickDownloadsDirCmd(m.env, m.env.DownloadsDir(), m.locale)
 }
 
 func (m Model) restoreActiveScreen() (tea.Model, tea.Cmd) {
@@ -752,7 +758,7 @@ func (m Model) submitSearchInput() (tea.Model, tea.Cmd) {
 	var ctx context.Context
 	m, ctx = m.nextOpCtx()
 	m.screen = scrSearchFetch
-	return m, searchYouTubeCmd(ctx, query, m.opGen)
+	return m, searchYouTubeCmd(m.env, ctx, query, m.opGen)
 }
 
 func (m Model) activateSearchResult(idx int) (tea.Model, tea.Cmd) {
@@ -837,7 +843,7 @@ func (m Model) startTargetFlow(rawURL string, target app.ParsedTarget) (tea.Mode
 		var ctx context.Context
 		m, ctx = m.nextOpCtx()
 		m.screen = scrPlaylistFetch
-		return m, fetchPlaylistCmd(ctx, rawURL, m.locale, m.opGen)
+		return m, fetchPlaylistCmd(m.env, ctx, rawURL, m.locale, m.opGen)
 	}
 
 	return m.startFragmentFlow()
@@ -848,7 +854,7 @@ func (m Model) startFragmentFlow() (tea.Model, tea.Cmd) {
 	var ctx context.Context
 	m, ctx = m.nextOpCtx()
 	m.screen = scrFragmentProbe
-	return m, probeFragmentDurationCmd(ctx, m.target, m.opGen)
+	return m, probeFragmentDurationCmd(m.env, ctx, m.target, m.opGen)
 }
 
 func (m Model) handleFragmentDurationMsg(msg msgFragmentDuration) (tea.Model, tea.Cmd) {
@@ -868,7 +874,7 @@ func (m Model) handleFragmentDurationMsg(msg msgFragmentDuration) (tea.Model, te
 }
 
 func (m Model) gotoChecks() (tea.Model, tea.Cmd) {
-	deps := app.DetectDeps()
+	deps := app.DetectDeps(m.env)
 	m.deps = deps
 	if deps.MissingRequired() {
 		return m.openDependencyScreen(depModeStartup)
@@ -912,14 +918,14 @@ func (m Model) startDepsRefresh() (tea.Model, tea.Cmd) {
 	if m.screen == scrDepUpdate {
 		m = m.syncMenu()
 	}
-	return m, refreshDepsCmd(m.depRefreshToken)
+	return m, refreshDepsCmd(m.env, m.depRefreshToken)
 }
 
 func (m Model) returnFromDependencyScreen() (tea.Model, tea.Cmd) {
 	if m.depMode == depModeStartup {
 		m.depErr = ""
 		if !m.deps.MissingRequired() {
-			return m.gotoURLWithDeps(app.DetectDeps())
+			return m.gotoURLWithDeps(app.DetectDeps(m.env))
 		}
 		return m, tea.Quit
 	}
@@ -1131,7 +1137,7 @@ func (m Model) startQualityScan() (tea.Model, tea.Cmd) {
 	var ctx context.Context
 	m, ctx = m.nextOpCtx()
 	m.screen = scrQualityFetch
-	return m, loadQualityChoicesCmd(ctx, m.qualityScanURLs(), m.opGen)
+	return m, loadQualityChoicesCmd(m.env, ctx, m.qualityScanURLs(), m.opGen)
 }
 
 func (m Model) qualityScanURLs() []string {
@@ -1154,7 +1160,7 @@ func (m Model) currentProfile() app.OutputProfile {
 }
 
 func (m Model) startDownload() (tea.Model, tea.Cmd) {
-	deps := app.DetectDeps()
+	deps := app.DetectDeps(m.env)
 	m.deps = deps
 
 	switch {
@@ -1175,10 +1181,10 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 		PlaylistInfo:  m.plInfo,
 		Entries:       m.dlEntries,
 		Workers:       max(m.numWorkers, 1),
-		OutputDir:     app.DlDir,
+		OutputDir:     m.env.DownloadsDir(),
 		Locale:        m.locale,
 	}
-	if err := app.ValidateDownloadRequest(req); err != nil {
+	if err := app.ValidateDownloadRequest(m.env, req); err != nil {
 		m.flowErr = err.Error()
 		m.restoreDownloadConfigScreen()
 		m = m.syncMenu()
@@ -1209,7 +1215,7 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	m.dlCancel = dlCancel
 
 	req.Workers = workers
-	app.StartDownloadRequestContext(dlCtx, req, ch)
+	app.StartDownloadRequestContext(m.env, dlCtx, req, ch)
 	return m, tea.Batch(listenDownloadCmd(ch), timerTickCmd())
 }
 

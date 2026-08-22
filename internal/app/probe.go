@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"sync"
 )
 
 type MediaProbe struct {
@@ -37,20 +36,14 @@ type probeCall struct {
 	err   error
 }
 
-var (
-	probeCacheMu sync.RWMutex
-	probeCache   = make(map[string]*MediaProbe)
-	probeFlight  = make(map[string]*probeCall)
-)
-
 var ErrMediaDurationUnavailable = errors.New("media duration unavailable")
 
-func ProbeMediaDuration(target ParsedTarget) (int, error) {
-	return ProbeMediaDurationContext(context.Background(), target)
+func ProbeMediaDuration(env *Env, target ParsedTarget) (int, error) {
+	return ProbeMediaDurationContext(env, context.Background(), target)
 }
 
-func ProbeMediaDurationContext(ctx context.Context, target ParsedTarget) (int, error) {
-	probe, err := probeMediaContext(ctx, target)
+func ProbeMediaDurationContext(env *Env, ctx context.Context, target ParsedTarget) (int, error) {
+	probe, err := probeMediaContext(env, ctx, target)
 	if err != nil {
 		return 0, err
 	}
@@ -60,7 +53,7 @@ func ProbeMediaDurationContext(ctx context.Context, target ParsedTarget) (int, e
 	return probe.Duration, nil
 }
 
-func probeMediaContext(ctx context.Context, target ParsedTarget) (*MediaProbe, error) {
+func probeMediaContext(env *Env, ctx context.Context, target ParsedTarget) (*MediaProbe, error) {
 	if !target.IsVideo() {
 		return nil, errors.New("probe requires video target")
 	}
@@ -70,17 +63,17 @@ func probeMediaContext(ctx context.Context, target ParsedTarget) (*MediaProbe, e
 	}
 	key := probeCacheKey(target)
 
-	if cached, ok := loadCachedProbe(key); ok {
+	if cached, ok := env.loadCachedProbe(key); ok {
 		return cached, nil
 	}
 
-	probeCacheMu.Lock()
-	if cached, ok := cloneCachedProbeLocked(key); ok {
-		probeCacheMu.Unlock()
+	env.probeCacheMu.Lock()
+	if cached, ok := env.cloneCachedProbeLocked(key); ok {
+		env.probeCacheMu.Unlock()
 		return cached, nil
 	}
-	if call, ok := probeFlight[key]; ok {
-		probeCacheMu.Unlock()
+	if call, ok := env.probeFlight[key]; ok {
+		env.probeCacheMu.Unlock()
 		select {
 		case <-call.done:
 			if call.err != nil {
@@ -93,21 +86,21 @@ func probeMediaContext(ctx context.Context, target ParsedTarget) (*MediaProbe, e
 	}
 
 	call := &probeCall{done: make(chan struct{})}
-	probeFlight[key] = call
-	probeCacheMu.Unlock()
+	env.probeFlight[key] = call
+	env.probeCacheMu.Unlock()
 
-	probe, err := probeMediaUncached(ctx, target)
+	probe, err := probeMediaUncached(env, ctx, target)
 	cached := cloneMediaProbe(probe)
 
-	probeCacheMu.Lock()
-	delete(probeFlight, key)
+	env.probeCacheMu.Lock()
+	delete(env.probeFlight, key)
 	if err == nil && cached != nil {
-		probeCache[key] = cached
+		env.probeCache[key] = cached
 	}
 	call.probe = cached
 	call.err = err
 	close(call.done)
-	probeCacheMu.Unlock()
+	env.probeCacheMu.Unlock()
 
 	if err != nil {
 		return nil, err
@@ -115,8 +108,9 @@ func probeMediaContext(ctx context.Context, target ParsedTarget) (*MediaProbe, e
 	return cloneMediaProbe(cached), nil
 }
 
-func probeMediaUncached(ctx context.Context, target ParsedTarget) (*MediaProbe, error) {
+func probeMediaUncached(env *Env, ctx context.Context, target ParsedTarget) (*MediaProbe, error) {
 	out, err := ytdlpOutput(
+		env,
 		ctx,
 		qualityScanTimeout,
 		"--dump-single-json",
@@ -158,14 +152,14 @@ func probeCacheKey(target ParsedTarget) string {
 	return strings.TrimSpace(target.DownloadURL(false))
 }
 
-func loadCachedProbe(key string) (*MediaProbe, bool) {
-	probeCacheMu.RLock()
-	defer probeCacheMu.RUnlock()
-	return cloneCachedProbeLocked(key)
+func (env *Env) loadCachedProbe(key string) (*MediaProbe, bool) {
+	env.probeCacheMu.RLock()
+	defer env.probeCacheMu.RUnlock()
+	return env.cloneCachedProbeLocked(key)
 }
 
-func cloneCachedProbeLocked(key string) (*MediaProbe, bool) {
-	probe, ok := probeCache[key]
+func (env *Env) cloneCachedProbeLocked(key string) (*MediaProbe, bool) {
+	probe, ok := env.probeCache[key]
 	if !ok {
 		return nil, false
 	}

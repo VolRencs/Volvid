@@ -16,48 +16,48 @@ import (
 	"time"
 )
 
-func InstallDependencyFor(ctx context.Context, key string, l Locale, ch chan<- FileProgress) error {
+func InstallDependencyFor(env *Env, ctx context.Context, key string, l Locale, ch chan<- FileProgress) error {
 	var err error
 	switch strings.TrimSpace(key) {
 	case "ytdlp":
-		err = InstallYtDlpFor(ctx, l, ch)
+		err = InstallYtDlpFor(env, ctx, l, ch)
 	case "ffmpeg":
-		err = InstallFFmpegFor(ctx, l, ch)
+		err = InstallFFmpegFor(env, ctx, l, ch)
 	case "node":
-		err = InstallNodeFor(ctx, l, ch)
+		err = InstallNodeFor(env, ctx, l, ch)
 	default:
 		return fmt.Errorf("unsupported dependency: %s", key)
 	}
 	if err != nil {
 		return err
 	}
-	InvalidateDepsCache()
+	InvalidateDepsCache(env)
 	return nil
 }
 
-func InstallYtDlpFor(ctx context.Context, l Locale, ch chan<- FileProgress) error {
-	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
+func InstallYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
+	if err := os.MkdirAll(env.DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
 	}
 
-	url, _, checksum, err := ytdlpDownloadAsset(ctx)
+	url, _, checksum, err := ytdlpDownloadAsset(env)
 	if err != nil {
 		return err
 	}
-	staging, err := os.MkdirTemp(DepsDir, ".ytdlp-*")
+	staging, err := os.MkdirTemp(env.DepsDir, ".ytdlp-*")
 	if err != nil {
 		return fmt.Errorf("временная директория установки: %w", err)
 	}
 	defer os.RemoveAll(staging)
 
-	stagedYtdlp := filepath.Join(staging, binaryBaseName(YtdlpBin))
-	if err := DownloadFileContext(ctx, url, stagedYtdlp, l, ch); err != nil {
+	stagedYtdlp := filepath.Join(staging, binaryBaseName(env.YtdlpBin))
+	if err := DownloadFileContext(env, ctx, url, stagedYtdlp, l, ch); err != nil {
 		return err
 	}
 	if err := verifyFileSHA256(stagedYtdlp, checksum); err != nil {
 		return err
 	}
-	if !IsWindows {
+	if !env.IsWindows {
 		if err := os.Chmod(stagedYtdlp, 0o755); err != nil {
 			return fmt.Errorf("chmod yt-dlp: %w", err)
 		}
@@ -65,7 +65,7 @@ func InstallYtDlpFor(ctx context.Context, l Locale, ch chan<- FileProgress) erro
 	if detectExecutableDependency("ytdlp", "yt-dlp", true, true, nil, stagedYtdlp, []string{"--version"}, firstNonEmptyLine, true).Version == "" {
 		return fmt.Errorf("бинарник yt-dlp скачан, но не запускается")
 	}
-	if err := replaceInstalledBinaries(map[string]string{stagedYtdlp: YtdlpBin}); err != nil {
+	if err := replaceInstalledBinaries(map[string]string{stagedYtdlp: env.YtdlpBin}); err != nil {
 		return err
 	}
 	return nil
@@ -116,8 +116,8 @@ func extractZipEntry(zf *zip.File, dest string) error {
 	return os.Rename(tmpName, dest)
 }
 
-func InstallFFmpegFor(ctx context.Context, l Locale, ch chan<- FileProgress) error {
-	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
+func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
+	if err := os.MkdirAll(env.DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
 	}
 
@@ -132,18 +132,18 @@ func InstallFFmpegFor(ctx context.Context, l Locale, ch chan<- FileProgress) err
 		return err
 	}
 	archive := filepath.Join(tmp, archiveName)
-	if err := DownloadFileContext(ctx, archiveURL, archive, l, ch); err != nil {
+	if err := DownloadFileContext(env, ctx, archiveURL, archive, l, ch); err != nil {
 		return err
 	}
 
-	staging, err := os.MkdirTemp(DepsDir, ".ffmpeg-*")
+	staging, err := os.MkdirTemp(env.DepsDir, ".ffmpeg-*")
 	if err != nil {
 		return fmt.Errorf("временная директория установки: %w", err)
 	}
 	defer os.RemoveAll(staging)
 
-	ffmpegName := binaryBaseName(FFmpegBin)
-	ffprobeName := binaryBaseName(FFprobeBin)
+	ffmpegName := binaryBaseName(env.FFmpegBin)
+	ffprobeName := binaryBaseName(env.FFprobeBin)
 	stagedFFmpeg := filepath.Join(staging, ffmpegName)
 	stagedFFprobe := filepath.Join(staging, ffprobeName)
 	targets := map[string]string{
@@ -168,20 +168,20 @@ func InstallFFmpegFor(ctx context.Context, l Locale, ch chan<- FileProgress) err
 		return fmt.Errorf("бинарник ffprobe скачан, но не запускается")
 	}
 	if err := replaceInstalledBinaries(map[string]string{
-		stagedFFmpeg:  FFmpegBin,
-		stagedFFprobe: FFprobeBin,
+		stagedFFmpeg:  env.FFmpegBin,
+		stagedFFprobe: env.FFprobeBin,
 	}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func InstallNodeFor(ctx context.Context, l Locale, ch chan<- FileProgress) error {
-	url, filename, checksum, err := nodeDownloadAsset(ctx)
+func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
+	url, filename, checksum, err := nodeDownloadAsset(env)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(DepsDir, 0o755); err != nil {
+	if err := os.MkdirAll(env.DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
 	}
 
@@ -192,7 +192,7 @@ func InstallNodeFor(ctx context.Context, l Locale, ch chan<- FileProgress) error
 	defer os.RemoveAll(tmp)
 
 	archive := filepath.Join(tmp, filename)
-	if err := DownloadFileContext(ctx, url, archive, l, ch); err != nil {
+	if err := DownloadFileContext(env, ctx, url, archive, l, ch); err != nil {
 		return err
 	}
 	if checksum != "" {
@@ -201,13 +201,13 @@ func InstallNodeFor(ctx context.Context, l Locale, ch chan<- FileProgress) error
 		}
 	}
 
-	staging, err := os.MkdirTemp(DepsDir, ".node-*")
+	staging, err := os.MkdirTemp(env.DepsDir, ".node-*")
 	if err != nil {
 		return fmt.Errorf("временная директория установки: %w", err)
 	}
 	defer os.RemoveAll(staging)
 
-	nodeName := binaryBaseName(NodeBin)
+	nodeName := binaryBaseName(env.NodeBin)
 	stagedNode := filepath.Join(staging, nodeName)
 	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
 		if err := extractZipBinaries(ctx, archive, map[string]string{
@@ -226,7 +226,7 @@ func InstallNodeFor(ctx context.Context, l Locale, ch chan<- FileProgress) error
 	if detectExecutableDependency("node", "node", false, true, nil, stagedNode, []string{"--version"}, firstNonEmptyLine, true).Version == "" {
 		return fmt.Errorf("бинарник node скачан, но не запускается")
 	}
-	if err := replaceInstalledBinaries(map[string]string{stagedNode: NodeBin}); err != nil {
+	if err := replaceInstalledBinaries(map[string]string{stagedNode: env.NodeBin}); err != nil {
 		return err
 	}
 	return nil
@@ -244,15 +244,15 @@ func ffmpegArchiveAsset() (string, string, error) {
 	return url, filepath.Base(url), nil
 }
 
-func nodeDownloadAsset(ctx context.Context) (string, string, string, error) {
-	filename, checksum, err := nodeAssetFilename(ctx)
+func nodeDownloadAsset(env *Env) (string, string, string, error) {
+	filename, checksum, err := nodeAssetFilename(env)
 	if err != nil {
 		return "", "", "", err
 	}
 	return nodeLatestURL + filename, filename, checksum, nil
 }
 
-func ytdlpDownloadAsset(ctx context.Context) (string, string, string, error) {
+func ytdlpDownloadAsset(env *Env) (string, string, string, error) {
 	platform, err := currentPlatform()
 	if err != nil {
 		return "", "", "", err
@@ -261,15 +261,15 @@ func ytdlpDownloadAsset(ctx context.Context) (string, string, string, error) {
 	if asset == "" {
 		return "", "", "", fmt.Errorf("yt-dlp asset name is empty")
 	}
-	checksum, err := ytdlpAssetChecksum(ctx, asset)
+	checksum, err := ytdlpAssetChecksum(env, context.Background(), asset)
 	if err != nil {
 		return "", "", "", err
 	}
 	return ytdlpBase + asset, asset, checksum, nil
 }
 
-func ytdlpAssetChecksum(ctx context.Context, asset string) (string, error) {
-	manifest, err := downloadText(ctx, ytdlpBase+"SHA2-256SUMS")
+func ytdlpAssetChecksum(env *Env, ctx context.Context, asset string) (string, error) {
+	manifest, err := downloadText(env, ctx, ytdlpBase+"SHA2-256SUMS")
 	if err != nil {
 		return "", fmt.Errorf("yt-dlp checksum manifest: %w", err)
 	}
@@ -280,8 +280,8 @@ func ytdlpAssetChecksum(ctx context.Context, asset string) (string, error) {
 	return checksum, nil
 }
 
-func nodeAssetFilename(ctx context.Context) (string, string, error) {
-	manifest, err := downloadText(ctx, nodeLatestURL+"SHASUMS256.txt")
+func nodeAssetFilename(env *Env) (string, string, error) {
+	manifest, err := downloadText(env, context.Background(), nodeLatestURL+"SHASUMS256.txt")
 	if err != nil {
 		return "", "", fmt.Errorf("node manifest: %w", err)
 	}
@@ -350,7 +350,7 @@ func nodeAssetSuffix() (string, error) {
 	return platform.NodeAssetSuffix, nil
 }
 
-func downloadText(ctx context.Context, url string) (string, error) {
+func downloadText(env *Env, ctx context.Context, url string) (string, error) {
 	ctx = resolveContext(ctx)
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -360,7 +360,7 @@ func downloadText(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 
-	resp, err := doSafeRequest(ctx, dlClient, req)
+	resp, err := doSafeRequest(ctx, env.dlClient, req)
 	if err != nil {
 		return "", fmt.Errorf("GET %s: %w", url, err)
 	}

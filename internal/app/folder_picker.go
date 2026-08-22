@@ -12,13 +12,13 @@ var (
 	ErrFolderPickerUnsupported = errors.New("folder picker is not supported on this platform")
 )
 
-func PickDownloadsDir(current string, locale Locale) (string, error) {
+func PickDownloadsDir(env *Env, current string, locale Locale) (string, error) {
 	current = cleanAbsPath(current)
 	if current == "" {
-		current = cleanAbsPath(DlDir)
+		current = cleanAbsPath(env.DownloadsDir())
 	}
 	if current == "" {
-		current = systemDownloadsDir()
+		current = systemDownloadsDir(env)
 	}
 	return pickDirectory(current, StringsFor(locale).PickDownloadsTitle)
 }

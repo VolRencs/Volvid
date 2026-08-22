@@ -15,32 +15,32 @@ const (
 	envDepsDir      = "VOLREN_DEPS_DIR"
 )
 
-func initRuntimePaths(exeDir string) {
-	AppDir = cleanAbsPath(exeDir)
-	ConfigDir = resolveConfigDir()
-	DataDir = resolveDataDir()
-	DepsDir = resolveArtifactDir(envDepsDir, filepath.Join(DataDir, "deps"))
-	DlDir = resolveDownloadsDir()
+func (env *Env) initRuntimePaths(exeDir string) {
+	env.AppDir = cleanAbsPath(exeDir)
+	env.ConfigDir = resolveConfigDir(env)
+	env.DataDir = resolveDataDir(env)
+	env.DepsDir = resolveArtifactDir(envDepsDir, filepath.Join(env.DataDir, "deps"))
+	env.downloadsDir = resolveDownloadsDir(env)
 }
 
-func resolveConfigDir() string {
+func resolveConfigDir(env *Env) string {
 	if path := envPath(envConfigDir); path != "" {
 		return path
 	}
 	if root, ok := userConfigRoot(); ok {
 		return filepath.Join(root, appDirName)
 	}
-	return filepath.Join(AppDir, ".volren", "config")
+	return filepath.Join(env.AppDir, ".volren", "config")
 }
 
-func resolveDataDir() string {
+func resolveDataDir(env *Env) string {
 	if path := envPath(envDataDir); path != "" {
 		return path
 	}
 	if root, ok := userDataRoot(); ok {
 		return filepath.Join(root, appDirName)
 	}
-	return filepath.Join(AppDir, ".volren", "data")
+	return filepath.Join(env.AppDir, ".volren", "data")
 }
 
 func resolveArtifactDir(envKey, defaultPath string) string {

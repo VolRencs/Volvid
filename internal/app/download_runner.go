@@ -85,8 +85,8 @@ func deleteDownloadArtifacts(path string) {
 	}
 }
 
-func runDownloadRequest(ctx context.Context, slot int, req DownloadRequest, url, outputTemplate string, extra []string, ch chan<- DlUpdate, cleanup *downloadCleanup) downloadResult {
-	deps := resolveRuntimeDeps()
+func runDownloadRequest(env *Env, ctx context.Context, slot int, req DownloadRequest, url, outputTemplate string, extra []string, ch chan<- DlUpdate, cleanup *downloadCleanup) downloadResult {
+	deps := resolveRuntimeDeps(env)
 
 	strs := StringsFor(req.Locale)
 	formats, labels := downloadFormats(req)
@@ -110,9 +110,9 @@ func runDownloadRequest(ctx context.Context, slot int, req DownloadRequest, url,
 		if err != nil {
 			return failedDownload(err)
 		}
-		result = streamYtdlp(ctx, slot, req.Locale, deps, args, ch, cleanup)
+		result = streamYtdlp(env, ctx, slot, req.Locale, deps, args, ch, cleanup)
 		if result.Err == nil {
-			if err := transcodeDownloadedVideo(ctx, slot, req.Profile, req.Locale, deps, result.OutputPath, ch); err != nil {
+			if err := transcodeDownloadedVideo(env, ctx, slot, req.Profile, req.Locale, deps, result.OutputPath, ch); err != nil {
 				return failedDownload(err)
 			}
 			return result
@@ -123,6 +123,7 @@ func runDownloadRequest(ctx context.Context, slot int, req DownloadRequest, url,
 }
 
 func transcodeDownloadedVideo(
+	env *Env,
 	ctx context.Context,
 	slot int,
 	profile OutputProfile,
@@ -137,7 +138,7 @@ func transcodeDownloadedVideo(
 
 	ffmpeg := strings.TrimSpace(deps.FFmpeg.Path)
 	if ffmpeg == "" {
-		ffmpeg = FFmpegBin
+		ffmpeg = env.FFmpegBin
 	}
 	if strings.TrimSpace(outputPath) == "" {
 		return errors.New("video transcoding failed: downloaded file path is unknown")
@@ -153,7 +154,7 @@ func transcodeDownloadedVideo(
 		sendUpdate(ctx, ch, DlUpdate{Type: EvProc, Slot: slot, Text: StringsFor(l).VideoConvertProc})
 	}
 
-	commands := ffmpegVideoTranscodeCommands(ctx, ffmpeg, outputPath, tmp, profile)
+	commands := ffmpegVideoTranscodeCommands(env, ctx, ffmpeg, outputPath, tmp, profile)
 	var lastErr error
 	var lastOut []byte
 	for i, command := range commands {
@@ -213,9 +214,9 @@ type hardwareVideoEncoder struct {
 	Family string
 }
 
-func ffmpegVideoTranscodeCommands(ctx context.Context, ffmpeg, inputPath, outputPath string, profile OutputProfile) []videoTranscodeCommand {
+func ffmpegVideoTranscodeCommands(env *Env, ctx context.Context, ffmpeg, inputPath, outputPath string, profile OutputProfile) []videoTranscodeCommand {
 	commands := make([]videoTranscodeCommand, 0, 4)
-	for _, encoder := range hardwareVideoEncodersFor(ctx, ffmpeg, profile.VideoCodec) {
+	for _, encoder := range hardwareVideoEncodersFor(env, ctx, ffmpeg, profile.VideoCodec) {
 		hwProfile := profile
 		hwProfile.VideoCodec = encoder.Codec
 		commands = append(commands, videoTranscodeCommand{
@@ -286,13 +287,13 @@ func hardwareVideoQualityArgs(family, crf string) []string {
 	}
 }
 
-func hardwareVideoEncodersFor(ctx context.Context, ffmpeg, videoCodec string) []hardwareVideoEncoder {
+func hardwareVideoEncodersFor(env *Env, ctx context.Context, ffmpeg, videoCodec string) []hardwareVideoEncoder {
 	codec := normalizedVideoCodec(videoCodec)
 	if codec == "" {
 		return nil
 	}
 
-	encoders := detectFFmpegVideoEncoders(ctx, ffmpeg)
+	encoders := detectFFmpegVideoEncoders(env, ctx, ffmpeg)
 	candidates := hardwareEncoderCandidates(codec)
 	out := make([]hardwareVideoEncoder, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -341,23 +342,21 @@ func hardwareEncoderCandidates(codec string) []hardwareVideoEncoder {
 	}
 }
 
-var (
-	ffmpegEncodersMu    sync.Mutex
-	ffmpegEncodersCache = map[string]map[string]bool{}
-)
-
-func detectFFmpegVideoEncoders(ctx context.Context, ffmpeg string) map[string]bool {
+func detectFFmpegVideoEncoders(env *Env, ctx context.Context, ffmpeg string) map[string]bool {
 	ffmpeg = strings.TrimSpace(ffmpeg)
 	if ffmpeg == "" {
 		return nil
 	}
 
-	ffmpegEncodersMu.Lock()
-	if encoders, ok := ffmpegEncodersCache[ffmpeg]; ok {
-		ffmpegEncodersMu.Unlock()
+	env.ffmpegEncodersMu.Lock()
+	if env.ffmpegEncodersValue == nil {
+		env.ffmpegEncodersValue = map[string]map[string]bool{}
+	}
+	if encoders, ok := env.ffmpegEncodersValue[ffmpeg]; ok {
+		env.ffmpegEncodersMu.Unlock()
 		return encoders
 	}
-	ffmpegEncodersMu.Unlock()
+	env.ffmpegEncodersMu.Unlock()
 
 	out, err := commandOutput(ctx, 3*time.Second, ffmpeg, "-hide_banner", "-encoders")
 	encoders := parseFFmpegVideoEncoders(string(out))
@@ -365,9 +364,9 @@ func detectFFmpegVideoEncoders(ctx context.Context, ffmpeg string) map[string]bo
 		encoders = map[string]bool{}
 	}
 
-	ffmpegEncodersMu.Lock()
-	ffmpegEncodersCache[ffmpeg] = encoders
-	ffmpegEncodersMu.Unlock()
+	env.ffmpegEncodersMu.Lock()
+	env.ffmpegEncodersValue[ffmpeg] = encoders
+	env.ffmpegEncodersMu.Unlock()
 	return encoders
 }
 
@@ -410,7 +409,7 @@ func normalizeWorkerCount(workers, jobs int) int {
 	return min(workers, jobs)
 }
 
-func StartDownloadRequestContext(ctx context.Context, req DownloadRequest, ch chan<- DlUpdate) {
+func StartDownloadRequestContext(env *Env, ctx context.Context, req DownloadRequest, ch chan<- DlUpdate) {
 	go func() {
 		var wg sync.WaitGroup
 		cleanup := newDownloadCleanup()
@@ -425,7 +424,7 @@ func StartDownloadRequestContext(ctx context.Context, req DownloadRequest, ch ch
 			ctx = context.Background()
 		}
 
-		preparedReq, err := PrepareDownloadRequest(req)
+		preparedReq, err := PrepareDownloadRequest(env, req)
 		if err != nil {
 			sendUpdate(ctx, ch, DlUpdate{Type: EvDone, OK: false, ErrText: err.Error()})
 			return
@@ -438,19 +437,20 @@ func StartDownloadRequestContext(ctx context.Context, req DownloadRequest, ch ch
 		}
 
 		if !downloadRequestUsesPlaylist(req) {
-			result := runSingleDownload(ctx, req, ch, cleanup)
+			result := runSingleDownload(env, ctx, req, ch, cleanup)
 			sendUpdate(ctx, ch, DlUpdate{Type: EvDone, OK: result.Err == nil, ErrText: result.ErrText})
 			return
 		}
 
 		entries := downloadRequestEntries(req)
-		runPlaylistDownloads(ctx, req, entries, ch, &wg, cleanup)
+		runPlaylistDownloads(env, ctx, req, entries, ch, &wg, cleanup)
 	}()
 }
 
-func runSingleDownload(ctx context.Context, req DownloadRequest, ch chan<- DlUpdate, cleanup *downloadCleanup) downloadResult {
+func runSingleDownload(env *Env, ctx context.Context, req DownloadRequest, ch chan<- DlUpdate, cleanup *downloadCleanup) downloadResult {
 	sendUpdate(ctx, ch, DlUpdate{Type: EvStart, Slot: 0, Text: StringsFor(req.Locale).Downloading})
 	return runDownloadRequest(
+		env,
 		ctx,
 		0,
 		req,
@@ -462,7 +462,7 @@ func runSingleDownload(ctx context.Context, req DownloadRequest, ch chan<- DlUpd
 	)
 }
 
-func runPlaylistDownloads(ctx context.Context, req DownloadRequest, entries []PlaylistEntry, ch chan<- DlUpdate, wg *sync.WaitGroup, cleanup *downloadCleanup) {
+func runPlaylistDownloads(env *Env, ctx context.Context, req DownloadRequest, entries []PlaylistEntry, ch chan<- DlUpdate, wg *sync.WaitGroup, cleanup *downloadCleanup) {
 	if len(entries) == 0 {
 		return
 	}
@@ -472,7 +472,7 @@ func runPlaylistDownloads(ctx context.Context, req DownloadRequest, entries []Pl
 	outputDir := playlistOutputDir(req)
 	for slot := 0; slot < workerCount; slot++ {
 		wg.Add(1)
-		go playlistWorker(ctx, slot, req, outputDir, jobs, ch, wg, cleanup)
+		go playlistWorker(env, ctx, slot, req, outputDir, jobs, ch, wg, cleanup)
 	}
 }
 
@@ -492,6 +492,7 @@ func enqueuePlaylistJobs(ctx context.Context, entries []PlaylistEntry) <-chan Pl
 }
 
 func playlistWorker(
+	env *Env,
 	ctx context.Context,
 	slot int,
 	req DownloadRequest,
@@ -506,16 +507,16 @@ func playlistWorker(
 		if ctx.Err() != nil {
 			return
 		}
-		runPlaylistEntry(ctx, slot, req, outputDir, entry, ch, cleanup)
+		runPlaylistEntry(env, ctx, slot, req, outputDir, entry, ch, cleanup)
 	}
 }
 
-func runPlaylistEntry(ctx context.Context, slot int, req DownloadRequest, outputDir string, entry PlaylistEntry, ch chan<- DlUpdate, cleanup *downloadCleanup) {
+func runPlaylistEntry(env *Env, ctx context.Context, slot int, req DownloadRequest, outputDir string, entry PlaylistEntry, ch chan<- DlUpdate, cleanup *downloadCleanup) {
 	defer resetDownloadSlot(ctx, slot, ch)
 	if !sendUpdate(ctx, ch, DlUpdate{Type: EvStart, Slot: slot, Text: entry.Title}) {
 		return
 	}
-	result := runDownloadRequest(ctx, slot, req, entry.URL, playlistOutputTemplate(outputDir, entry), []string{"--no-playlist"}, ch, cleanup)
+	result := runDownloadRequest(env, ctx, slot, req, entry.URL, playlistOutputTemplate(outputDir, entry), []string{"--no-playlist"}, ch, cleanup)
 	sendUpdate(ctx, ch, DlUpdate{Type: EvDone, Slot: slot, OK: result.Err == nil, ErrText: result.ErrText})
 }
 

@@ -2,9 +2,6 @@ package app
 
 import (
 	"fmt"
-	"net/http"
-	"os"
-	"path/filepath"
 	"runtime"
 	"time"
 )
@@ -19,7 +16,8 @@ const (
 
 	githubAPIURL = "https://api.github.com/repos/VolRencs/YouTubeDownloader/releases/latest"
 
-	slotResetDelay = 300 * time.Millisecond
+	apiClientTimeout = 8 * time.Second
+	slotResetDelay   = 300 * time.Millisecond
 )
 
 type runtimePlatform struct {
@@ -29,25 +27,6 @@ type runtimePlatform struct {
 	NodeAssetSuffix   string
 	FirefoxUAPlatform string
 }
-
-var (
-	IsWindows = runtime.GOOS == "windows"
-
-	AppDir    string
-	ConfigDir string
-	DataDir   string
-
-	DepsDir string
-	DlDir   string
-
-	YtdlpBin   string
-	FFmpegBin  string
-	FFprobeBin string
-	NodeBin    string
-
-	apiClient *http.Client
-	dlClient  *http.Client
-)
 
 func currentPlatform() (runtimePlatform, error) {
 	switch runtime.GOOS + "/" + runtime.GOARCH {
@@ -81,28 +60,4 @@ func optimalParallelism(items, hardLimit int) int {
 		limit = min(limit, hardLimit)
 	}
 	return min(items, limit)
-}
-
-func init() {
-	exe, err := os.Executable()
-	if err != nil {
-		if exe, err = filepath.Abs(os.Args[0]); err != nil {
-			exe = os.Args[0]
-		}
-	}
-	base := filepath.Dir(exe)
-	initRuntimePaths(base)
-	if IsWindows {
-		YtdlpBin = filepath.Join(DepsDir, "yt-dlp.exe")
-		FFmpegBin = filepath.Join(DepsDir, "ffmpeg.exe")
-		FFprobeBin = filepath.Join(DepsDir, "ffprobe.exe")
-		NodeBin = filepath.Join(DepsDir, "node.exe")
-	} else {
-		YtdlpBin = filepath.Join(DepsDir, "yt-dlp")
-		FFmpegBin = filepath.Join(DepsDir, "ffmpeg")
-		FFprobeBin = filepath.Join(DepsDir, "ffprobe")
-		NodeBin = filepath.Join(DepsDir, "node")
-	}
-	apiClient = NewHTTPClient(8 * time.Second)
-	dlClient = newDownloadHTTPClient()
 }

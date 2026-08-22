@@ -16,18 +16,14 @@ type SearchResult struct {
 	Duration int
 }
 
-func SearchYouTube(query string) ([]SearchResult, error) {
-	return SearchYouTubeContext(context.Background(), query)
-}
-
-func SearchYouTubeContext(ctx context.Context, query string) ([]SearchResult, error) {
+func SearchYouTubeContext(env *Env, ctx context.Context, query string) ([]SearchResult, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, errors.New("search query is empty")
 	}
 
 	results := make([]SearchResult, 0, 5)
-	err := scanYTDLPJSONLines(ctx, searchTimeout, []string{
+	err := scanYTDLPJSONLines(env, ctx, searchTimeout, []string{
 		"--flat-playlist",
 		"--dump-json",
 		"--quiet",

@@ -108,7 +108,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if err := app.SetDownloadsDir(msg.path); err != nil {
+		if err := app.SetDownloadsDir(m.env, msg.path); err != nil {
 			if err == app.ErrDownloadsDirLocked {
 				m.urlErr = m.u().DownloadsDirLocked
 				return m, nil
@@ -150,7 +150,7 @@ func (m Model) handleDepDone(msg msgDepDone) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if msg.isUpdate {
-		if app.IsWindows {
+		if m.env.IsWindows {
 			return m, tea.Quit
 		}
 		m.screen = scrUpdateDone
@@ -192,7 +192,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	if k == "tab" {
 		m.locale = app.NextLocale(m.locale)
-		_ = app.SaveLocale(m.locale)
+		_ = app.SaveLocale(m.env, m.locale)
 		m.syncLocalizedInputs()
 		m = m.syncMenu()
 		return m, nil
@@ -551,7 +551,7 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		if idx == 0 {
 			info := m.updateInfo
 			return m.startDependencyDownload(scrUpdateDl, "", true, func(ctx context.Context, ch chan<- app.FileProgress) error {
-				return app.ApplyUpdateFor(ctx, m.locale, info, ch)
+				return app.ApplyUpdateFor(m.env, ctx, m.locale, info, ch)
 			})
 		}
 		return m.gotoChecks()
@@ -565,12 +565,12 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		switch action.Kind {
 		case depActionInstall:
 			return m.startDependencyDownload(scrDepDl, action.Key, false, func(ctx context.Context, ch chan<- app.FileProgress) error {
-				return app.InstallDependencyFor(ctx, action.Key, m.locale, ch)
+				return app.InstallDependencyFor(m.env, ctx, action.Key, m.locale, ch)
 			})
 		case depActionRefresh:
 			return m.startDepsRefresh()
 		case depActionContinue:
-			return m.gotoURLWithDeps(app.DetectDeps())
+			return m.gotoURLWithDeps(app.DetectDeps(m.env))
 		case depActionBack:
 			return m.returnFromDependencyScreen()
 		case depActionExit:
@@ -585,7 +585,7 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		var ctx context.Context
 		m, ctx = m.nextOpCtx()
 		m.screen = scrPlaylistFetch
-		return m, fetchPlaylistCmd(ctx, m.url, m.locale, m.opGen)
+		return m, fetchPlaylistCmd(m.env, ctx, m.url, m.locale, m.opGen)
 
 	case scrSummary:
 		if idx == 0 {
@@ -753,36 +753,36 @@ func launchProgress(
 	return ch, streamFileProgressCmd(ch, isUpdate), cancel
 }
 
-func refreshDepsCmd(token int) tea.Cmd {
+func refreshDepsCmd(env *app.Env, token int) tea.Cmd {
 	return func() tea.Msg {
-		return msgDepsRefreshed{deps: app.RefreshDeps(), token: token}
+		return msgDepsRefreshed{deps: app.RefreshDeps(env), token: token}
 	}
 }
 
-func fetchPlaylistCmd(ctx context.Context, url string, l app.Locale, gen int) tea.Cmd {
+func fetchPlaylistCmd(env *app.Env, ctx context.Context, url string, l app.Locale, gen int) tea.Cmd {
 	return func() tea.Msg {
-		info, err := app.FetchPlaylistInfoFor(ctx, url, l)
+		info, err := app.FetchPlaylistInfoFor(env, ctx, url, l)
 		return msgPlaylistFetched{info: info, err: err, gen: gen}
 	}
 }
 
-func searchYouTubeCmd(ctx context.Context, query string, gen int) tea.Cmd {
+func searchYouTubeCmd(env *app.Env, ctx context.Context, query string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		results, err := app.SearchYouTubeContext(ctx, query)
+		results, err := app.SearchYouTubeContext(env, ctx, query)
 		return msgSearchResults{results: results, err: err, gen: gen}
 	}
 }
 
-func loadQualityChoicesCmd(ctx context.Context, urls []string, gen int) tea.Cmd {
+func loadQualityChoicesCmd(env *app.Env, ctx context.Context, urls []string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		choices, err := app.ResolveQualityChoicesContext(ctx, urls)
+		choices, err := app.ResolveQualityChoicesContext(env, ctx, urls)
 		return msgQualityScanned{choices: choices, err: err, gen: gen}
 	}
 }
 
-func probeFragmentDurationCmd(ctx context.Context, target app.ParsedTarget, gen int) tea.Cmd {
+func probeFragmentDurationCmd(env *app.Env, ctx context.Context, target app.ParsedTarget, gen int) tea.Cmd {
 	return func() tea.Msg {
-		duration, err := app.ProbeMediaDurationContext(ctx, target)
+		duration, err := app.ProbeMediaDurationContext(env, ctx, target)
 		return msgFragmentDuration{duration: duration, err: err, gen: gen}
 	}
 }

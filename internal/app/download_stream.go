@@ -49,8 +49,9 @@ func ffmpegArgs(deps CheckDepsResult) []string {
 	return []string{"--ffmpeg-location", bin}
 }
 
-func streamYtdlp(ctx context.Context, slot int, l Locale, deps CheckDepsResult, args []string, ch chan<- DlUpdate, cleanup *downloadCleanup) downloadResult {
+func streamYtdlp(env *Env, ctx context.Context, slot int, l Locale, deps CheckDepsResult, args []string, ch chan<- DlUpdate, cleanup *downloadCleanup) downloadResult {
 	cmd, pr, runCtx, cancel, err := startYTDLPMergedOutputCommandFor(
+		env,
 		ctx,
 		0,
 		deps,
