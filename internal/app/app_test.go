@@ -77,6 +77,17 @@ func TestScanQualityChoicesEmptyInput(t *testing.T) {
 	}
 }
 
+func TestProbeOnBareEnvDoesNotPanic(t *testing.T) {
+	env := &Env{}
+	target, err := ParseTarget("https://youtu.be/dQw4w9WgXcQ")
+	if err != nil {
+		t.Fatalf("ParseTarget: %v", err)
+	}
+	if _, err := ProbeMediaDurationContext(env, context.Background(), target); err == nil {
+		t.Fatal("expected probe error without yt-dlp installed")
+	}
+}
+
 func TestScanChecksumManifest(t *testing.T) {
 	const (
 		shaYtdlp = "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae0"

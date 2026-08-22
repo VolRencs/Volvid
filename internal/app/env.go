@@ -50,7 +50,11 @@ type Env struct {
 }
 
 func NewEnv() *Env {
-	env := &Env{IsWindows: runtime.GOOS == "windows"}
+	env := &Env{
+		IsWindows:   runtime.GOOS == "windows",
+		probeCache:  make(map[string]*MediaProbe),
+		probeFlight: make(map[string]*probeCall),
+	}
 
 	exe := currentExecutablePath()
 	env.initRuntimePaths(filepath.Dir(exe))

@@ -68,6 +68,12 @@ func probeMediaContext(env *Env, ctx context.Context, target ParsedTarget) (*Med
 	}
 
 	env.probeCacheMu.Lock()
+	if env.probeCache == nil {
+		env.probeCache = make(map[string]*MediaProbe)
+	}
+	if env.probeFlight == nil {
+		env.probeFlight = make(map[string]*probeCall)
+	}
 	if cached, ok := env.cloneCachedProbeLocked(key); ok {
 		env.probeCacheMu.Unlock()
 		return cached, nil
