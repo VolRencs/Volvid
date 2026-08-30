@@ -271,15 +271,20 @@ func ffmpegVideoTranscodeArgs(inputPath, outputPath string, profile OutputProfil
 	return append(args, outputPath)
 }
 
+const (
+	defaultHardwareCRF = "23"
+	nvencPreset        = "p5"
+)
+
 func hardwareVideoQualityArgs(family, crf string) []string {
 	crf = strings.TrimSpace(crf)
 	if crf == "" {
-		crf = "23"
+		crf = defaultHardwareCRF
 	}
 
 	switch family {
 	case "nvenc":
-		return []string{"-preset", "p5", "-rc", "vbr", "-cq", crf}
+		return []string{"-preset", nvencPreset, "-rc", "vbr", "-cq", crf}
 	case "qsv":
 		return []string{"-global_quality", crf}
 	default:

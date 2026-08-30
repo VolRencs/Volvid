@@ -44,6 +44,7 @@ func CheckUpdateContext(env *Env, ctx context.Context) *UpdateInfo {
 	req.Header.Set("User-Agent", "VolRenDownloader/"+Version)
 	resp, err := doSafeRequest(ctx, env.apiClient, req)
 	if err != nil {
+		fmt.Printf("update check: request failed: %v\n", err)
 		return nil
 	}
 	defer resp.Body.Close()
@@ -52,6 +53,7 @@ func CheckUpdateContext(env *Env, ctx context.Context) *UpdateInfo {
 	}
 	var data map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		fmt.Printf("update check: decode failed: %v\n", err)
 		return nil
 	}
 	latest := strings.TrimPrefix(mapString(data, "tag_name", ""), "v")

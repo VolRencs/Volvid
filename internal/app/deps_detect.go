@@ -92,15 +92,37 @@ func InvalidateDepsCache(env *Env) {
 	env.depsCache = CheckDepsResult{}
 	env.depsCacheReady = false
 	env.depsCacheGeneration++
-	env.depsCacheMu.Unlock()
-
 	env.runtimeDepsExpiry = time.Time{}
+	env.depsCacheMu.Unlock()
+}
+
+type depSpec struct {
+	Key          string
+	Name         string
+	Required     bool
+	Downloadable bool
+	LookNames    []string
+	ManagedPath  string
+	VersionArgs  []string
+	ParseVersion func(string) string
 }
 
 func detectDeps(env *Env, withVersions bool) CheckDepsResult {
-	ytdlp := detectExecutableDependency("ytdlp", "yt-dlp", true, true, []string{"yt-dlp"}, env.YtdlpBin, []string{"--version"}, firstNonEmptyLine, withVersions)
-	ffmpeg := detectExecutableDependency("ffmpeg", "ffmpeg", true, true, []string{"ffmpeg"}, env.FFmpegBin, []string{"-version"}, ffmpegVersionFromLine, withVersions)
-	node := detectExecutableDependency("node", "node", false, true, []string{"node"}, env.NodeBin, []string{"--version"}, firstNonEmptyLine, withVersions)
+	ytdlp := detectExecutableDependency(depSpec{
+		Key: "ytdlp", Name: "yt-dlp", Required: true, Downloadable: true,
+		LookNames: []string{"yt-dlp"}, ManagedPath: env.YtdlpBin,
+		VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine,
+	}, withVersions)
+	ffmpeg := detectExecutableDependency(depSpec{
+		Key: "ffmpeg", Name: "ffmpeg", Required: true, Downloadable: true,
+		LookNames: []string{"ffmpeg"}, ManagedPath: env.FFmpegBin,
+		VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine,
+	}, withVersions)
+	node := detectExecutableDependency(depSpec{
+		Key: "node", Name: "node", Required: false, Downloadable: true,
+		LookNames: []string{"node"}, ManagedPath: env.NodeBin,
+		VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine,
+	}, withVersions)
 
 	deps := CheckDepsResult{YTDLP: ytdlp, FFmpeg: ffmpeg, Node: node}
 	deps.Cookies = detectBrowserCookies(currentUserHome(), currentGOOS())
@@ -108,22 +130,22 @@ func detectDeps(env *Env, withVersions bool) CheckDepsResult {
 	return deps
 }
 
-func detectExecutableDependency(key, name string, required, downloadable bool, lookNames []string, managedPath string, versionArgs []string, parseVersion func(string) string, withVersion bool) DependencyInfo {
-	dep := DependencyInfo{Key: key, Name: name, Required: required, Downloadable: downloadable, Source: DepMissing}
+func detectExecutableDependency(spec depSpec, withVersion bool) DependencyInfo {
+	dep := DependencyInfo{Key: spec.Key, Name: spec.Name, Required: spec.Required, Downloadable: spec.Downloadable, Source: DepMissing}
 
-	if path, ok := firstLookPath(lookNames...); ok {
+	if path, ok := firstLookPath(spec.LookNames...); ok {
 		dep.Path = absoluteIfPossible(path)
 		dep.Source = DepSystem
 		dep.Available = true
-	} else if pathExists(managedPath) {
-		dep.Path = managedPath
+	} else if pathExists(spec.ManagedPath) {
+		dep.Path = spec.ManagedPath
 		dep.Source = DepManaged
 		dep.Available = true
 	}
 
 	if dep.Available && withVersion {
-		line := commandVersionLine(dep.Path, versionArgs...)
-		dep.Version = strings.TrimSpace(parseVersion(line))
+		line := commandVersionLine(dep.Path, spec.VersionArgs...)
+		dep.Version = strings.TrimSpace(spec.ParseVersion(line))
 	}
 	return dep
 }

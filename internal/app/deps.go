@@ -7,7 +7,7 @@ type DependencySource string
 const (
 	DepMissing DependencySource = "missing"
 	DepSystem  DependencySource = "system"
-	DepManaged DependencySource = "_deps"
+	DepManaged DependencySource = "deps"
 )
 
 type DependencyInfo struct {

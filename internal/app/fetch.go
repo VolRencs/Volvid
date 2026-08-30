@@ -21,7 +21,6 @@ type dlWriter struct {
 	lastDone int64
 	lastTime time.Time
 	nextEmit time.Time
-	speed    string
 	locale   Locale
 	ch       chan<- FileProgress
 }
@@ -41,8 +40,9 @@ func (w *dlWriter) emit(fin bool, e error) {
 		return
 	}
 	now := time.Now()
+	var speed string
 	if elapsed := now.Sub(w.lastTime).Seconds(); elapsed > 0 {
-		w.speed = FmtSpeedFor(int64(float64(w.done-w.lastDone)/elapsed), w.locale)
+		speed = FmtSpeedFor(int64(float64(w.done-w.lastDone)/elapsed), w.locale)
 		w.lastDone, w.lastTime = w.done, now
 	}
 	pct := 0.0
@@ -54,7 +54,7 @@ func (w *dlWriter) emit(fin bool, e error) {
 		Pct:    pct,
 		DoneB:  w.done,
 		TotalB: w.total,
-		Speed:  w.speed,
+		Speed:  speed,
 		Done:   fin,
 		Err:    e,
 	}:

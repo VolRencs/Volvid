@@ -134,9 +134,6 @@ func (m Model) depBadge() string {
 		}
 		return ""
 	}
-	if lipgloss.Width(joined) > m.width/2 {
-		return joined
-	}
 	return joined
 }
 

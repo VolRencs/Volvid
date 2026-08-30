@@ -57,8 +57,8 @@ func newDownloadHTTPClient() *http.Client {
 
 func downloadHTTPClientConfig() HTTPClientConfig {
 	cfg := defaultHTTPClientConfig(0)
-	cfg.MaxIdleConns = 16
-	cfg.MaxIdleConnsPerHost = 8
+	cfg.MaxIdleConns = 32
+	cfg.MaxIdleConnsPerHost = 16
 	return cfg
 }
 
@@ -104,7 +104,7 @@ func normalizeHTTPClientConfig(cfg HTTPClientConfig) HTTPClientConfig {
 		cfg.MaxIdleConns = 64
 	}
 	if cfg.MaxIdleConnsPerHost <= 0 {
-		cfg.MaxIdleConnsPerHost = 16
+		cfg.MaxIdleConnsPerHost = 32
 	}
 	return cfg
 }

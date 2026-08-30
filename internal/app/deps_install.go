@@ -29,7 +29,7 @@ func InstallDependencyFor(env *Env, ctx context.Context, key string, l Locale, c
 		return fmt.Errorf("unsupported dependency: %s", key)
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("install dependency %s: %w", key, err)
 	}
 	InvalidateDepsCache(env)
 	return nil
@@ -42,7 +42,7 @@ func InstallYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProg
 
 	url, _, checksum, err := ytdlpDownloadAsset(env)
 	if err != nil {
-		return err
+		return fmt.Errorf("yt-dlp asset metadata: %w", err)
 	}
 	staging, err := os.MkdirTemp(env.DepsDir, ".ytdlp-*")
 	if err != nil {
@@ -52,21 +52,21 @@ func InstallYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProg
 
 	stagedYtdlp := filepath.Join(staging, binaryBaseName(env.YtdlpBin))
 	if err := DownloadFileContext(env, ctx, url, stagedYtdlp, l, ch); err != nil {
-		return err
+		return fmt.Errorf("download yt-dlp: %w", err)
 	}
 	if err := verifyFileSHA256(stagedYtdlp, checksum); err != nil {
-		return err
+		return fmt.Errorf("verify yt-dlp checksum: %w", err)
 	}
 	if !env.IsWindows {
 		if err := os.Chmod(stagedYtdlp, 0o755); err != nil {
 			return fmt.Errorf("chmod yt-dlp: %w", err)
 		}
 	}
-	if detectExecutableDependency("ytdlp", "yt-dlp", true, true, nil, stagedYtdlp, []string{"--version"}, firstNonEmptyLine, true).Version == "" {
+	if detectExecutableDependency(depSpec{Key: "ytdlp", Name: "yt-dlp", ManagedPath: stagedYtdlp, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}, true).Version == "" {
 		return fmt.Errorf("бинарник yt-dlp скачан, но не запускается")
 	}
 	if err := replaceInstalledBinaries(map[string]string{stagedYtdlp: env.YtdlpBin}); err != nil {
-		return err
+		return fmt.Errorf("replace yt-dlp binary: %w", err)
 	}
 	return nil
 }
@@ -81,37 +81,37 @@ func extractZipEntry(zf *zip.File, dest string) error {
 	}
 	rc, err := zf.Open()
 	if err != nil {
-		return err
+		return fmt.Errorf("open zip entry: %w", err)
 	}
 	defer rc.Close()
 
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
+		return fmt.Errorf("create directory for zip entry: %w", err)
 	}
 
 	tmp, err := os.CreateTemp(filepath.Dir(dest), ".extract-*")
 	if err != nil {
-		return err
+		return fmt.Errorf("create temp file: %w", err)
 	}
 	tmpName := tmp.Name()
 
 	if _, err := io.Copy(tmp, rc); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
-		return err
+		return fmt.Errorf("extract zip data: %w", err)
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
-		return err
+		return fmt.Errorf("sync temp file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
-		return err
+		return fmt.Errorf("close temp file: %w", err)
 	}
 	if err := os.Chmod(tmpName, mode); err != nil {
 		_ = os.Remove(tmpName)
-		return err
+		return fmt.Errorf("chmod extracted file: %w", err)
 	}
 	return os.Rename(tmpName, dest)
 }
@@ -129,11 +129,11 @@ func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 
 	archiveURL, archiveName, err := ffmpegArchiveAsset()
 	if err != nil {
-		return err
+		return fmt.Errorf("ffmpeg asset metadata: %w", err)
 	}
 	archive := filepath.Join(tmp, archiveName)
 	if err := DownloadFileContext(env, ctx, archiveURL, archive, l, ch); err != nil {
-		return err
+		return fmt.Errorf("download ffmpeg archive: %w", err)
 	}
 
 	staging, err := os.MkdirTemp(env.DepsDir, ".ffmpeg-*")
@@ -153,15 +153,15 @@ func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 
 	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
 		if err := extractZipBinaries(ctx, archive, targets); err != nil {
-			return err
+			return fmt.Errorf("extract ffmpeg zip: %w", err)
 		}
 	} else {
 		if err := extractArchiveBinariesWithTar(ctx, archive, targets); err != nil {
-			return err
+			return fmt.Errorf("extract ffmpeg archive: %w", err)
 		}
 	}
 
-	if detectExecutableDependency("ffmpeg", "ffmpeg", false, true, nil, stagedFFmpeg, []string{"-version"}, ffmpegVersionFromLine, true).Version == "" {
+	if detectExecutableDependency(depSpec{Key: "ffmpeg", Name: "ffmpeg", ManagedPath: stagedFFmpeg, VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine}, true).Version == "" {
 		return fmt.Errorf("бинарник ffmpeg скачан, но не запускается")
 	}
 	if commandVersionLine(stagedFFprobe, "-version") == "" {
@@ -171,7 +171,7 @@ func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 		stagedFFmpeg:  env.FFmpegBin,
 		stagedFFprobe: env.FFprobeBin,
 	}); err != nil {
-		return err
+		return fmt.Errorf("replace ffmpeg binaries: %w", err)
 	}
 	return nil
 }
@@ -179,7 +179,7 @@ func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
 	url, filename, checksum, err := nodeDownloadAsset(env)
 	if err != nil {
-		return err
+		return fmt.Errorf("node asset metadata: %w", err)
 	}
 	if err := os.MkdirAll(env.DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
@@ -193,11 +193,11 @@ func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 
 	archive := filepath.Join(tmp, filename)
 	if err := DownloadFileContext(env, ctx, url, archive, l, ch); err != nil {
-		return err
+		return fmt.Errorf("download node archive: %w", err)
 	}
 	if checksum != "" {
 		if err := verifyFileSHA256(archive, checksum); err != nil {
-			return err
+			return fmt.Errorf("verify node checksum: %w", err)
 		}
 	}
 
@@ -213,21 +213,21 @@ func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 		if err := extractZipBinaries(ctx, archive, map[string]string{
 			nodeName: stagedNode,
 		}); err != nil {
-			return err
+			return fmt.Errorf("extract node zip: %w", err)
 		}
 	} else {
 		if err := extractArchiveBinariesWithTar(ctx, archive, map[string]string{
 			nodeName: stagedNode,
 		}); err != nil {
-			return err
+			return fmt.Errorf("extract node archive: %w", err)
 		}
 	}
 
-	if detectExecutableDependency("node", "node", false, true, nil, stagedNode, []string{"--version"}, firstNonEmptyLine, true).Version == "" {
+	if detectExecutableDependency(depSpec{Key: "node", Name: "node", ManagedPath: stagedNode, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}, true).Version == "" {
 		return fmt.Errorf("бинарник node скачан, но не запускается")
 	}
 	if err := replaceInstalledBinaries(map[string]string{stagedNode: env.NodeBin}); err != nil {
-		return err
+		return fmt.Errorf("replace node binary: %w", err)
 	}
 	return nil
 }
@@ -235,7 +235,7 @@ func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 func ffmpegArchiveAsset() (string, string, error) {
 	platform, err := currentPlatform()
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("detect platform: %w", err)
 	}
 	url := strings.TrimSpace(platform.FFmpegURL)
 	if url == "" {
@@ -247,7 +247,7 @@ func ffmpegArchiveAsset() (string, string, error) {
 func nodeDownloadAsset(env *Env) (string, string, string, error) {
 	filename, checksum, err := nodeAssetFilename(env)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", fmt.Errorf("resolve node asset: %w", err)
 	}
 	return nodeLatestURL + filename, filename, checksum, nil
 }
@@ -255,7 +255,7 @@ func nodeDownloadAsset(env *Env) (string, string, string, error) {
 func ytdlpDownloadAsset(env *Env) (string, string, string, error) {
 	platform, err := currentPlatform()
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", fmt.Errorf("detect platform: %w", err)
 	}
 	asset := strings.TrimSpace(platform.YTDLPAsset)
 	if asset == "" {
@@ -263,7 +263,7 @@ func ytdlpDownloadAsset(env *Env) (string, string, string, error) {
 	}
 	checksum, err := ytdlpAssetChecksum(env, context.Background(), asset)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", fmt.Errorf("resolve yt-dlp checksum: %w", err)
 	}
 	return ytdlpBase + asset, asset, checksum, nil
 }
@@ -288,7 +288,7 @@ func nodeAssetFilename(env *Env) (string, string, error) {
 
 	suffix, err := nodeAssetSuffix()
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("resolve node suffix: %w", err)
 	}
 	return nodeAssetFromManifest(manifest, suffix)
 }
@@ -305,7 +305,7 @@ func scanChecksumManifest(manifest string, match func(asset string) bool) (strin
 		}
 		checksum, err := normalizeSHA256(fields[0])
 		if err != nil {
-			return "", "", err
+			return "", "", fmt.Errorf("normalize checksum: %w", err)
 		}
 		return asset, checksum, nil
 	}
@@ -331,7 +331,7 @@ func checksumFromManifest(manifest, name string) (string, error) {
 		return asset == target
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("scan checksum manifest: %w", err)
 	}
 	if found == "" {
 		return "", fmt.Errorf("asset %s not found", name)
@@ -342,7 +342,7 @@ func checksumFromManifest(manifest, name string) (string, error) {
 func nodeAssetSuffix() (string, error) {
 	platform, err := currentPlatform()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("detect platform: %w", err)
 	}
 	if platform.NodeAssetSuffix == "" {
 		return "", fmt.Errorf("node asset suffix is empty")
@@ -357,7 +357,7 @@ func downloadText(env *Env, ctx context.Context, url string) (string, error) {
 
 	req, err := newDownloadRequest(ctx, url)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("create download request: %w", err)
 	}
 
 	resp, err := doSafeRequest(ctx, env.dlClient, req)
@@ -367,12 +367,12 @@ func downloadText(env *Env, ctx context.Context, url string) (string, error) {
 	defer resp.Body.Close()
 
 	if err := validateDownloadResponse(resp, url); err != nil {
-		return "", err
+		return "", fmt.Errorf("validate download response: %w", err)
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("read response body: %w", err)
 	}
 	return string(data), nil
 }
@@ -383,7 +383,7 @@ func normalizeSHA256(value string) (string, error) {
 		return "", fmt.Errorf("expected %d hex chars", sha256.Size*2)
 	}
 	if _, err := hex.DecodeString(value); err != nil {
-		return "", err
+		return "", fmt.Errorf("decode hex string: %w", err)
 	}
 	return value, nil
 }
@@ -391,18 +391,18 @@ func normalizeSHA256(value string) (string, error) {
 func verifyFileSHA256(path, expected string) error {
 	expected, err := normalizeSHA256(expected)
 	if err != nil {
-		return err
+		return fmt.Errorf("normalize expected checksum: %w", err)
 	}
 
 	file, err := os.Open(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("open file for checksum: %w", err)
 	}
 	defer file.Close()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, file); err != nil {
-		return err
+		return fmt.Errorf("read file for checksum: %w", err)
 	}
 	actual := hex.EncodeToString(h.Sum(nil))
 	if !strings.EqualFold(actual, expected) {
@@ -442,11 +442,11 @@ func extractZipBinaries(ctx context.Context, archive string, targets map[string]
 func extractArchiveBinariesWithTar(ctx context.Context, archive string, targets map[string]string) error {
 	entries, err := listTarArchive(ctx, archive)
 	if err != nil {
-		return err
+		return fmt.Errorf("list tar archive: %w", err)
 	}
 	selected, err := selectTarBinaryEntries(entries, targets)
 	if err != nil {
-		return err
+		return fmt.Errorf("select tar entries: %w", err)
 	}
 
 	destDir, err := os.MkdirTemp(filepath.Dir(archive), "extract-*")
@@ -456,7 +456,7 @@ func extractArchiveBinariesWithTar(ctx context.Context, archive string, targets 
 	defer os.RemoveAll(destDir)
 
 	if err := extractTarEntriesWithTar(ctx, archive, destDir, selected); err != nil {
-		return err
+		return fmt.Errorf("extract tar entries: %w", err)
 	}
 	return copyExtractedBinaries(destDir, targets)
 }
@@ -475,7 +475,7 @@ func parseTarListOutput(output string) ([]string, error) {
 	for _, line := range lines {
 		entry, err := validateArchiveMemberPath(line)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("validate archive path: %w", err)
 		}
 		if entry != "" {
 			entries = append(entries, entry)
@@ -541,7 +541,7 @@ func validateArchiveMemberPath(raw string) (string, error) {
 
 func extractTarEntriesWithTar(ctx context.Context, archive, destDir string, entries []string) error {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return err
+		return fmt.Errorf("create extraction directory: %w", err)
 	}
 	args := []string{"-xf", archive, "-C", destDir, "--no-same-owner", "--no-same-permissions", "--"}
 	args = append(args, entries...)
@@ -559,7 +559,7 @@ func tarCommandError(err error, output []byte) error {
 	if line := firstNonEmptyLine(string(output)); line != "" {
 		return errors.New(line)
 	}
-	return err
+	return fmt.Errorf("tar command failed: %w", err)
 }
 
 func copyExtractedBinaries(root string, targets map[string]string) error {
@@ -579,13 +579,13 @@ func copyExtractedBinaries(root string, targets map[string]string) error {
 			return nil
 		}
 		if err := copyExtractedFile(path, dest); err != nil {
-			return err
+			return fmt.Errorf("copy extracted file: %w", err)
 		}
 		found[name] = true
 		return nil
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("walk extracted directory: %w", err)
 	}
 
 	for name := range targets {
@@ -599,7 +599,7 @@ func copyExtractedBinaries(root string, targets map[string]string) error {
 func copyExtractedFile(src, dest string) error {
 	info, err := os.Lstat(src)
 	if err != nil {
-		return err
+		return fmt.Errorf("stat extracted file: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("refusing symlink from archive: %s", src)
@@ -609,27 +609,27 @@ func copyExtractedFile(src, dest string) error {
 	}
 
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
+		return fmt.Errorf("create parent directory: %w", err)
 	}
 
 	in, err := os.Open(src)
 	if err != nil {
-		return err
+		return fmt.Errorf("open source file: %w", err)
 	}
 	defer in.Close()
 
 	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
-		return err
+		return fmt.Errorf("create destination file: %w", err)
 	}
 
 	if _, err := io.Copy(out, in); err != nil {
 		_ = out.Close()
-		return err
+		return fmt.Errorf("copy file data: %w", err)
 	}
 	if err := out.Sync(); err != nil {
 		_ = out.Close()
-		return err
+		return fmt.Errorf("sync destination file: %w", err)
 	}
 	return out.Close()
 }

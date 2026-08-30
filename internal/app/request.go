@@ -47,7 +47,7 @@ type DownloadRequest struct {
 const (
 	ytdlpDownloadRetries     = "10"
 	ytdlpFragmentRetries     = "10"
-	ytdlpConcurrentFragments = "4"
+	ytdlpConcurrentFragments = "12"
 )
 
 func DefaultDownloadMode() DownloadMode {

@@ -20,6 +20,8 @@ var (
 
 const enableVirtualTerminalProcessing = 0x0004
 
+const createNoWindow = 0x00000008
+
 func init() {
 	handle := syscall.Handle(os.Stdout.Fd())
 	var mode uint32
@@ -32,7 +34,7 @@ func init() {
 
 func detachedProcess() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{
-		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008,
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | createNoWindow,
 		HideWindow:    true,
 	}
 }
@@ -62,8 +64,6 @@ func applyUpdatePlatform(tmp, dest string) error {
 		_ = os.Remove(bat)
 		return fmt.Errorf("запуск update-bat: %w", err)
 	}
-	if cmd.Process != nil {
-		_ = cmd.Process.Release()
-	}
+	go cmd.Wait()
 	return nil
 }

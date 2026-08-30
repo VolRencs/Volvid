@@ -172,7 +172,7 @@ func sanitizeTempPattern(name string) string {
 }
 
 func copyDownloadBody(ctx context.Context, file *os.File, writer *dlWriter, body io.Reader, tmp string) error {
-	_, copyErr := io.CopyBuffer(writer, body, make([]byte, 256<<10))
+	_, copyErr := io.CopyBuffer(writer, body, make([]byte, 1<<20))
 	if copyErr != nil {
 		closeErr := file.Close()
 		writer.emit(true, copyErr)
@@ -218,7 +218,9 @@ func replaceFilesWithBackup(paths map[string]string) error {
 	var backups []backupEntry
 	rollback := func() {
 		for _, b := range backups {
-			_ = os.Rename(b.backup, b.dest)
+			if err := os.Rename(b.backup, b.dest); err != nil {
+				fmt.Printf("rollback rename %s -> %s: %v\n", b.backup, b.dest, err)
+			}
 		}
 	}
 

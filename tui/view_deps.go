@@ -84,17 +84,17 @@ func renderDepStatusRows(rows []depStatusRow) string {
 func (m Model) depLineValue(dep app.DependencyInfo) string {
 	role := m.depRoleText(dep)
 	if !dep.Available {
-		return sErr.Render(m.depText("missing")) + sDim.Render("  ["+role+"]")
+		return sErr.Render(m.depText(depStateMissing)) + sDim.Render("  ["+role+"]")
 	}
 
 	meta := []string{m.depSourceText(dep.Source), role}
 	version := dep.Version
 	checking := strings.TrimSpace(version) == "" && m.depRefreshing
 	if checking {
-		version = m.depText("checking")
+		version = m.depText(depStateChecking)
 	}
 	if strings.TrimSpace(version) == "" {
-		version = m.depText("available")
+		version = m.depText(depStateAvailable)
 	}
 	if checking {
 		return sDim.Render(version) + sDim.Render("  ["+strings.Join(meta, ", ")+"]")
@@ -106,14 +106,14 @@ func (m Model) depAccessValue(status, detail string) string {
 	status = strings.TrimSpace(status)
 	detail = strings.TrimSpace(detail)
 	if m.depRefreshing && status == "" {
-		return sDim.Render(m.depText("checking"))
+		return sDim.Render(m.depText(depStateChecking))
 	}
 	switch status {
 	case "", "browser not found", "not found":
-		return sDim.Render(m.depText("not_active"))
+		return sDim.Render(m.depText(depStateNotActive))
 	case "active":
 		if detail == "" {
-			return sOk.Render(m.depText("active"))
+			return sOk.Render(m.depText(depStateActive))
 		}
 		return sOk.Render(detail) + sDim.Render("  ["+status+"]")
 	default:
@@ -124,21 +124,31 @@ func (m Model) depAccessValue(status, detail string) string {
 	}
 }
 
-func (m Model) depText(kind string) string {
+type depState string
+
+const (
+	depStateActive    depState = "active"
+	depStateMissing   depState = "missing"
+	depStateNotActive depState = "not_active"
+	depStateAvailable depState = "available"
+	depStateChecking  depState = "checking"
+)
+
+func (m Model) depText(kind depState) string {
 	u := m.u()
 	switch kind {
-	case "active":
+	case depStateActive:
 		return u.DepStatusActive
-	case "missing":
+	case depStateMissing:
 		return u.DepStatusMissing
-	case "not_active":
+	case depStateNotActive:
 		return u.DepStatusNotActive
-	case "available":
+	case depStateAvailable:
 		return u.DepStatusAvailable
-	case "checking":
+	case depStateChecking:
 		return u.DepStatusChecking
 	}
-	return kind
+	return string(kind)
 }
 
 func (m Model) cookiesAccessDetail() string {

@@ -321,12 +321,6 @@ func parseDigits(value string) (int, bool) {
 	if value == "" {
 		return 0, false
 	}
-	n := 0
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return 0, false
-		}
-	}
 	n, err := strconv.Atoi(value)
 	if err != nil {
 		return 0, false

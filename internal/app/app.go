@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	Version = "7.1.0"
+	Version = "7.1.1"
 
 	ffmpegWinURL   = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ffmpegLinuxURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"

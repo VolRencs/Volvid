@@ -57,8 +57,6 @@ func OpenInFileManager(path string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("open file manager: %w", err)
 	}
-	if cmd.Process != nil {
-		_ = cmd.Process.Release()
-	}
+	go cmd.Wait()
 	return nil
 }
