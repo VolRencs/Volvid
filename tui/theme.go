@@ -134,10 +134,6 @@ var (
 // Download slot styles.
 var (
 	sSlotTitle = lipgloss.NewStyle().Inline(true)
-	sSlotBox   = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(cBorderSoft).
-			Padding(0, 1)
 )
 
 var (

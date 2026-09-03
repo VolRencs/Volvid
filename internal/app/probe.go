@@ -16,8 +16,6 @@ type MediaProbe struct {
 }
 
 type MediaFormat struct {
-	FormatID       string `json:"format_id"`
-	Ext            string `json:"ext"`
 	Height         int    `json:"height"`
 	VCodec         string `json:"vcodec"`
 	ACodec         string `json:"acodec"`
@@ -70,7 +68,6 @@ func probeMediaUncached(env *Env, ctx context.Context, target ParsedTarget) (*Me
 		resolveRuntimeDeps(env),
 		"--dump-single-json",
 		"--no-playlist",
-		"--no-warnings",
 		target.CanonicalURL,
 	)
 	if err != nil {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	app "YouTubeBuild/internal/app"
+	app "volvid/internal/app"
 
 	tea "charm.land/bubbletea/v2"
 )

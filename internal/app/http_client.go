@@ -133,13 +133,6 @@ func cloneDefaultTransport() *http.Transport {
 	return base.Clone()
 }
 
-func resolveHTTPClient(client *http.Client) *http.Client {
-	if client != nil {
-		return client
-	}
-	return NewHTTPClient(0)
-}
-
 func resolveContext(ctx context.Context) context.Context {
 	if ctx != nil {
 		return ctx

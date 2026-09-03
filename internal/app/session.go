@@ -6,6 +6,9 @@ type SessionItem struct {
 	OK    bool
 }
 
+// Session accumulates per-run download history. It must be used from the
+// UI goroutine only: Bubble Tea runs Update and View sequentially, so no
+// locking is needed — but never touch it from engine goroutines.
 type Session struct {
 	Success int
 	Failed  int

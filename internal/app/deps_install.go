@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -37,9 +39,36 @@ func InstallDependencyFor(env *Env, ctx context.Context, key string, l Locale, c
 	return nil
 }
 
-func InstallYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
+func ensureDepsDir(env *Env) error {
 	if err := os.MkdirAll(env.DepsDir, 0o755); err != nil {
 		return fmt.Errorf("создание DepsDir: %w", err)
+	}
+	return nil
+}
+
+// requireStagedBinary smoke-tests a freshly downloaded binary by probing
+// its version.
+func requireStagedBinary(ctx context.Context, name string, spec depSpec) error {
+	if detectExecutableDependency(ctx, spec, true).Version == "" {
+		return fmt.Errorf("бинарник %s скачан, но не запускается", name)
+	}
+	return nil
+}
+
+// requireTargetsFound reports the first archive member missing from found.
+// Keys are checked in sorted order so multi-miss errors are deterministic.
+func requireTargetsFound(targets map[string]string, found map[string]bool) error {
+	for _, name := range slices.Sorted(maps.Keys(targets)) {
+		if !found[name] {
+			return fmt.Errorf("%s не найден в архиве", name)
+		}
+	}
+	return nil
+}
+
+func InstallYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
+	if err := ensureDepsDir(env); err != nil {
+		return err
 	}
 
 	url, _, checksum, err := ytdlpDownloadAsset(ctx, env)
@@ -64,14 +93,18 @@ func InstallYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProg
 			return fmt.Errorf("chmod yt-dlp: %w", err)
 		}
 	}
-	if detectExecutableDependency(ctx, depSpec{Key: "ytdlp", Name: "yt-dlp", ManagedPath: stagedYtdlp, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}, true).Version == "" {
-		return fmt.Errorf("бинарник yt-dlp скачан, но не запускается")
+	if err := requireStagedBinary(ctx, "yt-dlp", depSpec{Key: "ytdlp", Name: "yt-dlp", ManagedPath: stagedYtdlp, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}); err != nil {
+		return err
 	}
-	if err := replaceInstalledBinaries(map[string]string{stagedYtdlp: env.YtdlpBin}); err != nil {
+	if err := replaceFilesWithBackup(map[string]string{stagedYtdlp: env.YtdlpBin}); err != nil {
 		return fmt.Errorf("replace yt-dlp binary: %w", err)
 	}
 	return nil
 }
+
+// maxExtractedFileSize caps a single file extracted from a downloaded
+// archive; anything larger fails checksum and smoke checks downstream.
+const maxExtractedFileSize = 512 << 20
 
 func extractZipEntry(zf *zip.File, dest string) error {
 	if zf == nil {
@@ -97,7 +130,9 @@ func extractZipEntry(zf *zip.File, dest string) error {
 	}
 	tmpName := tmp.Name()
 
-	if _, err := io.Copy(tmp, rc); err != nil {
+	// Cap single-file extraction: a corrupt manifest must not fill the disk.
+	// Oversized binaries fail the checksum and smoke checks downstream.
+	if _, err := io.Copy(tmp, io.LimitReader(rc, maxExtractedFileSize)); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("extract zip data: %w", err)
@@ -111,7 +146,9 @@ func extractZipEntry(zf *zip.File, dest string) error {
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("close temp file: %w", err)
 	}
-	if err := os.Chmod(tmpName, mode); err != nil {
+	// Mask the archived mode: never honor setuid/setgid/sticky bits or
+	// group/other write bits from a downloaded archive.
+	if err := os.Chmod(tmpName, mode.Perm()&0o755); err != nil {
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("chmod extracted file: %w", err)
 	}
@@ -119,8 +156,8 @@ func extractZipEntry(zf *zip.File, dest string) error {
 }
 
 func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
-	if err := os.MkdirAll(env.DepsDir, 0o755); err != nil {
-		return fmt.Errorf("создание DepsDir: %w", err)
+	if err := ensureDepsDir(env); err != nil {
+		return err
 	}
 
 	tmp, err := os.MkdirTemp("", "ffmpeg-*")
@@ -154,7 +191,7 @@ func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 	}
 
 	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
-		if err := extractZipBinaries(ctx, archive, targets); err != nil {
+		if err := extractZipBinaries(archive, targets); err != nil {
 			return fmt.Errorf("extract ffmpeg zip: %w", err)
 		}
 	} else {
@@ -163,13 +200,13 @@ func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 		}
 	}
 
-	if detectExecutableDependency(ctx, depSpec{Key: "ffmpeg", Name: "ffmpeg", ManagedPath: stagedFFmpeg, VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine}, true).Version == "" {
-		return fmt.Errorf("бинарник ffmpeg скачан, но не запускается")
+	if err := requireStagedBinary(ctx, "ffmpeg", depSpec{Key: "ffmpeg", Name: "ffmpeg", ManagedPath: stagedFFmpeg, VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine}); err != nil {
+		return err
 	}
-	if commandVersionLine(ctx, stagedFFprobe, "-version") == "" {
-		return fmt.Errorf("бинарник ffprobe скачан, но не запускается")
+	if err := requireStagedBinary(ctx, "ffprobe", depSpec{ManagedPath: stagedFFprobe, VersionArgs: []string{"-version"}, ParseVersion: firstNonEmptyLine}); err != nil {
+		return err
 	}
-	if err := replaceInstalledBinaries(map[string]string{
+	if err := replaceFilesWithBackup(map[string]string{
 		stagedFFmpeg:  env.FFmpegBin,
 		stagedFFprobe: env.FFprobeBin,
 	}); err != nil {
@@ -183,8 +220,8 @@ func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 	if err != nil {
 		return fmt.Errorf("node asset metadata: %w", err)
 	}
-	if err := os.MkdirAll(env.DepsDir, 0o755); err != nil {
-		return fmt.Errorf("создание DepsDir: %w", err)
+	if err := ensureDepsDir(env); err != nil {
+		return err
 	}
 
 	tmp, err := os.MkdirTemp("", "node-*")
@@ -212,7 +249,7 @@ func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 	nodeName := binaryBaseName(env.NodeBin)
 	stagedNode := filepath.Join(staging, nodeName)
 	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
-		if err := extractZipBinaries(ctx, archive, map[string]string{
+		if err := extractZipBinaries(archive, map[string]string{
 			nodeName: stagedNode,
 		}); err != nil {
 			return fmt.Errorf("extract node zip: %w", err)
@@ -225,10 +262,10 @@ func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 		}
 	}
 
-	if detectExecutableDependency(ctx, depSpec{Key: "node", Name: "node", ManagedPath: stagedNode, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}, true).Version == "" {
-		return fmt.Errorf("бинарник node скачан, но не запускается")
+	if err := requireStagedBinary(ctx, "node", depSpec{Key: "node", Name: "node", ManagedPath: stagedNode, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}); err != nil {
+		return err
 	}
-	if err := replaceInstalledBinaries(map[string]string{stagedNode: env.NodeBin}); err != nil {
+	if err := replaceFilesWithBackup(map[string]string{stagedNode: env.NodeBin}); err != nil {
 		return fmt.Errorf("replace node binary: %w", err)
 	}
 	return nil
@@ -324,7 +361,28 @@ func nodeAssetFromManifest(manifest, suffix string) (string, string, error) {
 	if name == "" {
 		return "", "", fmt.Errorf("node asset with suffix %s not found", suffix)
 	}
+	name = filepath.Base(strings.TrimSpace(name))
+	if !validAssetFilename(name) {
+		return "", "", fmt.Errorf("node asset filename is invalid: %q", name)
+	}
 	return name, checksum, nil
+}
+
+// validAssetFilename rejects path separators and shell glob characters so
+// a crafted checksum manifest cannot escape the download directory.
+func validAssetFilename(name string) bool {
+	if name == "" || name != filepath.Base(name) {
+		return false
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.' || r == '-' || r == '_' || r == '+':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func checksumFromManifest(manifest, name string) (string, error) {
@@ -413,7 +471,7 @@ func verifyFileSHA256(path, expected string) error {
 	return nil
 }
 
-func extractZipBinaries(ctx context.Context, archive string, targets map[string]string) error {
+func extractZipBinaries(archive string, targets map[string]string) error {
 	zr, err := zip.OpenReader(archive)
 	if err != nil {
 		return fmt.Errorf("открытие архива: %w", err)
@@ -433,12 +491,7 @@ func extractZipBinaries(ctx context.Context, archive string, targets map[string]
 		found[name] = true
 	}
 
-	for name := range targets {
-		if !found[name] {
-			return fmt.Errorf("%s не найден в архиве", name)
-		}
-	}
-	return nil
+	return requireTargetsFound(targets, found)
 }
 
 func extractArchiveBinariesWithTar(ctx context.Context, archive string, targets map[string]string) error {
@@ -502,12 +555,15 @@ func selectTarBinaryEntries(entries []string, targets map[string]string) ([]stri
 	}
 
 	out := make([]string, 0, len(targets))
-	for name := range targets {
-		entry := selected[name]
-		if entry == "" {
-			return nil, fmt.Errorf("%s не найден в архиве", name)
+	found := make(map[string]bool, len(targets))
+	for _, name := range slices.Sorted(maps.Keys(targets)) {
+		if entry := selected[name]; entry != "" {
+			found[name] = true
+			out = append(out, entry)
 		}
-		out = append(out, entry)
+	}
+	if err := requireTargetsFound(targets, found); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -580,6 +636,12 @@ func copyExtractedBinaries(root string, targets map[string]string) error {
 		if !ok {
 			return nil
 		}
+		// Refuse to materialize links and special files from archives:
+		// only regular files may land in the staging directory.
+		if !d.Type().IsRegular() {
+			_ = os.Remove(path)
+			return nil
+		}
 		if err := copyExtractedFile(path, dest); err != nil {
 			return fmt.Errorf("copy extracted file: %w", err)
 		}
@@ -590,12 +652,7 @@ func copyExtractedBinaries(root string, targets map[string]string) error {
 		return fmt.Errorf("walk extracted directory: %w", err)
 	}
 
-	for name := range targets {
-		if !found[name] {
-			return fmt.Errorf("%s не найден в архиве", name)
-		}
-	}
-	return nil
+	return requireTargetsFound(targets, found)
 }
 
 func copyExtractedFile(src, dest string) error {
@@ -634,10 +691,6 @@ func copyExtractedFile(src, dest string) error {
 		return fmt.Errorf("sync destination file: %w", err)
 	}
 	return out.Close()
-}
-
-func replaceInstalledBinaries(paths map[string]string) error {
-	return replaceFilesWithBackup(paths)
 }
 
 func binaryBaseName(path string) string {

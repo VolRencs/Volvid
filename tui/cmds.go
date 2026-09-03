@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	app "YouTubeBuild/internal/app"
+	app "volvid/internal/app"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -130,13 +130,13 @@ func probeFragmentDurationCmd(env *app.Env, ctx context.Context, target app.Pars
 	}
 }
 
-func listenDownloadCmd(ch <-chan app.DlUpdate) tea.Cmd {
+func listenDownloadCmd(ch <-chan app.DlUpdate, gen int) tea.Cmd {
 	return func() tea.Msg {
 		u, ok := <-ch
 		if !ok {
-			return msgDlUpdate{update: app.DlUpdate{Type: app.EvClosed}}
+			return msgDlUpdate{update: app.DlUpdate{Type: app.EvClosed}, gen: gen}
 		}
-		return msgDlUpdate{update: u}
+		return msgDlUpdate{update: u, gen: gen}
 	}
 }
 

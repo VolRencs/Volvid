@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	app "YouTubeBuild/internal/app"
+	app "volvid/internal/app"
 
 	"charm.land/lipgloss/v2"
 )

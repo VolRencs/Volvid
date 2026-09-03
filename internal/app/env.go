@@ -33,6 +33,10 @@ type Env struct {
 	depsCache        *FlightCache[struct{}, CheckDepsResult]
 	runtimeDepsCache *FlightCache[struct{}, CheckDepsResult]
 
+	// cachesMu guards lazy cache initialization for bare &Env{} values.
+	// Production code always uses NewEnv, which initializes eagerly.
+	cachesMu sync.Mutex
+
 	probeCache *FlightCache[string, *MediaProbe]
 
 	ffmpegEncodersMu    sync.Mutex
@@ -57,6 +61,8 @@ func NewEnv() *Env {
 }
 
 func (env *Env) ensureCaches() {
+	env.cachesMu.Lock()
+	defer env.cachesMu.Unlock()
 	if env.depsCache == nil {
 		env.depsCache = newFlightCache[struct{}, CheckDepsResult]()
 	}

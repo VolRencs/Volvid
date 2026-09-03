@@ -10,7 +10,9 @@ import (
 )
 
 func doSafeRequest(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
-	client = resolveHTTPClient(client)
+	if client == nil {
+		client = NewHTTPClient(0)
+	}
 	ctx = resolveContext(ctx)
 
 	var lastErr error

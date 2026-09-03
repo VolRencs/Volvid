@@ -34,7 +34,9 @@ func downloadFileWith(
 	l Locale,
 	ch chan<- FileProgress,
 ) error {
-	client = resolveDownloadHTTPClient(client)
+	if client == nil {
+		client = newDownloadHTTPClient()
+	}
 	if err := ensureDownloadDir(dest); err != nil {
 		return err
 	}
@@ -76,13 +78,6 @@ func downloadFileWith(
 		return err
 	}
 	return nil
-}
-
-func resolveDownloadHTTPClient(client *http.Client) *http.Client {
-	if client != nil {
-		return client
-	}
-	return newDownloadHTTPClient()
 }
 
 func ensureDownloadDir(dest string) error {
@@ -140,9 +135,6 @@ func isLocalHTTPHost(host string) bool {
 func validateDownloadResponse(resp *http.Response, url string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %s при загрузке %s", resp.Status, url)
-	}
-	if resp.Body == nil {
-		return fmt.Errorf("пустой HTTP body при загрузке %s", url)
 	}
 	return nil
 }
@@ -225,7 +217,11 @@ func replaceFilesWithBackup(paths map[string]string) error {
 	}
 
 	for src, dest := range paths {
-		backup := replacementBackupPath(dest)
+		backup, err := replacementBackupPath(dest)
+		if err != nil {
+			rollback()
+			return err
+		}
 		hadDest := true
 		if err := os.Rename(dest, backup); err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
@@ -252,6 +248,20 @@ func replaceFilesWithBackup(paths map[string]string) error {
 	return nil
 }
 
-func replacementBackupPath(dest string) string {
-	return fmt.Sprintf("%s.bak.%d", dest, time.Now().UnixNano())
+// replacementBackupPath reserves a uniquely-named backup slot next to
+// dest so concurrent or rapid retries can never clobber each other.
+func replacementBackupPath(dest string) (string, error) {
+	f, err := os.CreateTemp(filepath.Dir(dest), "."+filepath.Base(dest)+".bak-*")
+	if err != nil {
+		return "", fmt.Errorf("создание бэкапа для %s: %w", dest, err)
+	}
+	name := f.Name()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", fmt.Errorf("создание бэкапа для %s: %w", dest, err)
+	}
+	if err := os.Remove(name); err != nil {
+		return "", fmt.Errorf("создание бэкапа для %s: %w", dest, err)
+	}
+	return name, nil
 }

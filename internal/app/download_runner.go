@@ -12,6 +12,9 @@ import (
 )
 
 func sendUpdate(ctx context.Context, ch chan<- DlUpdate, u DlUpdate) bool {
+	if ch == nil {
+		return false
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -25,11 +28,27 @@ func sendUpdate(ctx context.Context, ch chan<- DlUpdate, u DlUpdate) bool {
 
 type downloadCleanup struct {
 	mu    sync.Mutex
+	root  string
 	paths map[string]struct{}
 }
 
 func newDownloadCleanup() *downloadCleanup {
 	return &downloadCleanup{paths: map[string]struct{}{}}
+}
+
+// setRoot confines tracked files to root: paths escaping it are never
+// registered and therefore never deleted by cleanup.
+func (c *downloadCleanup) setRoot(root string) {
+	if c == nil {
+		return
+	}
+	root = cleanAbsPath(root)
+	if root == "" {
+		return
+	}
+	c.mu.Lock()
+	c.root = root
+	c.mu.Unlock()
 }
 
 func (c *downloadCleanup) add(path string) {
@@ -40,9 +59,20 @@ func (c *downloadCleanup) add(path string) {
 	if path == "" {
 		return
 	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return
+	}
+	abs = filepath.Clean(abs)
 	c.mu.Lock()
-	c.paths[path] = struct{}{}
-	c.mu.Unlock()
+	defer c.mu.Unlock()
+	if c.root != "" {
+		rel, err := filepath.Rel(c.root, abs)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return
+		}
+	}
+	c.paths[abs] = struct{}{}
 }
 
 func (c *downloadCleanup) cleanup() {
@@ -67,20 +97,34 @@ func deleteDownloadArtifacts(path string) {
 	}
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
-	stem := strings.TrimSuffix(base, filepath.Ext(base))
 	_ = os.Remove(path)
 	_ = os.Remove(path + ".part")
 	_ = os.Remove(path + ".ytdl")
-	for _, pattern := range []string{
-		path + ".part-*",
-		filepath.Join(dir, stem+".*.part*"),
-		filepath.Join(dir, stem+".*.ytdl"),
-		filepath.Join(dir, "."+base+".backup-*"),
-		filepath.Join(dir, "."+base+".transcode-*"),
-	} {
-		matches, _ := filepath.Glob(pattern)
-		for _, match := range matches {
-			_ = os.Remove(match)
+	removeMatchingArtifacts(dir, base, strings.TrimSuffix(base, filepath.Ext(base)))
+}
+
+// removeMatchingArtifacts deletes sidecar files derived from base without
+// interpreting the name as a glob pattern: video titles may legally
+// contain *, ? or [ which must match literally.
+func removeMatchingArtifacts(dir, base, stem string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		switch {
+		case strings.HasPrefix(name, base+".part-"),
+			strings.HasPrefix(name, "."+base+".backup-"),
+			strings.HasPrefix(name, "."+base+".transcode-"):
+			_ = os.Remove(filepath.Join(dir, name))
+		case stem != "" && strings.HasPrefix(name, stem+"."):
+			if rest := name[len(stem)+1:]; strings.Contains(rest, ".part") || strings.Contains(rest, ".ytdl") {
+				_ = os.Remove(filepath.Join(dir, name))
+			}
 		}
 	}
 }
@@ -136,10 +180,7 @@ func transcodeDownloadedVideo(
 		return nil
 	}
 
-	ffmpeg := strings.TrimSpace(deps.FFmpeg.Path)
-	if ffmpeg == "" {
-		ffmpeg = env.FFmpegBin
-	}
+	ffmpeg := ffmpegBinFor(env, deps)
 	if strings.TrimSpace(outputPath) == "" {
 		return errors.New("video transcoding failed: downloaded file path is unknown")
 	}
@@ -161,8 +202,12 @@ func transcodeDownloadedVideo(
 		if i > 0 {
 			_ = os.Remove(tmp)
 		}
-		out, err := commandCombinedOutput(ctx, 0, ffmpeg, command.Args...)
+		out, err := commandCombinedOutput(ctx, 0, ffmpeg, command...)
 		if err == nil {
+			// CreateTemp yields 0600; the final video must stay world-readable.
+			if err := os.Chmod(tmp, 0o644); err != nil {
+				return fmt.Errorf("video transcoding failed: %w", err)
+			}
 			if err := replaceDownloadedFile(tmp, outputPath); err != nil {
 				return fmt.Errorf("video transcoding failed: %w", err)
 			}
@@ -208,27 +253,19 @@ func transcodeTempPath(outputPath, container string) (string, error) {
 	return name, nil
 }
 
-type videoTranscodeCommand struct {
-	Args []string
-}
-
 type hardwareVideoEncoder struct {
 	Codec  string
 	Family string
 }
 
-func ffmpegVideoTranscodeCommands(env *Env, ctx context.Context, ffmpeg, inputPath, outputPath string, profile OutputProfile) []videoTranscodeCommand {
-	commands := make([]videoTranscodeCommand, 0, 4)
+func ffmpegVideoTranscodeCommands(env *Env, ctx context.Context, ffmpeg, inputPath, outputPath string, profile OutputProfile) [][]string {
+	commands := make([][]string, 0, 4)
 	for _, encoder := range hardwareVideoEncodersFor(env, ctx, ffmpeg, profile.VideoCodec) {
 		hwProfile := profile
 		hwProfile.VideoCodec = encoder.Codec
-		commands = append(commands, videoTranscodeCommand{
-			Args: ffmpegVideoTranscodeArgs(inputPath, outputPath, hwProfile, encoder.Family),
-		})
+		commands = append(commands, ffmpegVideoTranscodeArgs(inputPath, outputPath, hwProfile, encoder.Family))
 	}
-	commands = append(commands, videoTranscodeCommand{
-		Args: ffmpegVideoTranscodeArgs(inputPath, outputPath, profile, ""),
-	})
+	commands = append(commands, ffmpegVideoTranscodeArgs(inputPath, outputPath, profile, ""))
 	return commands
 }
 
@@ -410,9 +447,6 @@ func formatLabel(format string, labels []string, idx int) string {
 }
 
 func normalizeWorkerCount(workers, jobs int) int {
-	if jobs <= 0 {
-		return 1
-	}
 	workers = max(workers, 1)
 	return min(workers, jobs)
 }
@@ -443,6 +477,7 @@ func StartDownloadRequestContext(env *Env, ctx context.Context, req DownloadRequ
 			sendUpdate(ctx, ch, DlUpdate{Type: EvDone, OK: false, ErrText: err.Error()})
 			return
 		}
+		cleanup.setRoot(req.OutputDir)
 
 		if !downloadRequestUsesPlaylist(req) {
 			result := runSingleDownload(env, ctx, req, ch, cleanup)
@@ -450,8 +485,7 @@ func StartDownloadRequestContext(env *Env, ctx context.Context, req DownloadRequ
 			return
 		}
 
-		entries := downloadRequestEntries(req)
-		runPlaylistDownloads(env, ctx, req, entries, ch, &wg, cleanup)
+		runPlaylistDownloads(env, ctx, req, append([]PlaylistEntry(nil), req.Entries...), ch, &wg, cleanup)
 	}()
 }
 
@@ -529,10 +563,12 @@ func runPlaylistEntry(env *Env, ctx context.Context, slot int, req DownloadReque
 }
 
 func resetDownloadSlot(ctx context.Context, slot int, ch chan<- DlUpdate) {
+	timer := time.NewTimer(slotResetDelay)
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return
-	case <-time.After(slotResetDelay):
+	case <-timer.C:
 	}
 	select {
 	case ch <- DlUpdate{Type: EvReset, Slot: slot}:
@@ -541,7 +577,11 @@ func resetDownloadSlot(ctx context.Context, slot int, ch chan<- DlUpdate) {
 }
 
 func playlistOutputDir(req DownloadRequest) string {
-	dir := filepath.Join(req.OutputDir, SanitizeDirname(req.PlaylistInfo.Title))
+	title := "playlist"
+	if req.PlaylistInfo != nil {
+		title = req.PlaylistInfo.Title
+	}
+	dir := filepath.Join(req.OutputDir, SanitizeDirname(title))
 	if err := os.MkdirAll(dir, 0o755); err == nil {
 		return dir
 	}

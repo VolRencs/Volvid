@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	app "YouTubeBuild/internal/app"
+	app "volvid/internal/app"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -81,7 +81,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleFragmentDurationMsg(msg)
 
 	case msgDlUpdate:
-		return m.handleDlUpdate(msg.update)
+		return m.handleDlUpdate(msg.update, msg.gen)
 
 	case msgOpenDownloadsDirDone:
 		if msg.err == nil {
@@ -170,6 +170,7 @@ func (m Model) handleQualityScanned(msg msgQualityScanned) (tea.Model, tea.Cmd) 
 	if msg.gen != m.opGen {
 		return m, nil
 	}
+	m = m.clearOpCancel()
 	m.qualityChoices = msg.choices
 	if len(m.qualityChoices) == 0 {
 		m.qualityChoices = app.DefaultQualityChoices()
@@ -189,6 +190,7 @@ func (m Model) handleSearchResultsMsg(msg msgSearchResults) (tea.Model, tea.Cmd)
 	if msg.gen != m.opGen {
 		return m, nil
 	}
+	m = m.clearOpCancel()
 	if msg.err != nil {
 		m.screen = scrSearchInput
 		m.searchErr = m.u().SearchErrFailed + ": " + msg.err.Error()
@@ -210,6 +212,7 @@ func (m Model) handlePlaylistFetched(msg msgPlaylistFetched) (tea.Model, tea.Cmd
 	if msg.gen != m.opGen {
 		return m, nil
 	}
+	m = m.clearOpCancel()
 	if msg.err != nil || msg.info == nil {
 		m.forceSingle = true
 		return m.startModeSelectionWithNotice("")
@@ -228,6 +231,7 @@ func (m Model) handleFragmentDurationMsg(msg msgFragmentDuration) (tea.Model, te
 	if msg.gen != m.opGen {
 		return m, nil
 	}
+	m = m.clearOpCancel()
 	if msg.err != nil || msg.duration <= 0 {
 		m.mediaDuration = 0
 		m.fragment = nil
@@ -240,7 +244,10 @@ func (m Model) handleFragmentDurationMsg(msg msgFragmentDuration) (tea.Model, te
 	return m, nil
 }
 
-func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {
+func (m Model) handleDlUpdate(u app.DlUpdate, gen int) (tea.Model, tea.Cmd) {
+	if gen != m.dlGen {
+		return m, nil
+	}
 	if u.Type == app.EvClosed {
 		return m, nil
 	}
@@ -277,7 +284,7 @@ func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {
 	}
 
 	if u.Type != app.EvDone {
-		return m, listenDownloadCmd(m.dlCh)
+		return m, listenDownloadCmd(m.dlCh, m.dlGen)
 	}
 
 	if u.OK {
@@ -290,6 +297,10 @@ func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {
 	}
 
 	if m.dlTotal == 0 || m.dlDone+m.dlFailed >= m.dlTotal {
+		if m.dlCancel != nil {
+			m.dlCancel()
+			m.dlCancel = nil
+		}
 		if m.dlTotal == 0 {
 			m.singleOK = u.OK
 		}
@@ -305,5 +316,5 @@ func (m Model) handleDlUpdate(u app.DlUpdate) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	return m, listenDownloadCmd(m.dlCh)
+	return m, listenDownloadCmd(m.dlCh, m.dlGen)
 }

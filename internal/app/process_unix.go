@@ -60,7 +60,14 @@ func interruptProcessTree(cmd *exec.Cmd, grace time.Duration) error {
 		timer := time.AfterFunc(grace, func() {
 			_ = signalProcessGroup(pid, syscall.SIGKILL)
 		})
-		killTimers.Store(cmd, timer)
+		if old, loaded := killTimers.LoadOrStore(cmd, timer); loaded {
+			// A previous timer is still pending (e.g. Cancel ran twice):
+			// keep a single SIGKILL schedule per command.
+			if oldTimer, ok := old.(*time.Timer); ok {
+				_ = oldTimer.Stop()
+			}
+			killTimers.Store(cmd, timer)
+		}
 	}
 	return err
 }

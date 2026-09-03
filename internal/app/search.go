@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -23,14 +22,7 @@ func SearchYouTubeContext(env *Env, ctx context.Context, query string) ([]Search
 	}
 
 	results := make([]SearchResult, 0, 5)
-	err := scanYTDLPJSONLines(env, ctx, searchTimeout, []string{
-		"--flat-playlist",
-		"--dump-json",
-		"--quiet",
-		"--ignore-errors",
-		"--no-warnings",
-		"ytsearch5:" + query,
-	}, func(entry map[string]any) {
+	err := scanYTDLPJSONLines(env, ctx, searchTimeout, flatPlaylistScanArgs("ytsearch5:"+query), func(entry map[string]any) {
 		if len(results) == cap(results) {
 			return
 		}
@@ -41,14 +33,8 @@ func SearchYouTubeContext(env *Env, ctx context.Context, query string) ([]Search
 		results = append(results, result)
 	})
 
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, errors.New("yt-dlp: search timeout")
-		}
-		if len(results) > 0 {
-			return nil, fmt.Errorf("%w (%d)", err, len(results))
-		}
-		return nil, err
+	if scanErr := flatScanError(err, len(results), errors.New("yt-dlp: search timeout")); scanErr != nil {
+		return nil, scanErr
 	}
 	if len(results) == 0 {
 		return nil, errors.New("search returned no results")

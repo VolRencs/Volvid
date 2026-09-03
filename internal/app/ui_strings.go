@@ -41,7 +41,7 @@ type UIStrings struct {
 	AudioMP3320, AudioMP3192, AudioM4ABest, AudioOpusBest, AudioFLAC, OutThumbnail string
 	VideoOriginal, VideoH264, VideoH265, VideoVP9, VideoAV1, VideoMKVCopy          string
 
-	Downloading, PlaylistBarFmt, QueueFmt, Waiting, ErrSlot, MergeProc, VideoConvertProc, MP3Proc, ThumbProc string
+	Downloading, PlaylistBarFmt, QueueFmt, ErrSlot, MergeProc, VideoConvertProc, MP3Proc, ThumbProc string
 
 	SummaryOK, SummaryPartial, SummaryFail, SummaryPlaylistTitle, SummaryLocation, SessionHist string
 
@@ -124,7 +124,7 @@ var strEN = UIStrings{
 	VideoVP9: "WebM · VP9/Opus", VideoAV1: "MKV · AV1/Opus", VideoMKVCopy: "MKV · copy streams",
 
 	Downloading: "Downloading", PlaylistBarFmt: "Playlist · %d items", QueueFmt: "%d queued",
-	Waiting: "Waiting for work", ErrSlot: "Download failed", MergeProc: "Merging video and audio", VideoConvertProc: "Converting video", MP3Proc: "Converting audio",
+	ErrSlot: "Download failed", MergeProc: "Merging video and audio", VideoConvertProc: "Converting video", MP3Proc: "Converting audio",
 	ThumbProc: "Downloading thumbnail",
 
 	SummaryOK: "Download complete", SummaryPartial: "Completed with issues", SummaryFail: "Download failed",
@@ -224,7 +224,7 @@ var strRU = UIStrings{
 	VideoVP9: "WebM · VP9/Opus", VideoAV1: "MKV · AV1/Opus", VideoMKVCopy: "MKV · копия потоков",
 
 	Downloading: "Загрузка", PlaylistBarFmt: "Плейлист · %d видео", QueueFmt: "%d в очереди",
-	Waiting: "Ожидание очереди", ErrSlot: "Загрузка не удалась", MergeProc: "Объединение видео и аудио", VideoConvertProc: "Конвертация видео", MP3Proc: "Конвертация аудио",
+	ErrSlot: "Загрузка не удалась", MergeProc: "Объединение видео и аудио", VideoConvertProc: "Конвертация видео", MP3Proc: "Конвертация аудио",
 	ThumbProc: "Загрузка превью",
 
 	SummaryOK: "Загрузка завершена", SummaryPartial: "Завершено с ошибками", SummaryFail: "Загрузка не удалась",

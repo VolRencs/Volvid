@@ -23,6 +23,14 @@ const (
 	EvClosed
 )
 
+// ytdlpLine* marks progress-reporting lines in yt-dlp's merged output.
+const (
+	ytdlpLineStart    = "VRDL_START"
+	ytdlpLineProgress = "VRDL_PROGRESS"
+	ytdlpLinePost     = "VRDL_POST"
+	ytdlpLineMoved    = "VRDL_MOVED"
+)
+
 type DlUpdate struct {
 	Type    DlEventType
 	Slot    int
@@ -49,13 +57,22 @@ func ffmpegArgs(deps CheckDepsResult) []string {
 	return []string{"--ffmpeg-location", bin}
 }
 
+// ffmpegBinFor prefers the detected ffmpeg binary and falls back to the
+// managed path so transcoding works right after install.
+func ffmpegBinFor(env *Env, deps CheckDepsResult) string {
+	if bin := strings.TrimSpace(deps.FFmpeg.Path); bin != "" {
+		return bin
+	}
+	return strings.TrimSpace(env.FFmpegBin)
+}
+
 func streamYtdlp(env *Env, ctx context.Context, slot int, l Locale, deps CheckDepsResult, args []string, ch chan<- DlUpdate, cleanup *downloadCleanup) downloadResult {
 	cmd, pr, runCtx, cancel, err := startYTDLPMergedOutputCommand(
 		env,
 		ctx,
 		0,
 		deps,
-		slices.Concat(streamProtocolArgs(), []string{"--no-warnings"}, args)...,
+		slices.Concat(streamProtocolArgs(), args)...,
 	)
 	if err != nil {
 		return failedDownload(err)

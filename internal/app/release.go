@@ -128,14 +128,22 @@ func ApplyUpdateFor(env *Env, ctx context.Context, l Locale, info *UpdateInfo, c
 }
 
 func versionGT(a, b string) bool {
-	parse := func(s string) [4]int {
+	parse := func(s string) ([4]int, bool) {
 		var v [4]int
 		for i, p := range strings.SplitN(s, ".", 4) {
-			v[i], _ = strconv.Atoi(p)
+			n, err := strconv.Atoi(strings.TrimSpace(p))
+			if err != nil {
+				return v, false
+			}
+			v[i] = n
 		}
-		return v
+		return v, true
 	}
-	av, bv := parse(a), parse(b)
+	av, okA := parse(a)
+	bv, okB := parse(b)
+	if !okA || !okB {
+		return false
+	}
 	for i := range 4 {
 		if c := cmp.Compare(av[i], bv[i]); c != 0 {
 			return c > 0

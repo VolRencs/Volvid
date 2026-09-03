@@ -50,10 +50,6 @@ const (
 	ytdlpConcurrentFragments = "12"
 )
 
-func DefaultDownloadMode() DownloadMode {
-	return ModeVideo
-}
-
 func DefaultVideoProfile(l Locale) OutputProfile {
 	return OutputProfile{
 		Key:           "best",
@@ -65,18 +61,13 @@ func DefaultVideoProfile(l Locale) OutputProfile {
 
 func PrepareDownloadRequest(env *Env, req DownloadRequest) (DownloadRequest, error) {
 	req = normalizeDownloadRequest(env, req)
-	if req.Fragment != nil && !downloadRequestAllowsFragment(req) {
+	if req.Fragment != nil && (req.Profile.Mode == ModeThumbnail || downloadRequestUsesPlaylist(req)) {
 		req.Fragment = nil
 	}
 	if err := validateDownloadRequest(req, resolveRuntimeDeps(env)); err != nil {
 		return DownloadRequest{}, err
 	}
 	return req, nil
-}
-
-func ValidateDownloadRequest(env *Env, req DownloadRequest) error {
-	_, err := PrepareDownloadRequest(env, req)
-	return err
 }
 
 func normalizeDownloadRequest(env *Env, req DownloadRequest) DownloadRequest {
@@ -112,8 +103,6 @@ func validateDownloadRequest(req DownloadRequest, deps CheckDepsResult) error {
 	switch {
 	case req.Target.Kind == TargetUnknown || req.Target.CanonicalURL == "":
 		return errors.New("download target is required")
-	case req.Profile.Mode == 0:
-		return errors.New("download profile is required")
 	case req.PlaylistInfo != nil && !req.ForceSingle && len(req.Entries) == 0:
 		return errors.New("playlist entries are required")
 	case !deps.YTDLP.Available:
@@ -129,7 +118,7 @@ func validateDownloadRequest(req DownloadRequest, deps CheckDepsResult) error {
 		}
 	}
 
-	if downloadRequestRequiresFFmpeg(req) && !deps.FFmpeg.Available {
+	if ProfileRequiresFFmpeg(req.Profile, req.Fragment) && !deps.FFmpeg.Available {
 		return downloadRequestFFmpegError(req)
 	}
 	return nil
@@ -137,24 +126,6 @@ func validateDownloadRequest(req DownloadRequest, deps CheckDepsResult) error {
 
 func downloadRequestUsesPlaylist(req DownloadRequest) bool {
 	return req.PlaylistInfo != nil && !req.ForceSingle && len(req.Entries) > 0
-}
-
-func downloadRequestEntries(req DownloadRequest) []PlaylistEntry {
-	if !downloadRequestUsesPlaylist(req) {
-		return nil
-	}
-	return slices.Clone(req.Entries)
-}
-
-func downloadRequestAllowsFragment(req DownloadRequest) bool {
-	if req.Profile.Mode == ModeThumbnail || downloadRequestUsesPlaylist(req) {
-		return false
-	}
-	return req.Target.IsVideo()
-}
-
-func downloadRequestRequiresFFmpeg(req DownloadRequest) bool {
-	return ProfileRequiresFFmpeg(req.Profile, req.Fragment)
 }
 
 func downloadRequestFFmpegError(req DownloadRequest) error {

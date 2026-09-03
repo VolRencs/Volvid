@@ -169,10 +169,10 @@ func TestFmtSpeedForLocaleSuffix(t *testing.T) {
 	}
 }
 
-func TestValidateDownloadRequestRejectsUnknownTarget(t *testing.T) {
+func TestPrepareDownloadRequestRejectsUnknownTarget(t *testing.T) {
 	env := testEnv(t)
 	req := DownloadRequest{Profile: DefaultVideoProfile(LocaleEN)}
-	if err := ValidateDownloadRequest(env, req); err == nil {
+	if _, err := PrepareDownloadRequest(env, req); err == nil {
 		t.Fatal("expected error for missing target")
 	}
 }

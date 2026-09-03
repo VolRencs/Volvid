@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	app "YouTubeBuild/internal/app"
+	app "volvid/internal/app"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -32,7 +32,7 @@ func (m *Model) resetPlaylistState() {
 func (m *Model) resetProfileState() {
 	m.forceSingle = false
 	m.numWorkers = 1
-	m.mode = app.DefaultDownloadMode()
+	m.mode = app.ModeVideo
 	m.profile = app.DefaultVideoProfile(m.locale)
 	m.flowErr = ""
 	m.dlEntries = nil
@@ -137,7 +137,7 @@ func (m Model) gotoWorkersBack() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) {
-	m.mode = app.DefaultDownloadMode()
+	m.mode = app.ModeVideo
 	m.profile = app.DefaultVideoProfile(m.locale)
 	m.flowErr = notice
 	m.qualityChoices = nil
@@ -397,7 +397,7 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 		OutputDir:     m.env.DownloadsDir(),
 		Locale:        m.locale,
 	}
-	if err := app.ValidateDownloadRequest(m.env, req); err != nil {
+	if _, err := app.PrepareDownloadRequest(m.env, req); err != nil {
 		m.flowErr = err.Error()
 		m.restoreDownloadConfigScreen()
 		m = m.syncMenu()
@@ -422,14 +422,15 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 
 	ch := make(chan app.DlUpdate, 256)
 	m.dlCh = ch
+	m.dlGen++
 	m.screen = scrDownload
 
-	dlCtx, dlCancel := context.WithCancel(context.Background())
+	dlCtx, dlCancel := context.WithCancel(m.baseCtx)
 	m.dlCancel = dlCancel
 
 	req.Workers = workers
 	app.StartDownloadRequestContext(m.env, dlCtx, req, ch)
-	return m, tea.Batch(listenDownloadCmd(ch), timerTickCmd())
+	return m, tea.Batch(listenDownloadCmd(ch, m.dlGen), timerTickCmd())
 }
 
 func (m Model) cancelDownload() (tea.Model, tea.Cmd) {

@@ -9,7 +9,7 @@
 ![Go](https://img.shields.io/badge/Go-1.27.0%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-7.2.0-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-7.2.1-orange?style=flat-square)
 
 </div>
 
@@ -159,11 +159,3 @@ Check that the current platform has the required desktop integration available. 
 | [godbus/dbus](https://github.com/godbus/dbus) | BSD-2-Clause |
 
 Project source is **MIT**.
-
----
-
-<div align="center">
-
-Made by **Volvid**
-
-</div>

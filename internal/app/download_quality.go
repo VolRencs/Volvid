@@ -8,7 +8,7 @@ const (
 )
 
 var qualityChains = [2][]string{
-	{ytdlpBestFormat, "bestvideo+bestaudio/best", "best"},
+	{ytdlpBestFormat, "best"},
 	{ytdlpWorst360Format, "best[height<=360]", "worst"},
 }
 

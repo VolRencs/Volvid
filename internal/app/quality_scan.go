@@ -34,7 +34,6 @@ type videoQualityInfo struct {
 	heights      []int
 	hasHeight    map[int]bool
 	sizeByHeight map[int]int64
-	audioSize    int64
 }
 
 func DefaultQualityChoices() []QualityChoice {
@@ -54,7 +53,7 @@ func shouldScanQualityChoices(n int) bool {
 }
 
 func ResolveQualityChoicesContext(env *Env, ctx context.Context, urls []string) ([]QualityChoice, error) {
-	urls = compactQualityURLs(urls)
+	urls = dedupeStrings(urls, func(s string) string { return s })
 	if len(urls) == 0 {
 		return nil, errors.New("quality scan: empty input")
 	}
@@ -110,17 +109,13 @@ func (q QualityChoice) Profile(l Locale) OutputProfile {
 	}
 }
 
-func compactQualityURLs(urls []string) []string {
-	return dedupeStrings(urls, func(s string) string { return s })
-}
-
 type qualityScanResult struct {
 	info videoQualityInfo
 	err  error
 }
 
 func scanQualityChoicesContext(env *Env, ctx context.Context, urls []string) ([]QualityChoice, error) {
-	urls = compactQualityURLs(urls)
+	urls = dedupeStrings(urls, func(s string) string { return s })
 	if len(urls) == 0 {
 		return nil, errors.New("quality scan: empty input")
 	}
@@ -268,7 +263,6 @@ func videoQualityInfoFromProbe(probe *MediaProbe) (videoQualityInfo, error) {
 		heights:      heights,
 		hasHeight:    heightsSeen,
 		sizeByHeight: sizeByHeight,
-		audioSize:    audioSize,
 	}, nil
 }
 

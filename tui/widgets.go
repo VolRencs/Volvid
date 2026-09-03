@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	app "YouTubeBuild/internal/app"
+	app "volvid/internal/app"
 
 	"charm.land/lipgloss/v2"
 )

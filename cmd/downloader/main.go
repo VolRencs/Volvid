@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"YouTubeBuild/internal/app"
-	"YouTubeBuild/tui"
+	"volvid/internal/app"
+	"volvid/tui"
 
 	tea "charm.land/bubbletea/v2"
 )

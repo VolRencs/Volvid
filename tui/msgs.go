@@ -3,7 +3,7 @@ package tui
 import (
 	"time"
 
-	app "YouTubeBuild/internal/app"
+	app "volvid/internal/app"
 )
 
 type inputTarget uint8
@@ -81,7 +81,10 @@ type (
 		err      error
 		gen      int
 	}
-	msgDlUpdate             struct{ update app.DlUpdate }
+	msgDlUpdate struct {
+		update app.DlUpdate
+		gen    int
+	}
 	msgOpenDownloadsDirDone struct{ err error }
 	msgPickDownloadsDirDone struct {
 		path string

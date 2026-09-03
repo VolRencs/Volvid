@@ -34,14 +34,7 @@ func FetchPlaylistInfoFor(env *Env, ctx context.Context, url string, l Locale) (
 		strs    = StringsFor(l)
 	)
 
-	err := scanYTDLPJSONLines(env, ctx, playlistFetchTimeout, []string{
-		"--flat-playlist",
-		"--dump-json",
-		"--quiet",
-		"--ignore-errors",
-		"--no-warnings",
-		url,
-	}, func(e map[string]any) {
+	err := scanYTDLPJSONLines(env, ctx, playlistFetchTimeout, flatPlaylistScanArgs(url), func(e map[string]any) {
 		if first == nil {
 			first = e
 		}
@@ -54,14 +47,8 @@ func FetchPlaylistInfoFor(env *Env, ctx context.Context, url string, l Locale) (
 		entries = append(entries, entry)
 	})
 
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, errors.New(strs.PlTimeout)
-		}
-		if len(entries) > 0 {
-			return nil, fmt.Errorf("%w (%d)", err, len(entries))
-		}
-		return nil, err
+	if scanErr := flatScanError(err, len(entries), errors.New(strs.PlTimeout)); scanErr != nil {
+		return nil, scanErr
 	}
 	if len(entries) == 0 {
 		return nil, errors.New(strs.PlEmptyPlaylist)
@@ -83,9 +70,17 @@ func mapString(m map[string]any, key, def string) string {
 }
 
 func mapFloat(m map[string]any, key string) float64 {
-	if v, ok := m[key]; ok {
-		if n, ok := v.(float64); ok {
-			return n
+	v, ok := m[key]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		return n
+	case string:
+		// yt-dlp occasionally emits numeric fields as strings.
+		if f, err := strconv.ParseFloat(strings.TrimSpace(n), 64); err == nil {
+			return f
 		}
 	}
 	return 0

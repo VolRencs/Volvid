@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	app "YouTubeBuild/internal/app"
+	app "volvid/internal/app"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -117,6 +117,7 @@ type Model struct {
 	dlCancel    context.CancelFunc
 	depCancel   context.CancelFunc
 	dlCancelled bool
+	dlGen       int
 }
 
 func New(env *app.Env, ctx context.Context) tea.Model {
@@ -143,7 +144,7 @@ func newModel() Model {
 		searchInput: newInput(inputSearch, app.StringsFor(loc).SearchPlaceholder, inputW, 120),
 		plInput:     newInput(inputPlaylist, app.StringsFor(loc).PlInputPlaceholder, 38, 100),
 		fragmentIn:  newInput(inputFragment, "1:00-2:30", 28, 32),
-		mode:        app.DefaultDownloadMode(),
+		mode:        app.ModeVideo,
 		profile:     app.DefaultVideoProfile(loc),
 		numWorkers:  1,
 		plSelected:  map[int]bool{},
@@ -179,4 +180,14 @@ func (m Model) nextOpCtx() (Model, context.Context) {
 	ctx, cancel := context.WithCancel(m.baseCtx)
 	m.opCancel = cancel
 	return m, ctx
+}
+
+// clearOpCancel releases a finished operation's context. Call it once the
+// matching result arrives, before starting any new operation.
+func (m Model) clearOpCancel() Model {
+	if m.opCancel != nil {
+		m.opCancel()
+		m.opCancel = nil
+	}
+	return m
 }

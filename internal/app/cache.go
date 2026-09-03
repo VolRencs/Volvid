@@ -9,9 +9,10 @@ import (
 // flightEntry tracks a single in-flight fetch so that concurrent callers
 // for the same key join the running fetch instead of starting their own.
 type flightEntry[V any] struct {
-	done  chan struct{}
-	value V
-	err   error
+	done       chan struct{}
+	generation uint64
+	value      V
+	err        error
 }
 
 // FlightCache is a small generic cache with singleflight-style
@@ -21,6 +22,7 @@ type flightEntry[V any] struct {
 // with the error and leave no value behind.
 type FlightCache[K comparable, V any] struct {
 	mu       sync.Mutex
+	gen      uint64
 	values   map[K]V
 	expiries map[K]time.Time
 	flights  map[K]*flightEntry[V]
@@ -43,7 +45,7 @@ func (fc *FlightCache[K, V]) acquireFlight(key K) (*flightEntry[V], bool) {
 	if fe, ok := fc.flights[key]; ok {
 		return fe, true
 	}
-	fe := &flightEntry[V]{done: make(chan struct{})}
+	fe := &flightEntry[V]{done: make(chan struct{}), generation: fc.gen}
 	fc.flights[key] = fe
 	return fe, false
 }
@@ -56,6 +58,11 @@ func (fc *FlightCache[K, V]) finishFlight(key K, fe *flightEntry[V], val V, err 
 	fe.value = val
 	fe.err = err
 	close(fe.done)
+	if fe.generation != fc.gen {
+		// Invalidated while fetching: followers already waiting still
+		// get the result, but nothing is published to the cache.
+		return
+	}
 	if fc.flights[key] == fe {
 		delete(fc.flights, key)
 	}
@@ -113,6 +120,7 @@ func (fc *FlightCache[K, V]) Get(key K) (V, bool) {
 func (fc *FlightCache[K, V]) InvalidateAll() {
 	fc.mu.Lock()
 	defer fc.mu.Unlock()
+	fc.gen++
 	clear(fc.values)
 	clear(fc.expiries)
 	clear(fc.flights)

@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -121,9 +120,6 @@ func newProcessTreeCommand(ctx context.Context, name string, args ...string) *ex
 }
 
 func startCommand(cmd *exec.Cmd, ctx context.Context) error {
-	if cmd == nil {
-		return errors.New("command is not initialized")
-	}
 	if err := cmd.Start(); err != nil {
 		return normalizeCommandError(ctx, err)
 	}
@@ -139,9 +135,6 @@ func startCommand(cmd *exec.Cmd, ctx context.Context) error {
 }
 
 func waitCommand(cmd *exec.Cmd, ctx context.Context) error {
-	if cmd == nil {
-		return nil
-	}
 	defer cleanupProcessTree(cmd)
 	if err := cmd.Wait(); err != nil {
 		return normalizeCommandError(ctx, err)

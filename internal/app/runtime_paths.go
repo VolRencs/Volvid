@@ -83,20 +83,7 @@ func userDataRoot() (string, bool) {
 }
 
 func envPath(key string) string {
-	if path := cleanAbsPath(os.Getenv(key)); path != "" {
-		return path
-	}
-	if legacy, ok := legacyEnvKey(key); ok {
-		return cleanAbsPath(os.Getenv(legacy))
-	}
-	return ""
-}
-
-func legacyEnvKey(key string) (string, bool) {
-	if rest, ok := strings.CutPrefix(key, "VOLVID_"); ok {
-		return "VOLREN_" + rest, true
-	}
-	return "", false
+	return cleanAbsPath(os.Getenv(key))
 }
 
 func cleanAbsPath(path string) string {
