@@ -10,10 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 )
-
-const playlistFetchTimeout = 15 * time.Minute
 
 type PlaylistEntry struct {
 	Index    int
@@ -78,7 +75,6 @@ func mapFloat(m map[string]any, key string) float64 {
 	case float64:
 		return n
 	case string:
-		// yt-dlp occasionally emits numeric fields as strings.
 		if f, err := strconv.ParseFloat(strings.TrimSpace(n), 64); err == nil {
 			return f
 		}

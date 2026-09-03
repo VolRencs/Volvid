@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -44,12 +45,6 @@ type DownloadRequest struct {
 	Locale        Locale
 }
 
-const (
-	ytdlpDownloadRetries     = "10"
-	ytdlpFragmentRetries     = "10"
-	ytdlpConcurrentFragments = "12"
-)
-
 func DefaultVideoProfile(l Locale) OutputProfile {
 	return OutputProfile{
 		Key:           "best",
@@ -60,11 +55,15 @@ func DefaultVideoProfile(l Locale) OutputProfile {
 }
 
 func PrepareDownloadRequest(env *Env, req DownloadRequest) (DownloadRequest, error) {
+	return PrepareDownloadRequestWithDeps(env, req, resolveRuntimeDeps(env))
+}
+
+func PrepareDownloadRequestWithDeps(env *Env, req DownloadRequest, deps CheckDepsResult) (DownloadRequest, error) {
 	req = normalizeDownloadRequest(env, req)
 	if req.Fragment != nil && (req.Profile.Mode == ModeThumbnail || downloadRequestUsesPlaylist(req)) {
 		req.Fragment = nil
 	}
-	if err := validateDownloadRequest(req, resolveRuntimeDeps(env)); err != nil {
+	if err := validateDownloadRequest(req, deps); err != nil {
 		return DownloadRequest{}, err
 	}
 	return req, nil
@@ -162,13 +161,13 @@ func downloadReliabilityArgs(req DownloadRequest) []string {
 	args := []string{
 		"--continue",
 		"--part",
-		"--retries", ytdlpDownloadRetries,
-		"--fragment-retries", ytdlpFragmentRetries,
+		"--retries", strconv.Itoa(ytdlpDownloadRetries),
+		"--fragment-retries", strconv.Itoa(ytdlpFragmentRetries),
 		"--retry-sleep", "linear=1:5:2",
 		"--abort-on-unavailable-fragments",
 	}
 	if req.Profile.Mode != ModeThumbnail {
-		args = append(args, "--concurrent-fragments", ytdlpConcurrentFragments)
+		args = append(args, "--concurrent-fragments", strconv.Itoa(ytdlpConcurrentFragments))
 	}
 	return args
 }
@@ -209,7 +208,6 @@ func videoModeArgs(profile OutputProfile, format string) []string {
 	return []string{"-f", format, "--merge-output-format", container}
 }
 
-// videoPostprocessKind describes what ffmpeg must do with a video profile.
 type videoPostprocessKind uint8
 
 const (
@@ -242,8 +240,6 @@ func (p OutputProfile) NeedsVideoTranscode() bool {
 	return p.videoPostprocessKind() == videoPostprocessTranscode
 }
 
-// ProfileRequiresFFmpeg reports whether downloading with profile and an
-// optional fragment needs ffmpeg available.
 func ProfileRequiresFFmpeg(profile OutputProfile, fragment *DownloadFragment) bool {
 	return profile.Mode == ModeAudio || fragment != nil || profile.RequiresVideoPostprocessing()
 }
@@ -253,7 +249,6 @@ func appendFragmentDownloadArgs(args []string, req DownloadRequest) []string {
 		return args
 	}
 
-	// yt-dlp can trim both audio and video natively, so fragments stay on the common download path.
 	if section, ok := req.Fragment.sectionArg(); ok {
 		args = append(args, "--download-sections", section)
 		if req.Profile.Mode != ModeAudio {

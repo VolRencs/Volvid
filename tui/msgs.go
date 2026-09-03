@@ -52,10 +52,14 @@ type depAction struct {
 
 type (
 	msgUpdateChecked struct{ info *app.UpdateInfo }
-	msgDepProgress   struct{ progress app.FileProgress }
-	msgDepDone       struct {
+	msgDepProgress   struct {
+		progress app.FileProgress
+		gen      int
+	}
+	msgDepDone struct {
 		err      error
 		isUpdate bool
+		gen      int
 	}
 	msgDepsRefreshed struct {
 		deps  app.CheckDepsResult

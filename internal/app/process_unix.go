@@ -40,9 +40,6 @@ func cleanupProcessTree(cmd *exec.Cmd) {
 	}
 }
 
-// killTimers tracks pending SIGKILL timers armed by interruptProcessTree.
-// The timer is stopped once the command is reaped, so a late SIGKILL can
-// never hit a recycled PID.
 var killTimers sync.Map // *exec.Cmd -> *time.Timer
 
 func interruptProcessTree(cmd *exec.Cmd, grace time.Duration) error {
@@ -58,11 +55,11 @@ func interruptProcessTree(cmd *exec.Cmd, grace time.Duration) error {
 	err := signalProcessGroup(pid, syscall.SIGTERM)
 	if grace > 0 {
 		timer := time.AfterFunc(grace, func() {
-			_ = signalProcessGroup(pid, syscall.SIGKILL)
+			if _, ok := killTimers.LoadAndDelete(cmd); ok {
+				_ = signalProcessGroup(pid, syscall.SIGKILL)
+			}
 		})
 		if old, loaded := killTimers.LoadOrStore(cmd, timer); loaded {
-			// A previous timer is still pending (e.g. Cancel ran twice):
-			// keep a single SIGKILL schedule per command.
 			if oldTimer, ok := old.(*time.Timer); ok {
 				_ = oldTimer.Stop()
 			}

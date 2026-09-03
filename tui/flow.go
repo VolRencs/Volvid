@@ -10,8 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// ---------- reset family ----------
-
 func (m *Model) resetSearchState() {
 	m.searchQuery = ""
 	m.searchErr = ""
@@ -89,8 +87,6 @@ func (m Model) resetForNext() (tea.Model, tea.Cmd) {
 	return m, m.urlInput.Focus()
 }
 
-// ---------- navigation ----------
-
 func (m Model) restoreActiveScreen() (tea.Model, tea.Cmd) {
 	switch m.screen {
 	case scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrVideoOutput, scrSearchResults, scrFragmentChoice, scrPlaylistAsk:
@@ -160,8 +156,6 @@ func (m Model) startPickDownloadsDir() (tea.Model, tea.Cmd) {
 	return m, pickDownloadsDirCmd(m.env, m.env.DownloadsDir(), m.locale)
 }
 
-// ---------- target flow ----------
-
 func (m Model) submitURLInput() (tea.Model, tea.Cmd) {
 	rawURL := strings.TrimSpace(m.urlInput.Value())
 	if rawURL == "" {
@@ -194,7 +188,7 @@ func (m Model) startTargetFlow(rawURL string, target app.ParsedTarget) (tea.Mode
 		var ctx context.Context
 		m, ctx = m.nextOpCtx()
 		m.screen = scrPlaylistFetch
-		return m, fetchPlaylistCmd(m.env, ctx, rawURL, m.locale, m.opGen)
+		return m, tea.Batch(fetchPlaylistCmd(m.env, ctx, rawURL, m.locale, m.opGen), spinnerTickCmd())
 	}
 
 	return m.startFragmentFlow()
@@ -205,10 +199,8 @@ func (m Model) startFragmentFlow() (tea.Model, tea.Cmd) {
 	var ctx context.Context
 	m, ctx = m.nextOpCtx()
 	m.screen = scrFragmentProbe
-	return m, probeFragmentDurationCmd(m.env, ctx, m.target, m.opGen)
+	return m, tea.Batch(probeFragmentDurationCmd(m.env, ctx, m.target, m.opGen), spinnerTickCmd())
 }
-
-// ---------- search flow ----------
 
 func (m Model) openSearchInput() (tea.Model, tea.Cmd) {
 	m.screen = scrSearchInput
@@ -230,7 +222,7 @@ func (m Model) submitSearchInput() (tea.Model, tea.Cmd) {
 	var ctx context.Context
 	m, ctx = m.nextOpCtx()
 	m.screen = scrSearchFetch
-	return m, searchYouTubeCmd(m.env, ctx, query, m.opGen)
+	return m, tea.Batch(searchYouTubeCmd(m.env, ctx, query, m.opGen), spinnerTickCmd())
 }
 
 func (m Model) activateSearchResult(idx int) (tea.Model, tea.Cmd) {
@@ -264,8 +256,6 @@ func (m Model) exitSearch() (tea.Model, tea.Cmd) {
 	m.searchInput.Blur()
 	return m, m.urlInput.Focus()
 }
-
-// ---------- dependency flow ----------
 
 func (m Model) gotoChecks() (tea.Model, tea.Cmd) {
 	deps := app.DetectDeps(m.env)
@@ -346,11 +336,10 @@ func (m Model) startDependencyDownload(
 	m.screen = screen
 
 	var cmd tea.Cmd
-	m.depCh, cmd, m.depCancel = launchProgress(m.baseCtx, fn, isUpdate)
+	m.depGen++
+	m.depCh, cmd, m.depCancel = launchProgress(m.baseCtx, fn, isUpdate, m.depGen)
 	return m, cmd
 }
-
-// ---------- quality / download flow ----------
 
 func (m Model) startQualityScan() (tea.Model, tea.Cmd) {
 	m.qualityChoices = nil
@@ -360,7 +349,7 @@ func (m Model) startQualityScan() (tea.Model, tea.Cmd) {
 	var ctx context.Context
 	m, ctx = m.nextOpCtx()
 	m.screen = scrQualityFetch
-	return m, loadQualityChoicesCmd(m.env, ctx, m.qualityScanURLs(), m.opGen)
+	return m, tea.Batch(loadQualityChoicesCmd(m.env, ctx, m.qualityScanURLs(), m.opGen), spinnerTickCmd())
 }
 
 func (m Model) continueAfterProfileSelection() (tea.Model, tea.Cmd) {
@@ -397,7 +386,7 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 		OutputDir:     m.env.DownloadsDir(),
 		Locale:        m.locale,
 	}
-	if _, err := app.PrepareDownloadRequest(m.env, req); err != nil {
+	if _, err := app.PrepareDownloadRequestWithDeps(m.env, req, deps); err != nil {
 		m.flowErr = err.Error()
 		m.restoreDownloadConfigScreen()
 		m = m.syncMenu()
@@ -429,7 +418,7 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	m.dlCancel = dlCancel
 
 	req.Workers = workers
-	app.StartDownloadRequestContext(m.env, dlCtx, req, ch)
+	app.StartDownloadRequestContext(m.env, dlCtx, req, deps, ch)
 	return m, tea.Batch(listenDownloadCmd(ch, m.dlGen), timerTickCmd())
 }
 
@@ -439,7 +428,6 @@ func (m Model) cancelDownload() (tea.Model, tea.Cmd) {
 		m.dlCancel = nil
 	}
 	m.timerActive = false
-	m.dlElapsed = time.Since(m.dlStartedAt).Round(time.Second)
 	m.resetDownloadState()
 	m.dlCancelled = true
 	m.screen = scrURL

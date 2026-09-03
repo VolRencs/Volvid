@@ -1,7 +1,5 @@
 package app
 
-import "time"
-
 type DependencySource string
 
 const (
@@ -41,10 +39,6 @@ type CheckDepsResult struct {
 	Cookies BrowserCookiesInfo
 	Runtime JSRuntimeInfo
 }
-
-const (
-	versionProbeTimeout = 1500 * time.Millisecond
-)
 
 func (r CheckDepsResult) Dependencies() []DependencyInfo {
 	return []DependencyInfo{r.YTDLP, r.FFmpeg, r.Node}

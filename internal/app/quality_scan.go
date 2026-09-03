@@ -9,13 +9,6 @@ import (
 	"slices"
 	"strconv"
 	"sync"
-	"time"
-)
-
-const (
-	qualityScanTimeout      = 90 * time.Second
-	maxDetailedQualityURLs  = 5
-	maxParallelQualityScans = 6
 )
 
 type QualityChoice struct {
@@ -115,7 +108,6 @@ type qualityScanResult struct {
 }
 
 func scanQualityChoicesContext(env *Env, ctx context.Context, urls []string) ([]QualityChoice, error) {
-	urls = dedupeStrings(urls, func(s string) string { return s })
 	if len(urls) == 0 {
 		return nil, errors.New("quality scan: empty input")
 	}
@@ -143,73 +135,52 @@ func scanQualityChoicesContext(env *Env, ctx context.Context, urls []string) ([]
 }
 
 func buildQualityChoices(heights []int, counts map[int]int, videos []videoQualityInfo, total int) []QualityChoice {
+	chains := make([]string, len(heights))
+	labels := make([]string, len(heights))
+	for i, height := range heights {
+		chains[i] = fmt.Sprintf(
+			"bestvideo[height=%d]+bestaudio/best[height=%d]",
+			height, height,
+		)
+		labels[i] = fmt.Sprintf("%dp", height)
+	}
+	best := make([][]int64, len(videos))
+	for v, video := range videos {
+		row := make([]int64, len(heights)+1)
+		for i := len(heights) - 1; i >= 0; i-- {
+			row[i] = row[i+1]
+			if size := video.sizeByHeight[heights[i]]; size > 0 {
+				row[i] = size
+			}
+		}
+		best[v] = row
+	}
 	choices := make([]QualityChoice, 0, len(heights))
 	for i, height := range heights {
-		chain, labels := buildHeightChain(heights[i:])
+		var size int64
+		for _, row := range best {
+			size += row[i]
+		}
 		choices = append(choices, QualityChoice{
 			Key:       strconv.Itoa(height),
 			Height:    height,
 			Available: counts[height],
 			Total:     total,
-			SizeBytes: estimateChoiceSize(heights[i:], videos),
-			FmtChain:  chain,
-			FmtLabels: labels,
+			SizeBytes: size,
+			FmtChain:  chains[i:],
+			FmtLabels: labels[i:],
 		})
 	}
 	return choices
 }
 
-func buildHeightChain(heights []int) ([]string, []string) {
-	chain := make([]string, 0, len(heights))
-	labels := make([]string, 0, len(heights))
-	for _, height := range heights {
-		chain = append(chain, fmt.Sprintf(
-			"bestvideo[height=%d]+bestaudio/best[height=%d]",
-			height, height,
-		))
-		labels = append(labels, fmt.Sprintf("%dp", height))
-	}
-	return chain, labels
-}
-
-func estimateChoiceSize(heights []int, videos []videoQualityInfo) int64 {
-	var (
-		total int64
-		found bool
-	)
-	for _, video := range videos {
-		size, ok := estimateVideoSize(video, heights)
-		if !ok {
-			continue
-		}
-		total += size
-		found = true
-	}
-	if !found {
-		return 0
-	}
-	return total
-}
-
-func estimateVideoSize(video videoQualityInfo, heights []int) (int64, bool) {
-	for _, height := range heights {
-		if !video.hasHeight[height] {
-			continue
-		}
-		if size := video.sizeByHeight[height]; size > 0 {
-			return size, true
-		}
-	}
-	return 0, false
-}
-
-func scanVideoInfoContext(env *Env, ctx context.Context, url string) (videoQualityInfo, error) {
+func scanVideoInfoContext(env *Env, ctx context.Context, deps CheckDepsResult, url string) (videoQualityInfo, error) {
 	target, err := ParseTarget(url)
 	if err != nil {
 		return videoQualityInfo{}, err
 	}
 
-	probe, err := probeMediaContext(env, ctx, target)
+	probe, err := probeMediaWithDeps(env, ctx, deps, target)
 	if err != nil {
 		return videoQualityInfo{}, err
 	}
@@ -277,6 +248,7 @@ func runQualityScan(env *Env, ctx context.Context, urls []string) <-chan quality
 	jobs := make(chan string)
 	results := make(chan qualityScanResult, len(urls))
 	workers := optimalParallelism(len(urls), maxParallelQualityScans)
+	deps := resolveRuntimeDeps(env)
 
 	var wg sync.WaitGroup
 	for range workers {
@@ -292,7 +264,7 @@ func runQualityScan(env *Env, ctx context.Context, urls []string) <-chan quality
 						return
 					}
 
-					info, err := scanVideoInfoContext(env, ctx, url)
+					info, err := scanVideoInfoContext(env, ctx, deps, url)
 					select {
 					case results <- qualityScanResult{info: info, err: err}:
 					case <-ctx.Done():

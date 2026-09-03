@@ -9,8 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// ---------- option sources ----------
-
 func (m Model) qualityOptions() []string {
 	return app.QualityChoiceLabels(m.qualityChoices, m.locale)
 }
@@ -113,8 +111,6 @@ func (m *Model) syncLocalizedInputs() {
 	m.syncLayout()
 }
 
-// ---------- dependency actions ----------
-
 func (m Model) depActions() []depAction {
 	actions := make([]depAction, 0, 5)
 	for _, dep := range m.deps.ActionableDependencies() {
@@ -160,22 +156,12 @@ func (m Model) depRequirementText(name string) string {
 	return fmt.Sprintf(m.u().DepRequirementFmt, name)
 }
 
-// ---------- screen predicates ----------
-
 func (m Model) uiBusy() bool {
-	switch m.screen {
-	case scrUpdateDl, scrDepDl, scrDepUpdate, scrDownload, scrPlaylistFetch, scrFragmentProbe, scrQualityFetch, scrSearchFetch:
-		return true
-	}
-	return false
+	return m.screen.props().busy
 }
 
 func (m Model) isAppUpdateScreen() bool {
-	switch m.screen {
-	case scrUpdateCheck, scrUpdateReady, scrUpdateDl, scrUpdateDone:
-		return true
-	}
-	return false
+	return m.screen.props().updating
 }
 
 func (m Model) canOpenDependencyScreen() bool {
@@ -194,18 +180,12 @@ func (m Model) canPickDownloadsFolder() bool {
 }
 
 func (m Model) isMenuScreen() bool {
-	switch m.screen {
-	case scrUpdateReady, scrPlaylistAsk, scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrVideoOutput, scrSearchResults, scrFragmentChoice, scrDepUpdate:
-		return true
-	}
-	return false
+	return m.screen.props().menu
 }
 
 func (m Model) canUseURLStartFragment() bool {
 	return m.target.HasURLStart && m.target.URLStartAt > 0 && m.mediaDuration > 0 && m.target.URLStartAt < m.mediaDuration
 }
-
-// ---------- playlist selection state ----------
 
 func (m Model) selectedPlaylistCount() int {
 	return len(m.plSelected)

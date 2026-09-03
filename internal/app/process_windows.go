@@ -70,9 +70,13 @@ func startProcessTree(cmd *exec.Cmd) error {
 }
 
 func cleanupProcessTree(cmd *exec.Cmd) {
-	if job, ok := loadCommandJob(cmd); ok {
-		_ = windows.CloseHandle(job)
-		processJobs.Delete(cmd)
+	if cmd == nil {
+		return
+	}
+	if v, ok := processJobs.LoadAndDelete(cmd); ok {
+		if job, ok := v.(windows.Handle); ok {
+			_ = windows.CloseHandle(job)
+		}
 	}
 }
 

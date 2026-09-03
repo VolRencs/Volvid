@@ -3,11 +3,10 @@ package app
 import (
 	"fmt"
 	"runtime"
-	"time"
 )
 
-const (
-	Version = "7.2.1"
+var (
+	Version = "7.2.2"
 
 	ffmpegWinURL   = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ffmpegLinuxURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
@@ -15,9 +14,6 @@ const (
 	ytdlpBase      = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/"
 
 	githubAPIURL = "https://api.github.com/repos/VolRencs/Volvid/releases/latest"
-
-	apiClientTimeout = 8 * time.Second
-	slotResetDelay   = 300 * time.Millisecond
 )
 
 type runtimePlatform struct {
@@ -26,9 +22,6 @@ type runtimePlatform struct {
 	FFmpegURL       string
 	NodeAssetSuffix string
 }
-
-// currentPlatform supports windows/amd64 and linux/amd64 only;
-// other systems fail fast here by design (no darwin support).
 
 func currentPlatform() (runtimePlatform, error) {
 	switch runtime.GOOS + "/" + runtime.GOARCH {

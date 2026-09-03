@@ -15,27 +15,24 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 )
-
-const manifestFetchTimeout = 30 * time.Second
 
 func InstallDependencyFor(env *Env, ctx context.Context, key string, l Locale, ch chan<- FileProgress) error {
 	var err error
 	switch strings.TrimSpace(key) {
 	case "ytdlp":
-		err = InstallYtDlpFor(env, ctx, l, ch)
+		err = installYtDlpFor(env, ctx, l, ch)
 	case "ffmpeg":
-		err = InstallFFmpegFor(env, ctx, l, ch)
+		err = installFFmpegFor(env, ctx, l, ch)
 	case "node":
-		err = InstallNodeFor(env, ctx, l, ch)
+		err = installNodeFor(env, ctx, l, ch)
 	default:
 		return fmt.Errorf("unsupported dependency: %s", key)
 	}
 	if err != nil {
 		return fmt.Errorf("install dependency %s: %w", key, err)
 	}
-	InvalidateDepsCache(env)
+	invalidateDepsCache(env)
 	return nil
 }
 
@@ -46,8 +43,6 @@ func ensureDepsDir(env *Env) error {
 	return nil
 }
 
-// requireStagedBinary smoke-tests a freshly downloaded binary by probing
-// its version.
 func requireStagedBinary(ctx context.Context, name string, spec depSpec) error {
 	if detectExecutableDependency(ctx, spec, true).Version == "" {
 		return fmt.Errorf("бинарник %s скачан, но не запускается", name)
@@ -55,8 +50,6 @@ func requireStagedBinary(ctx context.Context, name string, spec depSpec) error {
 	return nil
 }
 
-// requireTargetsFound reports the first archive member missing from found.
-// Keys are checked in sorted order so multi-miss errors are deterministic.
 func requireTargetsFound(targets map[string]string, found map[string]bool) error {
 	for _, name := range slices.Sorted(maps.Keys(targets)) {
 		if !found[name] {
@@ -66,7 +59,7 @@ func requireTargetsFound(targets map[string]string, found map[string]bool) error
 	return nil
 }
 
-func InstallYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
+func installYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
 	if err := ensureDepsDir(env); err != nil {
 		return err
 	}
@@ -82,7 +75,7 @@ func InstallYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProg
 	defer os.RemoveAll(staging)
 
 	stagedYtdlp := filepath.Join(staging, binaryBaseName(env.YtdlpBin))
-	if err := DownloadFileContext(env, ctx, url, stagedYtdlp, l, ch); err != nil {
+	if err := downloadFileContext(env, ctx, url, stagedYtdlp, l, ch); err != nil {
 		return fmt.Errorf("download yt-dlp: %w", err)
 	}
 	if err := verifyFileSHA256(stagedYtdlp, checksum); err != nil {
@@ -101,10 +94,6 @@ func InstallYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProg
 	}
 	return nil
 }
-
-// maxExtractedFileSize caps a single file extracted from a downloaded
-// archive; anything larger fails checksum and smoke checks downstream.
-const maxExtractedFileSize = 512 << 20
 
 func extractZipEntry(zf *zip.File, dest string) error {
 	if zf == nil {
@@ -130,8 +119,6 @@ func extractZipEntry(zf *zip.File, dest string) error {
 	}
 	tmpName := tmp.Name()
 
-	// Cap single-file extraction: a corrupt manifest must not fill the disk.
-	// Oversized binaries fail the checksum and smoke checks downstream.
 	if _, err := io.Copy(tmp, io.LimitReader(rc, maxExtractedFileSize)); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
@@ -146,8 +133,6 @@ func extractZipEntry(zf *zip.File, dest string) error {
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("close temp file: %w", err)
 	}
-	// Mask the archived mode: never honor setuid/setgid/sticky bits or
-	// group/other write bits from a downloaded archive.
 	if err := os.Chmod(tmpName, mode.Perm()&0o755); err != nil {
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("chmod extracted file: %w", err)
@@ -155,7 +140,7 @@ func extractZipEntry(zf *zip.File, dest string) error {
 	return os.Rename(tmpName, dest)
 }
 
-func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
+func installFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
 	if err := ensureDepsDir(env); err != nil {
 		return err
 	}
@@ -171,7 +156,7 @@ func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 		return fmt.Errorf("ffmpeg asset metadata: %w", err)
 	}
 	archive := filepath.Join(tmp, archiveName)
-	if err := DownloadFileContext(env, ctx, archiveURL, archive, l, ch); err != nil {
+	if err := downloadFileContext(env, ctx, archiveURL, archive, l, ch); err != nil {
 		return fmt.Errorf("download ffmpeg archive: %w", err)
 	}
 
@@ -215,7 +200,7 @@ func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 	return nil
 }
 
-func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
+func installNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
 	url, filename, checksum, err := nodeDownloadAsset(ctx, env)
 	if err != nil {
 		return fmt.Errorf("node asset metadata: %w", err)
@@ -231,7 +216,7 @@ func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 	defer os.RemoveAll(tmp)
 
 	archive := filepath.Join(tmp, filename)
-	if err := DownloadFileContext(env, ctx, url, archive, l, ch); err != nil {
+	if err := downloadFileContext(env, ctx, url, archive, l, ch); err != nil {
 		return fmt.Errorf("download node archive: %w", err)
 	}
 	if checksum != "" {
@@ -368,8 +353,6 @@ func nodeAssetFromManifest(manifest, suffix string) (string, string, error) {
 	return name, checksum, nil
 }
 
-// validAssetFilename rejects path separators and shell glob characters so
-// a crafted checksum manifest cannot escape the download directory.
 func validAssetFilename(name string) bool {
 	if name == "" || name != filepath.Base(name) {
 		return false
@@ -636,8 +619,6 @@ func copyExtractedBinaries(root string, targets map[string]string) error {
 		if !ok {
 			return nil
 		}
-		// Refuse to materialize links and special files from archives:
-		// only regular files may land in the staging directory.
 		if !d.Type().IsRegular() {
 			_ = os.Remove(path)
 			return nil

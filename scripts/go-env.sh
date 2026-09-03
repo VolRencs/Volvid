@@ -7,7 +7,7 @@ case "$(uname -s 2>/dev/null || echo unknown)" in
 		;;
 esac
 
-: "${VOLVID_GO_CACHE_ROOT:=/tmp}"
+: "${VOLVID_GO_CACHE_ROOT:=${TMPDIR:-/tmp}}"
 export GOCACHE="${GOCACHE:-$VOLVID_GO_CACHE_ROOT/volvid-go-build}"
 export GOMODCACHE="${GOMODCACHE:-$VOLVID_GO_CACHE_ROOT/volvid-go-mod}"
 mkdir -p "$GOCACHE" "$GOMODCACHE"

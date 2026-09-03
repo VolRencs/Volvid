@@ -1,15 +1,10 @@
 package app
 
-import (
-	"errors"
-	"time"
-)
-
-const folderPickerTimeout = 2 * time.Minute
+import "errors"
 
 var (
 	ErrFolderPickerCancelled   = errors.New("folder selection canceled")
-	ErrFolderPickerUnsupported = errors.New("folder picker is not supported on this platform")
+	errFolderPickerUnsupported = errors.New("folder picker is not supported on this platform")
 )
 
 func PickDownloadsDir(env *Env, current string, locale Locale) (string, error) {

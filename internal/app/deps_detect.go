@@ -10,14 +10,14 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
-	StatusActive          = "active"
-	StatusNoProfile       = "browser found but no usable profile"
-	StatusBrowserNotFound = "browser not found"
-	StatusNotFound        = "not found"
+	StatusActive    = "active"
+	StatusNoProfile = "browser found but no usable profile"
+	StatusNotFound  = "not found"
 
 	FamilyFirefox  = "firefox"
 	FamilyChromium = "chromium"
@@ -37,8 +37,6 @@ type cookieCandidate struct {
 	ModTime    time.Time
 }
 
-const runtimeDepsTTL = 15 * time.Second
-
 func DetectDeps(env *Env) CheckDepsResult  { return loadDeps(env, false) }
 func RefreshDeps(env *Env) CheckDepsResult { return loadDeps(env, true) }
 
@@ -55,7 +53,7 @@ func loadDeps(env *Env, force bool) CheckDepsResult {
 	return result
 }
 
-func InvalidateDepsCache(env *Env) {
+func invalidateDepsCache(env *Env) {
 	env.ensureCaches()
 	env.depsCache.InvalidateAll()
 	env.runtimeDepsCache.InvalidateAll()
@@ -73,21 +71,34 @@ type depSpec struct {
 }
 
 func detectDeps(env *Env, withVersions bool) CheckDepsResult {
-	ytdlp := detectExecutableDependency(context.Background(), depSpec{
-		Key: "ytdlp", Name: "yt-dlp", Required: true, Downloadable: true,
-		LookNames: []string{"yt-dlp"}, ManagedPath: env.YtdlpBin,
-		VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine,
-	}, withVersions)
-	ffmpeg := detectExecutableDependency(context.Background(), depSpec{
-		Key: "ffmpeg", Name: "ffmpeg", Required: true, Downloadable: true,
-		LookNames: []string{"ffmpeg"}, ManagedPath: env.FFmpegBin,
-		VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine,
-	}, withVersions)
-	node := detectExecutableDependency(context.Background(), depSpec{
-		Key: "node", Name: "node", Required: false, Downloadable: true,
-		LookNames: []string{"node"}, ManagedPath: env.NodeBin,
-		VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine,
-	}, withVersions)
+	var ytdlp, ffmpeg, node DependencyInfo
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		ytdlp = detectExecutableDependency(context.Background(), depSpec{
+			Key: "ytdlp", Name: "yt-dlp", Required: true, Downloadable: true,
+			LookNames: []string{"yt-dlp"}, ManagedPath: env.YtdlpBin,
+			VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine,
+		}, withVersions)
+	}()
+	go func() {
+		defer wg.Done()
+		ffmpeg = detectExecutableDependency(context.Background(), depSpec{
+			Key: "ffmpeg", Name: "ffmpeg", Required: true, Downloadable: true,
+			LookNames: []string{"ffmpeg"}, ManagedPath: env.FFmpegBin,
+			VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine,
+		}, withVersions)
+	}()
+	go func() {
+		defer wg.Done()
+		node = detectExecutableDependency(context.Background(), depSpec{
+			Key: "node", Name: "node", Required: false, Downloadable: true,
+			LookNames: []string{"node"}, ManagedPath: env.NodeBin,
+			VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine,
+		}, withVersions)
+	}()
+	wg.Wait()
 
 	deps := CheckDepsResult{YTDLP: ytdlp, FFmpeg: ffmpeg, Node: node}
 	home, _ := os.UserHomeDir()
@@ -142,7 +153,7 @@ func detectBrowserCookies(home, goos string) BrowserCookiesInfo {
 	if foundRoots {
 		return BrowserCookiesInfo{Status: StatusNoProfile}
 	}
-	return BrowserCookiesInfo{Status: StatusBrowserNotFound}
+	return BrowserCookiesInfo{Status: StatusNotFound}
 }
 
 func browserCookiesInfoFromCandidate(candidate cookieCandidate, goos string) BrowserCookiesInfo {
@@ -181,8 +192,6 @@ func detectJSRuntime(node DependencyInfo) JSRuntimeInfo {
 }
 
 func cookieBrowserSpecs(home, goos string) []cookieBrowserSpec {
-	// Only linux and windows are supported; other systems (darwin)
-	// report "browser not found" by design.
 	switch goos {
 	case "linux":
 		return linuxCookieBrowserSpecs(home)
@@ -291,8 +300,6 @@ func expandCookieRoot(root string) []string {
 	return out
 }
 
-// profileScanner describes how to enumerate and inspect browser profiles
-// of one engine family.
 type profileScanner struct {
 	dirs  func(root string) []string
 	state func(root, profileDir string) (cookiePath string, modTime time.Time)
@@ -314,13 +321,12 @@ func cookieCandidates(browser string, roots []string, scan profileScanner) []coo
 	return out
 }
 
-// collectProfileDirs returns root itself (when it is a profile) plus every
-// glob match accepted by exists. A literal glob entry behaves like a fixed
-// path: Glob returns it only when it exists on disk, and exists applies the
-// stricter profile check. normalize maps a match to its profile directory.
 func collectProfileDirs(root string, exists func(string) bool, globs []string, normalize func(string) string) []string {
 	root = strings.TrimSpace(root)
 	if root == "" {
+		return nil
+	}
+	if !pathIsDir(root) {
 		return nil
 	}
 	out := make([]string, 0, 4)
@@ -419,9 +425,6 @@ func chromiumProfileState(root, profileDir string) (string, time.Time) {
 	)
 }
 
-// profileStateWithFallback prefers the cookie database timestamp and falls
-// back to the given marker paths in order, returning the first one that
-// exists on disk.
 func profileStateWithFallback(cookiePath string, cookieTime time.Time, fallbacks ...string) (string, time.Time) {
 	if !cookieTime.IsZero() {
 		return cookiePath, cookieTime
@@ -459,8 +462,6 @@ func pathIsDir(path string) bool {
 	return ok && info.IsDir()
 }
 
-// cookieBrowserDef lists a browser Volvid can read cookies from.
-// Profile root directories differ per OS and are injected by the caller.
 type cookieBrowserDef struct {
 	Browser          string
 	Family           string
@@ -626,8 +627,6 @@ func resolveUserPath(home, raw string) string {
 	return absoluteIfPossible(filepath.Join(home, raw))
 }
 
-// dedupeStrings trims items, drops empties and keeps the first occurrence
-// of every key in order.
 func dedupeStrings(items []string, key func(string) string) []string {
 	out := make([]string, 0, len(items))
 	seen := make(map[string]struct{}, len(items))
@@ -658,8 +657,6 @@ func resolveRuntimeDeps(env *Env) CheckDepsResult {
 	return result
 }
 
-// ytdlpBaseArgs returns flags shared by every yt-dlp invocation:
-// managed ffmpeg location, browser cookies, JS runtime and user agent.
 func ytdlpBaseArgs(env *Env, deps CheckDepsResult) []string {
 	args := make([]string, 0, 7)
 	args = append(args, "--ignore-config", "--no-warnings")
@@ -731,8 +728,6 @@ func firefoxVersionFromLine(line string) string {
 	return ""
 }
 
-// firefoxUAPlatform is constant: runtimeUserAgent only reaches it on
-// linux with Firefox cookies, and no other platform overrides it.
 func firefoxUAPlatform() string {
 	return "X11; Linux x86_64"
 }

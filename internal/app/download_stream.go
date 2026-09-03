@@ -23,7 +23,6 @@ const (
 	EvClosed
 )
 
-// ytdlpLine* marks progress-reporting lines in yt-dlp's merged output.
 const (
 	ytdlpLineStart    = "VRDL_START"
 	ytdlpLineProgress = "VRDL_PROGRESS"
@@ -57,8 +56,6 @@ func ffmpegArgs(deps CheckDepsResult) []string {
 	return []string{"--ffmpeg-location", bin}
 }
 
-// ffmpegBinFor prefers the detected ffmpeg binary and falls back to the
-// managed path so transcoding works right after install.
 func ffmpegBinFor(env *Env, deps CheckDepsResult) string {
 	if bin := strings.TrimSpace(deps.FFmpeg.Path); bin != "" {
 		return bin
@@ -104,7 +101,7 @@ func streamYtdlp(env *Env, ctx context.Context, slot int, l Locale, deps CheckDe
 			if title != "" {
 				lastTitle = title
 				if !sendUpdate(ctx, ch, DlUpdate{Type: EvStart, Slot: slot, Text: title}) {
-					return ctx.Err()
+					return interruptErr(ctx)
 				}
 			}
 			cleanup.add(filename)
@@ -117,18 +114,18 @@ func streamYtdlp(env *Env, ctx context.Context, slot int, l Locale, deps CheckDe
 			if title != "" && title != lastTitle {
 				lastTitle = title
 				if !sendUpdate(ctx, ch, DlUpdate{Type: EvDest, Slot: slot, Text: title}) {
-					return ctx.Err()
+					return interruptErr(ctx)
 				}
 			}
 			if !sendUpdate(ctx, ch, update) {
-				return ctx.Err()
+				return interruptErr(ctx)
 			}
 
 		case strings.HasPrefix(line, ytdlpLinePost):
 			label := postprocessLabel(line, l)
 			if label != "" {
 				if !sendUpdate(ctx, ch, DlUpdate{Type: EvProc, Slot: slot, Text: label}) {
-					return ctx.Err()
+					return interruptErr(ctx)
 				}
 			}
 		}
@@ -233,7 +230,7 @@ func formatProgressSpeed(raw string, l Locale) string {
 	if value <= 0 {
 		return ""
 	}
-	return FmtSpeedFor(value, l)
+	return fmtSpeedFor(value, l)
 }
 
 func parseDownloadInt(raw string) int64 {
@@ -276,6 +273,19 @@ func postprocessLabel(line string, l Locale) string {
 
 func failedDownload(err error) downloadResult {
 	return downloadResult{Err: err, ErrText: commandErrorText(err)}
+}
+
+func interruptErr(ctx context.Context) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	return context.Canceled
+}
+
+func canceledDownload(ctx context.Context) downloadResult {
+	return failedDownload(interruptErr(ctx))
 }
 
 func setDownloadError(result *downloadResult, err error) {

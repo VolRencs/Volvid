@@ -109,7 +109,7 @@ func (m Model) depAccessValue(status, detail string) string {
 		return sDim.Render(m.depText(depStateChecking))
 	}
 	switch status {
-	case "", app.StatusBrowserNotFound, app.StatusNotFound:
+	case "", app.StatusNotFound:
 		return sDim.Render(m.depText(depStateNotActive))
 	case app.StatusActive:
 		if detail == "" {
@@ -117,8 +117,6 @@ func (m Model) depAccessValue(status, detail string) string {
 		}
 		return sOk.Render(detail) + sDim.Render("  ["+status+"]")
 	case app.StatusNoProfile:
-		// Browser without a usable profile: same warn rendering as
-		// unknown states, raw status text shown on purpose.
 		fallthrough
 	default:
 		if detail == "" {

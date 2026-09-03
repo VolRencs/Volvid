@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -14,7 +16,7 @@ import (
 	"time"
 )
 
-func DownloadFileContext(
+func downloadFileContext(
 	env *Env,
 	ctx context.Context,
 	url, dest string,
@@ -34,9 +36,6 @@ func downloadFileWith(
 	l Locale,
 	ch chan<- FileProgress,
 ) error {
-	if client == nil {
-		client = newDownloadHTTPClient()
-	}
 	if err := ensureDownloadDir(dest); err != nil {
 		return err
 	}
@@ -164,7 +163,7 @@ func sanitizeTempPattern(name string) string {
 }
 
 func copyDownloadBody(ctx context.Context, file *os.File, writer *dlWriter, body io.Reader, tmp string) error {
-	_, copyErr := io.CopyBuffer(writer, body, make([]byte, 1<<20))
+	_, copyErr := io.CopyBuffer(writer, body, make([]byte, downloadCopyBufferSize))
 	if copyErr != nil {
 		closeErr := file.Close()
 		writer.emit(true, copyErr)
@@ -208,25 +207,25 @@ func replaceDownloadedFile(tmp, dest string) error {
 func replaceFilesWithBackup(paths map[string]string) error {
 	type backupEntry struct{ dest, backup string }
 	var backups []backupEntry
-	rollback := func() {
+	rollback := func() error {
+		var errs []error
 		for _, b := range backups {
 			if err := os.Rename(b.backup, b.dest); err != nil {
-				fmt.Printf("rollback rename %s -> %s: %v\n", b.backup, b.dest, err)
+				errs = append(errs, err)
 			}
 		}
+		return errors.Join(errs...)
 	}
 
 	for src, dest := range paths {
 		backup, err := replacementBackupPath(dest)
 		if err != nil {
-			rollback()
-			return err
+			return errors.Join(err, rollback())
 		}
 		hadDest := true
 		if err := os.Rename(dest, backup); err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
-				rollback()
-				return fmt.Errorf("%s: %w", filepath.Base(dest), err)
+				return errors.Join(fmt.Errorf("%s: %w", filepath.Base(dest), err), rollback())
 			}
 			hadDest = false
 		}
@@ -234,8 +233,7 @@ func replaceFilesWithBackup(paths map[string]string) error {
 			if hadDest {
 				_ = os.Rename(backup, dest)
 			}
-			rollback()
-			return fmt.Errorf("%s: %w", filepath.Base(dest), err)
+			return errors.Join(fmt.Errorf("%s: %w", filepath.Base(dest), err), rollback())
 		}
 		if hadDest {
 			backups = append(backups, backupEntry{dest: dest, backup: backup})
@@ -248,20 +246,21 @@ func replaceFilesWithBackup(paths map[string]string) error {
 	return nil
 }
 
-// replacementBackupPath reserves a uniquely-named backup slot next to
-// dest so concurrent or rapid retries can never clobber each other.
 func replacementBackupPath(dest string) (string, error) {
-	f, err := os.CreateTemp(filepath.Dir(dest), "."+filepath.Base(dest)+".bak-*")
-	if err != nil {
-		return "", fmt.Errorf("создание бэкапа для %s: %w", dest, err)
+	dir := filepath.Dir(dest)
+	base := filepath.Base(dest)
+	for range 8 {
+		var rnd [8]byte
+		if _, err := rand.Read(rnd[:]); err != nil {
+			return "", fmt.Errorf("создание бэкапа для %s: %w", dest, err)
+		}
+		name := filepath.Join(dir, "."+base+".bak-"+hex.EncodeToString(rnd[:]))
+		if _, err := os.Lstat(name); err != nil {
+			if os.IsNotExist(err) {
+				return name, nil
+			}
+			return "", fmt.Errorf("создание бэкапа для %s: %w", dest, err)
+		}
 	}
-	name := f.Name()
-	if err := f.Close(); err != nil {
-		_ = os.Remove(name)
-		return "", fmt.Errorf("создание бэкапа для %s: %w", dest, err)
-	}
-	if err := os.Remove(name); err != nil {
-		return "", fmt.Errorf("создание бэкапа для %s: %w", dest, err)
-	}
-	return name, nil
+	return "", fmt.Errorf("создание бэкапа для %s: too many collisions", dest)
 }

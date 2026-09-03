@@ -33,10 +33,10 @@ func assetName() (string, error) {
 func CheckUpdate(env *Env) *UpdateInfo {
 	ctx, cancel := context.WithTimeout(context.Background(), apiClientTimeout)
 	defer cancel()
-	return CheckUpdateContext(env, ctx)
+	return checkUpdateContext(env, ctx)
 }
 
-func CheckUpdateContext(env *Env, ctx context.Context) *UpdateInfo {
+func checkUpdateContext(env *Env, ctx context.Context) *UpdateInfo {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubAPIURL, nil)
 	if err != nil {
 		return nil
@@ -44,7 +44,6 @@ func CheckUpdateContext(env *Env, ctx context.Context) *UpdateInfo {
 	req.Header.Set("User-Agent", "Volvid/"+Version)
 	resp, err := doSafeRequest(ctx, env.apiClient, req)
 	if err != nil {
-		fmt.Printf("update check: request failed: %v\n", err)
 		return nil
 	}
 	defer resp.Body.Close()
@@ -53,7 +52,6 @@ func CheckUpdateContext(env *Env, ctx context.Context) *UpdateInfo {
 	}
 	var data map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		fmt.Printf("update check: decode failed: %v\n", err)
 		return nil
 	}
 	latest := strings.TrimPrefix(mapString(data, "tag_name", ""), "v")
@@ -115,13 +113,13 @@ func ApplyUpdateFor(env *Env, ctx context.Context, l Locale, info *UpdateInfo, c
 	}
 	if env.IsWindows {
 		tmp := strings.TrimSuffix(dest, ".exe") + ".new.exe"
-		if err := DownloadFileContext(env, ctx, info.DlURL, tmp, l, ch); err != nil {
+		if err := downloadFileContext(env, ctx, info.DlURL, tmp, l, ch); err != nil {
 			return err
 		}
 		return applyUpdatePlatform(tmp, dest)
 	}
 	tmp := dest + ".new"
-	if err := DownloadFileContext(env, ctx, info.DlURL, tmp, l, ch); err != nil {
+	if err := downloadFileContext(env, ctx, info.DlURL, tmp, l, ch); err != nil {
 		return err
 	}
 	return applyUpdatePlatform(tmp, dest)

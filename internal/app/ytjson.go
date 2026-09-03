@@ -10,10 +10,6 @@ import (
 	"unicode/utf8"
 )
 
-const maxYtdlpErrorLine = 512
-
-// flatPlaylistScanArgs builds the yt-dlp arguments shared by playlist
-// fetching and search: one JSON object per line on stdout.
 func flatPlaylistScanArgs(target string) []string {
 	return []string{
 		"--flat-playlist",
@@ -24,8 +20,6 @@ func flatPlaylistScanArgs(target string) []string {
 	}
 }
 
-// flatScanError maps a scan failure to a user-facing error, keeping partial
-// results when at least one entry was collected.
 func flatScanError(err error, count int, timeoutErr error) error {
 	if err == nil {
 		return nil
@@ -86,8 +80,6 @@ func ytdlpErrorLine(line string) string {
 	if line == "" {
 		return ""
 	}
-	// Truncate by bytes but never split a UTF-8 sequence (at most the
-	// trailing 3 bytes of a 4-byte rune are trimmed).
 	if len(line) > maxYtdlpErrorLine {
 		line = line[:maxYtdlpErrorLine]
 		for len(line) > 0 && !utf8.ValidString(line) {

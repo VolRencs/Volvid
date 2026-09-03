@@ -72,7 +72,7 @@ func ParseTarget(raw string) (ParsedTarget, error) {
 	if err := parseTargetIDs(&target, host, u); err != nil {
 		return ParsedTarget{}, err
 	}
-	target.URLStartAt, target.HasURLStart = ParseURLStartAt(raw)
+	target.URLStartAt, target.HasURLStart = parseURLStartAt(raw)
 	target.CanonicalURL = canonicalTargetURL(target)
 	return target, nil
 }

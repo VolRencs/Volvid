@@ -26,6 +26,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case spinnerTickMsg:
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		if !m.spinnerVisible() {
+			return m, nil
+		}
 		return m, spinnerTickCmd()
 
 	case timerTickMsg:
@@ -51,8 +54,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case msgDepProgress:
+		if msg.gen != m.depGen {
+			return m, nil
+		}
 		m.depProgress = msg.progress
-		return m, streamFileProgressCmd(m.depCh, m.screen == scrUpdateDl)
+		return m, streamFileProgressCmd(m.depCh, m.screen == scrUpdateDl, m.depGen)
 
 	case msgDepDone:
 		return m.handleDepDone(msg)
@@ -130,6 +136,11 @@ func (m Model) handlePickDownloadsDirDone(msg msgPickDownloadsDirDone) (tea.Mode
 }
 
 func (m Model) handleDepDone(msg msgDepDone) (tea.Model, tea.Cmd) {
+	if msg.gen != m.depGen {
+		return m, nil
+	}
+	m.depCancel = nil
+	m.depCh = nil
 	if errors.Is(msg.err, context.Canceled) {
 		m.depErr = ""
 		return m.navigateDepBack(), nil

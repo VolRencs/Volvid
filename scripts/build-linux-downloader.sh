@@ -17,4 +17,9 @@ require_tool() {
 require_tool go
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 
-GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$OUTPUT_PATH" "$ROOT_DIR/cmd/downloader"
+LD_FLAGS="-s -w"
+if [[ -n "${VOLVID_VERSION:-}" ]]; then
+	LD_FLAGS="$LD_FLAGS -X volvid/internal/app.Version=$VOLVID_VERSION"
+fi
+
+GOOS="${GOOS:-linux}" GOARCH="${GOARCH:-amd64}" go build -trimpath -buildvcs=false -ldflags="$LD_FLAGS" -o "$OUTPUT_PATH" "$ROOT_DIR/cmd/downloader"

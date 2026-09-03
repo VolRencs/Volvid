@@ -42,6 +42,10 @@ func ProbeMediaDurationContext(env *Env, ctx context.Context, target ParsedTarge
 }
 
 func probeMediaContext(env *Env, ctx context.Context, target ParsedTarget) (*MediaProbe, error) {
+	return probeMediaWithDeps(env, ctx, resolveRuntimeDeps(env), target)
+}
+
+func probeMediaWithDeps(env *Env, ctx context.Context, deps CheckDepsResult, target ParsedTarget) (*MediaProbe, error) {
 	if !target.IsVideo() {
 		return nil, errors.New("probe requires video target")
 	}
@@ -52,7 +56,7 @@ func probeMediaContext(env *Env, ctx context.Context, target ParsedTarget) (*Med
 	key := probeCacheKey(target)
 
 	probe, err := env.probeCache.ProbeLoad(key, ctx, func() (*MediaProbe, error) {
-		return probeMediaUncached(env, ctx, target)
+		return probeMediaUncached(env, context.WithoutCancel(ctx), deps, target)
 	})
 	if err != nil {
 		return nil, err
@@ -60,12 +64,12 @@ func probeMediaContext(env *Env, ctx context.Context, target ParsedTarget) (*Med
 	return cloneMediaProbe(probe), nil
 }
 
-func probeMediaUncached(env *Env, ctx context.Context, target ParsedTarget) (*MediaProbe, error) {
+func probeMediaUncached(env *Env, ctx context.Context, deps CheckDepsResult, target ParsedTarget) (*MediaProbe, error) {
 	out, err := ytdlpOutput(
 		env,
 		ctx,
 		qualityScanTimeout,
-		resolveRuntimeDeps(env),
+		deps,
 		"--dump-single-json",
 		"--no-playlist",
 		target.CanonicalURL,

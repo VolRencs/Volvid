@@ -11,11 +11,6 @@ import (
 	"time"
 )
 
-const (
-	processTerminateGrace    = 2 * time.Second
-	commandStderrCaptureSize = 8 << 10
-)
-
 type limitedBuffer struct {
 	buf []byte
 }

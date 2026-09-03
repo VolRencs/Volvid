@@ -9,14 +9,8 @@ SYSO_FILE="$PKG_DIR/zz_build_windows_icon.syso"
 OUTPUT_PATH="${1:-$ROOT_DIR/Volvid.exe}"
 
 source "$ROOT_DIR/scripts/go-env.sh"
+source "$ROOT_DIR/scripts/lib.sh"
 
-require_tool() {
-	local tool="$1"
-	if ! command -v "$tool" >/dev/null 2>&1; then
-		echo "missing required tool: $tool" >&2
-		exit 1
-	fi
-}
 
 resolve_tool_candidate() {
 	local tool="$1"
@@ -81,6 +75,15 @@ fi
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 
-"$RSRC_TOOL" -ico "$ICON_FILE" -arch amd64 -o "$SYSO_FILE"
+RSRC_ARCH="amd64"
+if [[ "${GOARCH:-amd64}" == "386" ]]; then
+	RSRC_ARCH="386"
+fi
+"$RSRC_TOOL" -ico "$ICON_FILE" -arch "$RSRC_ARCH" -o "$SYSO_FILE"
 
-GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$OUTPUT_PATH" "$ROOT_DIR/cmd/downloader"
+LD_FLAGS="-s -w"
+if [[ -n "${VOLVID_VERSION:-}" ]]; then
+	LD_FLAGS="$LD_FLAGS -X volvid/internal/app.Version=$VOLVID_VERSION"
+fi
+
+GOOS="${GOOS:-windows}" GOARCH="${GOARCH:-amd64}" go build -trimpath -buildvcs=false -ldflags="$LD_FLAGS" -o "$OUTPUT_PATH" "$ROOT_DIR/cmd/downloader"

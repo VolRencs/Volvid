@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 )
-
-const searchTimeout = 90 * time.Second
 
 type SearchResult struct {
 	Title    string

@@ -25,8 +25,6 @@ type dlWriter struct {
 	ch       chan<- FileProgress
 }
 
-const progressEmitInterval = 100 * time.Millisecond
-
 func (w *dlWriter) Write(p []byte) (int, error) {
 	n, err := w.w.Write(p)
 	w.done += int64(n)
@@ -44,7 +42,7 @@ func (w *dlWriter) emit(fin bool, e error) {
 	now := time.Now()
 	var speed string
 	if elapsed := now.Sub(w.lastTime).Seconds(); elapsed > 0 {
-		speed = FmtSpeedFor(int64(float64(w.done-w.lastDone)/elapsed), w.locale)
+		speed = fmtSpeedFor(int64(float64(w.done-w.lastDone)/elapsed), w.locale)
 		w.lastDone, w.lastTime = w.done, now
 	}
 	pct := 0.0

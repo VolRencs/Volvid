@@ -11,6 +11,7 @@ import (
 
 const (
 	spinnerTickInterval  = 90 * time.Millisecond
+	timerTickInterval    = time.Second
 	digitTimeoutInterval = 700 * time.Millisecond
 )
 
@@ -19,7 +20,7 @@ func spinnerTickCmd() tea.Cmd {
 }
 
 func timerTickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(ts time.Time) tea.Msg { return timerTickMsg(ts) })
+	return tea.Tick(timerTickInterval, func(ts time.Time) tea.Msg { return timerTickMsg(ts) })
 }
 
 func digitTimeoutCmd() tea.Cmd {
@@ -39,16 +40,16 @@ func pickDownloadsDirCmd(env *app.Env, path string, locale app.Locale) tea.Cmd {
 	}
 }
 
-func streamFileProgressCmd(ch <-chan app.FileProgress, isUpdate bool) tea.Cmd {
+func streamFileProgressCmd(ch <-chan app.FileProgress, isUpdate bool, gen int) tea.Cmd {
 	return func() tea.Msg {
 		p, ok := <-ch
 		if !ok {
-			return msgDepDone{isUpdate: isUpdate}
+			return msgDepDone{isUpdate: isUpdate, gen: gen}
 		}
 		if p.Done {
-			return msgDepDone{err: p.Err, isUpdate: isUpdate}
+			return msgDepDone{err: p.Err, isUpdate: isUpdate, gen: gen}
 		}
-		return msgDepProgress{progress: p}
+		return msgDepProgress{progress: p, gen: gen}
 	}
 }
 
@@ -56,6 +57,7 @@ func launchProgress(
 	base context.Context,
 	fn func(context.Context, chan<- app.FileProgress) error,
 	isUpdate bool,
+	gen int,
 ) (<-chan app.FileProgress, tea.Cmd, context.CancelFunc) {
 	ch := make(chan app.FileProgress, 16)
 	ctx, cancel := context.WithCancel(base)
@@ -71,29 +73,30 @@ func launchProgress(
 			doneCh <- fn(ctx, progressCh)
 		}()
 
+		cancelled := false
 		for progress := range progressCh {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
 			progress.Done = false
 			progress.Err = nil
-			ch <- progress
-		}
-
-		if err := <-doneCh; err != nil {
-			if ctx.Err() != nil {
-				err = context.Canceled
+			if cancelled {
+				continue
 			}
-			ch <- app.FileProgress{Done: true, Err: err}
-			return
+			select {
+			case ch <- progress:
+			case <-ctx.Done():
+				cancelled = true
+			}
 		}
 
-		ch <- app.FileProgress{Done: true}
+		terminal := app.FileProgress{Done: true}
+		if fnErr := <-doneCh; fnErr != nil {
+			terminal.Err = fnErr
+		} else if ctx.Err() != nil {
+			terminal.Err = ctx.Err()
+		}
+		ch <- terminal
 	}()
 
-	return ch, streamFileProgressCmd(ch, isUpdate), cancel
+	return ch, streamFileProgressCmd(ch, isUpdate, gen), cancel
 }
 
 func refreshDepsCmd(env *app.Env, token int) tea.Cmd {

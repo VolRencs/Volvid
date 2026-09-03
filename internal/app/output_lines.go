@@ -8,11 +8,6 @@ import (
 	"io"
 )
 
-const (
-	commandLineBufferSize = 128 << 10
-	commandLineMaxBytes   = 16 << 20
-)
-
 var ErrCommandLineTooLong = errors.New("command output line exceeds safe limit")
 
 func readCommandLines(r io.Reader, handle func([]byte) error) error {

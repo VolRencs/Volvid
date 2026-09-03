@@ -8,39 +8,48 @@ import (
 	"sync"
 )
 
-type Env struct {
-	IsWindows bool
-
+type runtimePaths struct {
 	AppDir    string
 	ConfigDir string
 	DataDir   string
 	DepsDir   string
+}
 
+type managedBinaries struct {
 	YtdlpBin   string
 	FFmpegBin  string
 	FFprobeBin string
 	NodeBin    string
+}
 
+type httpClients struct {
 	apiClient *http.Client
 	dlClient  *http.Client
+}
 
-	dlDirMu      sync.RWMutex
-	downloadsDir string
+type depCaches struct {
+	depsCache        *flightCache[struct{}, CheckDepsResult]
+	runtimeDepsCache *flightCache[struct{}, CheckDepsResult]
+	cachesMu         sync.Mutex
+	probeCache       *flightCache[string, *MediaProbe]
 
 	firefoxUserAgentOnce  sync.Once
 	firefoxUserAgentCache string
 
-	depsCache        *FlightCache[struct{}, CheckDepsResult]
-	runtimeDepsCache *FlightCache[struct{}, CheckDepsResult]
-
-	// cachesMu guards lazy cache initialization for bare &Env{} values.
-	// Production code always uses NewEnv, which initializes eagerly.
-	cachesMu sync.Mutex
-
-	probeCache *FlightCache[string, *MediaProbe]
-
 	ffmpegEncodersMu    sync.Mutex
 	ffmpegEncodersValue map[string]map[string]bool
+}
+
+type Env struct {
+	IsWindows bool
+
+	runtimePaths
+	managedBinaries
+	httpClients
+	depCaches
+
+	dlDirMu      sync.RWMutex
+	downloadsDir string
 }
 
 func NewEnv() *Env {
@@ -55,7 +64,7 @@ func NewEnv() *Env {
 	env.initRuntimePaths(filepath.Dir(exe))
 	env.initBinaryPaths()
 
-	env.apiClient = NewHTTPClient(apiClientTimeout)
+	env.apiClient = newTimeoutHTTPClient(apiClientTimeout)
 	env.dlClient = newDownloadHTTPClient()
 	return env
 }

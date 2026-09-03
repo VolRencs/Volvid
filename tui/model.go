@@ -57,6 +57,7 @@ type Model struct {
 	depLabel    string
 	depErr      string
 	depCh       <-chan app.FileProgress
+	depGen      int
 
 	urlInput      inputField
 	urlErr        string
@@ -164,7 +165,41 @@ func (m Model) u() *app.UIStrings {
 	return app.StringsFor(m.locale)
 }
 
-// ---------- operation contexts ----------
+func (m Model) spinnerVisible() bool {
+	return m.screen.props().spinner
+}
+
+type screenProps struct {
+	spinner  bool
+	menu     bool
+	busy     bool
+	updating bool
+}
+
+func (s screen) props() screenProps {
+	switch s {
+	case scrUpdateCheck:
+		return screenProps{spinner: true, busy: true, updating: true}
+	case scrUpdateReady:
+		return screenProps{menu: true, updating: true}
+	case scrUpdateDl:
+		return screenProps{busy: true, updating: true}
+	case scrUpdateDone:
+		return screenProps{updating: true}
+	case scrDepDl:
+		return screenProps{busy: true}
+	case scrDepUpdate:
+		return screenProps{menu: true, busy: true}
+	case scrSearchFetch, scrPlaylistFetch, scrFragmentProbe, scrQualityFetch:
+		return screenProps{spinner: true, busy: true}
+	case scrPlaylistAsk, scrSearchResults, scrFragmentChoice, scrMode, scrAudio, scrQuality, scrVideoOutput, scrWorkers, scrSummary:
+		return screenProps{menu: true}
+	case scrDownload:
+		return screenProps{busy: true}
+	default:
+		return screenProps{}
+	}
+}
 
 func (m Model) cancelOps() Model {
 	m.opGen++
@@ -182,8 +217,6 @@ func (m Model) nextOpCtx() (Model, context.Context) {
 	return m, ctx
 }
 
-// clearOpCancel releases a finished operation's context. Call it once the
-// matching result arrives, before starting any new operation.
 func (m Model) clearOpCancel() Model {
 	if m.opCancel != nil {
 		m.opCancel()

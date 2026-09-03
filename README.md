@@ -9,7 +9,7 @@
 ![Go](https://img.shields.io/badge/Go-1.27.0%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-7.2.1-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-7.2.2-orange?style=flat-square)
 
 </div>
 
@@ -54,7 +54,7 @@ chmod +x Volvid
 
 ### Build From Source
 
-Requires **Go 1.26.2+**.
+Requires **Go 1.27.0+**.
 
 ```bash
 git clone https://github.com/VolRencs/Volvid
@@ -68,7 +68,7 @@ go build -trimpath -buildvcs=false -ldflags="-s -w" -o Volvid ./cmd/downloader
 The repository includes a Windows icon source at `assets/icon/icon.ico`.
 
 ```bash
-go install github.com/akavel/rsrc@latest
+go install github.com/akavel/rsrc@v0.10.2
 ./scripts/build-windows-downloader.sh Volvid.exe
 ```
 

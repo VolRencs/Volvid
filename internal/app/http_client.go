@@ -8,19 +8,6 @@ import (
 	"time"
 )
 
-const (
-	defaultDialTimeout           = 30 * time.Second
-	defaultKeepAlive             = 30 * time.Second
-	defaultIdleConnTimeout       = 90 * time.Second
-	defaultTLSHandshakeTimeout   = 10 * time.Second
-	defaultExpectContinueTimeout = time.Second
-	defaultResponseHeaderTimeout = 60 * time.Second
-	defaultFileDownloadTimeout   = 2 * time.Hour
-	tarCommandTimeout            = 2 * time.Minute
-	defaultSafeRetryAttempts     = 3
-	defaultSafeRetryBackoff      = 250 * time.Millisecond
-)
-
 type HTTPClientConfig struct {
 	Timeout               time.Duration
 	DialTimeout           time.Duration
@@ -33,7 +20,7 @@ type HTTPClientConfig struct {
 	MaxIdleConnsPerHost   int
 }
 
-func NewHTTPClient(timeout time.Duration) *http.Client {
+func newTimeoutHTTPClient(timeout time.Duration) *http.Client {
 	return newHTTPClient(defaultHTTPClientConfig(timeout))
 }
 
@@ -72,7 +59,7 @@ func newHTTPClient(cfg HTTPClientConfig) *http.Client {
 }
 
 func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
-	if len(via) >= 10 {
+	if len(via) >= maxHTTPRedirects {
 		return errors.New("stopped after 10 redirects")
 	}
 	if req == nil || req.URL == nil {

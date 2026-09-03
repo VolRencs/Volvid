@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -55,7 +56,7 @@ func FormatFragmentLabel(fragment *DownloadFragment) string {
 	return start + "-" + FormatClockTimestamp(*fragment.EndAt)
 }
 
-func ParseFragmentRange(raw string) (DownloadFragment, error) {
+func parseFragmentRange(raw string) (DownloadFragment, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
 		return DownloadFragment{}, ErrFragmentFormat
@@ -97,7 +98,7 @@ func ParseFragmentRange(raw string) (DownloadFragment, error) {
 }
 
 func ParseBoundedFragmentRange(raw string, mediaDuration int) (DownloadFragment, error) {
-	fragment, err := ParseFragmentRange(raw)
+	fragment, err := parseFragmentRange(raw)
 	if err != nil {
 		return DownloadFragment{}, err
 	}
@@ -142,7 +143,7 @@ func FragmentUnavailableText(l Locale) string {
 	return StringsFor(l).FragmentUnavailable
 }
 
-func FragmentRangeOutOfBoundsText(l Locale, mediaDuration int) string {
+func fragmentRangeOutOfBoundsText(l Locale, mediaDuration int) string {
 	strs := StringsFor(l)
 	if mediaDuration <= 0 {
 		return strs.FragmentUnavailable
@@ -163,7 +164,7 @@ func FragmentInputErrorText(l Locale, err error, mediaDuration int) string {
 	case err == nil:
 		return ""
 	case errors.Is(err, ErrFragmentOutOfRange):
-		return FragmentRangeOutOfBoundsText(l, mediaDuration)
+		return fragmentRangeOutOfBoundsText(l, mediaDuration)
 	case errors.Is(err, ErrFragmentDurationRequired):
 		return FragmentUnavailableText(l)
 	case errors.Is(err, ErrFragmentBounds):
@@ -173,7 +174,7 @@ func FragmentInputErrorText(l Locale, err error, mediaDuration int) string {
 	}
 }
 
-func ParseURLStartAt(rawURL string) (int, bool) {
+func parseURLStartAt(rawURL string) (int, bool) {
 	normalized := strings.TrimSpace(rawURL)
 	if normalized == "" {
 		return 0, false
@@ -253,14 +254,17 @@ func parseFlexibleTimestamp(raw string) (int, bool) {
 			if !ok {
 				return 0, false
 			}
+			mult := 1
 			switch r {
 			case 'h':
-				secs += n * 3600
+				mult = 3600
 			case 'm':
-				secs += n * 60
-			case 's':
-				secs += n
+				mult = 60
 			}
+			if n > math.MaxInt/mult || secs > math.MaxInt-n*mult {
+				return 0, false
+			}
+			secs += n * mult
 			current.Reset()
 			consumed = true
 		default:
@@ -319,6 +323,11 @@ func parseDigits(value string) (int, bool) {
 	if value == "" {
 		return 0, false
 	}
+	for _, r := range value {
+		if !unicode.IsDigit(r) {
+			return 0, false
+		}
+	}
 	n, err := strconv.Atoi(value)
 	if err != nil {
 		return 0, false
@@ -327,11 +336,17 @@ func parseDigits(value string) (int, bool) {
 }
 
 func parseClockParts(minutes, hours, seconds int) (int, error) {
+	if minutes < 0 || hours < 0 || seconds < 0 {
+		return 0, fmt.Errorf("timestamp must not be negative")
+	}
 	if seconds >= 60 {
 		return 0, fmt.Errorf("seconds must be < 60")
 	}
 	if hours > 0 && minutes >= 60 {
 		return 0, fmt.Errorf("minutes and seconds must be < 60")
+	}
+	if hours > math.MaxInt/3600 || minutes > math.MaxInt/60 || seconds > math.MaxInt-hours*3600-minutes*60 {
+		return 0, fmt.Errorf("timestamp is too large")
 	}
 	return hours*3600 + minutes*60 + seconds, nil
 }

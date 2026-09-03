@@ -10,9 +10,6 @@ import (
 )
 
 func doSafeRequest(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
-	if client == nil {
-		client = NewHTTPClient(0)
-	}
 	ctx = resolveContext(ctx)
 
 	var lastErr error
@@ -20,7 +17,7 @@ func doSafeRequest(ctx context.Context, client *http.Client, req *http.Request) 
 		resp, err := client.Do(req.Clone(ctx))
 		if err == nil {
 			if shouldRetryStatus(resp.StatusCode) && attempt+1 < defaultSafeRetryAttempts {
-				_, _ = io.CopyN(io.Discard, resp.Body, 1<<20)
+				_, _ = io.CopyN(io.Discard, resp.Body, retryBodyDrainLimit)
 				resp.Body.Close()
 				if err := sleepWithContext(ctx, retryBackoffForAttempt(attempt)); err != nil {
 					return nil, err

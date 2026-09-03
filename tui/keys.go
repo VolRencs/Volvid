@@ -143,8 +143,6 @@ func (m Model) handleEscape(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	}
 }
 
-// ---------- key predicates ----------
-
 func isOpenFolderKey(msg tea.KeyPressMsg) bool {
 	switch msg.String() {
 	case "o", "O", "щ", "Щ":
@@ -180,8 +178,6 @@ func isDigitKey(k string) bool {
 	return (c >= '1' && c <= '9') || c == '0'
 }
 
-// ---------- menu digits ----------
-
 func (m Model) handleMenuDigit(digit string) (tea.Model, tea.Cmd) {
 	if !m.isMenuScreen() || len(m.menu.items) == 0 {
 		m.menuDigits = ""
@@ -216,8 +212,6 @@ func (m Model) activatePendingDigits() (tea.Model, tea.Cmd) {
 	m.menu.SetCursor(n - 1)
 	return m.activateMenu()
 }
-
-// ---------- per-screen key handlers ----------
 
 func (m Model) handleURLKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -316,8 +310,6 @@ func (m Model) handlePlaylistInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	}
 }
 
-// ---------- menu activation ----------
-
 func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 	if len(m.menu.items) == 0 {
 		return m, nil
@@ -345,7 +337,7 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		var ctx context.Context
 		m, ctx = m.nextOpCtx()
 		m.screen = scrPlaylistFetch
-		return m, fetchPlaylistCmd(m.env, ctx, m.url, m.locale, m.opGen)
+		return m, tea.Batch(fetchPlaylistCmd(m.env, ctx, m.url, m.locale, m.opGen), spinnerTickCmd())
 
 	case scrSummary:
 		if idx == 0 {
@@ -474,8 +466,6 @@ func (m Model) activateFragmentChoice(idx int) (tea.Model, tea.Cmd) {
 		return m, m.fragmentIn.Focus()
 	}
 }
-
-// ---------- input routing ----------
 
 type activeInputState struct {
 	field *inputField
