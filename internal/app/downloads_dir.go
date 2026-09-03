@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-const downloadsDirFileName = ".volren_downloads_dir"
+const downloadsDirFileName = ".volvid_downloads_dir"
 
-var ErrDownloadsDirLocked = errors.New("download location is fixed by VOLREN_DOWNLOADS_DIR")
+var ErrDownloadsDirLocked = errors.New("download location is fixed by VOLVID_DOWNLOADS_DIR")
 
 func resolveDownloadsDir(env *Env) string {
 	if path := envPath(envDownloadsDir); path != "" {

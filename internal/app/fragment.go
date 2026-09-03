@@ -61,10 +61,10 @@ func ParseFragmentRange(raw string) (DownloadFragment, error) {
 		return DownloadFragment{}, ErrFragmentFormat
 	}
 
-	if strings.HasSuffix(value, "+") {
-		startAt, err := parseClockTimestamp(strings.TrimSpace(strings.TrimSuffix(value, "+")))
+	if rest, ok := strings.CutSuffix(value, "+"); ok {
+		startAt, err := parseClockTimestamp(strings.TrimSpace(rest))
 		if err != nil {
-			return DownloadFragment{}, fmt.Errorf("%w: %v", ErrFragmentFormat, err)
+			return DownloadFragment{}, fmt.Errorf("%w: %w", ErrFragmentFormat, err)
 		}
 		return DownloadFragment{StartAt: startAt}, nil
 	}
@@ -76,7 +76,7 @@ func ParseFragmentRange(raw string) (DownloadFragment, error) {
 	startRaw, endRaw, _ := strings.Cut(value, "-")
 	startAt, err := parseClockTimestamp(strings.TrimSpace(startRaw))
 	if err != nil {
-		return DownloadFragment{}, fmt.Errorf("%w: %v", ErrFragmentFormat, err)
+		return DownloadFragment{}, fmt.Errorf("%w: %w", ErrFragmentFormat, err)
 	}
 	endRaw = strings.TrimSpace(endRaw)
 	if endRaw == "" {
@@ -84,7 +84,7 @@ func ParseFragmentRange(raw string) (DownloadFragment, error) {
 	}
 	endAt, err := parseClockTimestamp(strings.TrimSpace(endRaw))
 	if err != nil {
-		return DownloadFragment{}, fmt.Errorf("%w: %v", ErrFragmentFormat, err)
+		return DownloadFragment{}, fmt.Errorf("%w: %w", ErrFragmentFormat, err)
 	}
 	if startAt >= endAt {
 		return DownloadFragment{}, ErrFragmentBounds
@@ -303,9 +303,7 @@ func parseClockTimestamp(raw string) (int, error) {
 }
 
 func FormatClockTimestamp(totalSeconds int) string {
-	if totalSeconds < 0 {
-		totalSeconds = 0
-	}
+	totalSeconds = max(totalSeconds, 0)
 
 	hours := totalSeconds / 3600
 	minutes := (totalSeconds % 3600) / 60

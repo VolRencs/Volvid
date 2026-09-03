@@ -9,8 +9,13 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+const (
+	spinnerTickInterval  = 90 * time.Millisecond
+	digitTimeoutInterval = 700 * time.Millisecond
+)
+
 func spinnerTickCmd() tea.Cmd {
-	return tea.Tick(90*time.Millisecond, func(time.Time) tea.Msg { return spinnerTickMsg{} })
+	return tea.Tick(spinnerTickInterval, func(time.Time) tea.Msg { return spinnerTickMsg{} })
 }
 
 func timerTickCmd() tea.Cmd {
@@ -18,7 +23,7 @@ func timerTickCmd() tea.Cmd {
 }
 
 func digitTimeoutCmd() tea.Cmd {
-	return tea.Tick(700*time.Millisecond, func(time.Time) tea.Msg { return menuDigitTickMsg{} })
+	return tea.Tick(digitTimeoutInterval, func(time.Time) tea.Msg { return menuDigitTickMsg{} })
 }
 
 func openDownloadsDirCmd(path string) tea.Cmd {

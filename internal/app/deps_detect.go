@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 )
@@ -41,59 +42,28 @@ type cookieCandidate struct {
 	ModTime    time.Time
 }
 
-type depsDetectCall struct {
-	done       chan struct{}
-	result     CheckDepsResult
-	generation uint64
-}
-
 const runtimeDepsTTL = 15 * time.Second
 
 func DetectDeps(env *Env) CheckDepsResult  { return loadDeps(env, false) }
 func RefreshDeps(env *Env) CheckDepsResult { return loadDeps(env, true) }
 
 func loadDeps(env *Env, force bool) CheckDepsResult {
-	env.depsCacheMu.Lock()
-	if env.depsCacheReady && !force {
-		deps := env.depsCache
-		env.depsCacheMu.Unlock()
-		return deps
+	env.ensureCaches()
+	if !force {
+		if v, ok := env.depsCache.Get(struct{}{}); ok {
+			return v
+		}
 	}
-	if call := env.depsCacheFlight; call != nil && call.generation == env.depsCacheGeneration {
-		env.depsCacheMu.Unlock()
-		<-call.done
-		return call.result
-	}
-	call := &depsDetectCall{
-		done:       make(chan struct{}),
-		generation: env.depsCacheGeneration,
-	}
-	env.depsCacheFlight = call
-	env.depsCacheMu.Unlock()
-
-	deps := detectDeps(env, true)
-
-	env.depsCacheMu.Lock()
-	if env.depsCacheFlight == call {
-		env.depsCacheFlight = nil
-	}
-	if env.depsCacheGeneration == call.generation {
-		env.depsCache = deps
-		env.depsCacheReady = true
-	}
-	call.result = deps
-	close(call.done)
-	env.depsCacheMu.Unlock()
-	return deps
+	result, _ := env.depsCache.Load(struct{}{}, func() (CheckDepsResult, error) {
+		return detectDeps(env, true), nil
+	})
+	return result
 }
 
 func InvalidateDepsCache(env *Env) {
-	env.depsCacheMu.Lock()
-	env.depsCache = CheckDepsResult{}
-	env.depsCacheReady = false
-	env.depsCacheGeneration++
-	env.runtimeDepsExpiry = time.Time{}
-	env.depsCacheMu.Unlock()
+	env.ensureCaches()
+	env.depsCache.InvalidateAll()
+	env.runtimeDepsCache.InvalidateAll()
 }
 
 type depSpec struct {
@@ -108,29 +78,30 @@ type depSpec struct {
 }
 
 func detectDeps(env *Env, withVersions bool) CheckDepsResult {
-	ytdlp := detectExecutableDependency(depSpec{
+	ytdlp := detectExecutableDependency(context.Background(), depSpec{
 		Key: "ytdlp", Name: "yt-dlp", Required: true, Downloadable: true,
 		LookNames: []string{"yt-dlp"}, ManagedPath: env.YtdlpBin,
 		VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine,
 	}, withVersions)
-	ffmpeg := detectExecutableDependency(depSpec{
+	ffmpeg := detectExecutableDependency(context.Background(), depSpec{
 		Key: "ffmpeg", Name: "ffmpeg", Required: true, Downloadable: true,
 		LookNames: []string{"ffmpeg"}, ManagedPath: env.FFmpegBin,
 		VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine,
 	}, withVersions)
-	node := detectExecutableDependency(depSpec{
+	node := detectExecutableDependency(context.Background(), depSpec{
 		Key: "node", Name: "node", Required: false, Downloadable: true,
 		LookNames: []string{"node"}, ManagedPath: env.NodeBin,
 		VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine,
 	}, withVersions)
 
 	deps := CheckDepsResult{YTDLP: ytdlp, FFmpeg: ffmpeg, Node: node}
-	deps.Cookies = detectBrowserCookies(currentUserHome(), currentGOOS())
+	home, _ := os.UserHomeDir()
+	deps.Cookies = detectBrowserCookies(strings.TrimSpace(home), runtime.GOOS)
 	deps.Runtime = detectJSRuntime(node)
 	return deps
 }
 
-func detectExecutableDependency(spec depSpec, withVersion bool) DependencyInfo {
+func detectExecutableDependency(ctx context.Context, spec depSpec, withVersion bool) DependencyInfo {
 	dep := DependencyInfo{Key: spec.Key, Name: spec.Name, Required: spec.Required, Downloadable: spec.Downloadable, Source: DepMissing}
 
 	if path, ok := firstLookPath(spec.LookNames...); ok {
@@ -144,7 +115,7 @@ func detectExecutableDependency(spec depSpec, withVersion bool) DependencyInfo {
 	}
 
 	if dep.Available && withVersion {
-		line := commandVersionLine(dep.Path, spec.VersionArgs...)
+		line := commandVersionLine(ctx, dep.Path, spec.VersionArgs...)
 		dep.Version = strings.TrimSpace(spec.ParseVersion(line))
 	}
 	return dep
@@ -164,15 +135,6 @@ func firstLookPath(names ...string) (string, bool) {
 	return "", false
 }
 
-func currentUserHome() string {
-	home, _ := os.UserHomeDir()
-	return strings.TrimSpace(home)
-}
-
-func currentGOOS() string {
-	return runtime.GOOS
-}
-
 func detectBrowserCookies(home, goos string) BrowserCookiesInfo {
 	candidates, foundRoots := collectCookieCandidates(cookieBrowserSpecs(home, goos))
 	if len(candidates) > 0 {
@@ -189,7 +151,6 @@ func browserCookiesInfoFromCandidate(candidate cookieCandidate, goos string) Bro
 		Status:       StatusActive,
 		Browser:      strings.TrimSpace(candidate.Browser),
 		ProfileName:  cookieProfileName(candidate.Profile),
-		CookiePath:   strings.TrimSpace(candidate.CookiePath),
 		YTDLPProfile: ytdlpCookieProfileArg(candidate, goos),
 	}
 }
@@ -259,22 +220,28 @@ func collectCookieCandidates(specs []cookieBrowserSpec) ([]cookieCandidate, bool
 func browserCookieCandidates(spec cookieBrowserSpec, roots []string) []cookieCandidate {
 	switch spec.Family {
 	case FamilyFirefox:
-		return firefoxCookieCandidates(spec.Browser, roots)
+		return cookieCandidates(spec.Browser, roots, profileScanner{
+			dirs: firefoxProfileDirs,
+			state: func(_ string, profileDir string) (string, time.Time) {
+				return firefoxProfileState(profileDir)
+			},
+		})
 	case FamilyChromium:
-		return chromiumCookieCandidates(spec.Browser, roots, spec.SupportsProfiles)
+		return cookieCandidates(spec.Browser, roots, profileScanner{
+			dirs: func(root string) []string {
+				return chromiumProfileDirs(root, spec.SupportsProfiles)
+			},
+			state: chromiumProfileState,
+		})
 	default:
 		return nil
 	}
 }
 
 func newestCookieCandidate(candidates []cookieCandidate) cookieCandidate {
-	best := candidates[0]
-	for _, candidate := range candidates[1:] {
-		if candidate.ModTime.After(best.ModTime) {
-			best = candidate
-		}
-	}
-	return best
+	return slices.MaxFunc(candidates, func(a, b cookieCandidate) int {
+		return a.ModTime.Compare(b.ModTime)
+	})
 }
 
 func resolveCookieRoots(roots []string) ([]string, bool) {
@@ -323,11 +290,18 @@ func expandCookieRoot(root string) []string {
 	return out
 }
 
-func firefoxCookieCandidates(browser string, roots []string) []cookieCandidate {
+// profileScanner describes how to enumerate and inspect browser profiles
+// of one engine family.
+type profileScanner struct {
+	dirs  func(root string) []string
+	state func(root, profileDir string) (cookiePath string, modTime time.Time)
+}
+
+func cookieCandidates(browser string, roots []string, scan profileScanner) []cookieCandidate {
 	out := make([]cookieCandidate, 0, len(roots))
 	for _, root := range roots {
-		for _, profileDir := range firefoxProfileDirs(root) {
-			cookiePath, modTime := firefoxProfileState(profileDir)
+		for _, profileDir := range scan.dirs(root) {
+			cookiePath, modTime := scan.state(root, profileDir)
 			out = append(out, cookieCandidate{
 				Browser:    browser,
 				Profile:    absoluteIfPossible(profileDir),
@@ -339,20 +313,34 @@ func firefoxCookieCandidates(browser string, roots []string) []cookieCandidate {
 	return out
 }
 
-func chromiumCookieCandidates(browser string, roots []string, supportsProfiles bool) []cookieCandidate {
-	out := make([]cookieCandidate, 0, len(roots))
-	for _, root := range roots {
-		for _, profileDir := range chromiumProfileDirs(root, supportsProfiles) {
-			cookiePath, modTime := chromiumProfileState(root, profileDir)
-			out = append(out, cookieCandidate{
-				Browser:    browser,
-				Profile:    absoluteIfPossible(profileDir),
-				CookiePath: cookiePath,
-				ModTime:    modTime,
-			})
+// collectProfileDirs returns root itself (when it is a profile) plus every
+// glob match accepted by exists. A literal glob entry behaves like a fixed
+// path: Glob returns it only when it exists on disk, and exists applies the
+// stricter profile check. normalize maps a match to its profile directory.
+func collectProfileDirs(root string, exists func(string) bool, globs []string, normalize func(string) string) []string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil
+	}
+	out := make([]string, 0, 4)
+	if exists(root) {
+		out = append(out, root)
+	}
+	for _, pattern := range globs {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			continue
+		}
+		for _, match := range matches {
+			if normalize != nil {
+				match = normalize(match)
+			}
+			if exists(match) {
+				out = append(out, match)
+			}
 		}
 	}
-	return out
+	return uniquePaths(out)
 }
 
 func firefoxProfileDirs(root string) []string {
@@ -360,30 +348,17 @@ func firefoxProfileDirs(root string) []string {
 	if root == "" {
 		return nil
 	}
-	out := make([]string, 0, 4)
-	if firefoxProfileExists(root) {
-		out = append(out, root)
-	}
-	for _, pattern := range []string{
+	return collectProfileDirs(root, firefoxProfileExists, []string{
 		filepath.Join(root, "*.default*"),
 		filepath.Join(root, "*", "cookies.sqlite"),
 		filepath.Join(root, "Profiles", "*.default*"),
 		filepath.Join(root, "Profiles", "*", "cookies.sqlite"),
-	} {
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			continue
+	}, func(match string) string {
+		if filepath.Base(match) == "cookies.sqlite" {
+			return filepath.Dir(match)
 		}
-		for _, match := range matches {
-			if filepath.Base(match) == "cookies.sqlite" {
-				match = filepath.Dir(match)
-			}
-			if firefoxProfileExists(match) {
-				out = append(out, match)
-			}
-		}
-	}
-	return uniquePaths(out)
+		return match
+	})
 }
 
 func firefoxProfileExists(profileDir string) bool {
@@ -396,16 +371,10 @@ func firefoxProfileExists(profileDir string) bool {
 
 func firefoxProfileState(profileDir string) (string, time.Time) {
 	cookiePath, cookieTime := profileCookieState(profileDir, "cookies.sqlite")
-	if !cookieTime.IsZero() {
-		return cookiePath, cookieTime
-	}
-	if info, ok := fileInfo(filepath.Join(profileDir, "prefs.js")); ok {
-		return "", info.ModTime()
-	}
-	if info, ok := fileInfo(profileDir); ok {
-		return "", info.ModTime()
-	}
-	return "", time.Time{}
+	return profileStateWithFallback(cookiePath, cookieTime,
+		filepath.Join(profileDir, "prefs.js"),
+		profileDir,
+	)
 }
 
 func chromiumProfileDirs(root string, supportsProfiles bool) []string {
@@ -413,27 +382,15 @@ func chromiumProfileDirs(root string, supportsProfiles bool) []string {
 	if root == "" {
 		return nil
 	}
-	out := make([]string, 0, 4)
-	if chromiumProfileExists(root) {
-		out = append(out, root)
-	}
 	if !supportsProfiles {
-		return uniquePaths(out)
+		return collectProfileDirs(root, chromiumProfileExists, nil, nil)
 	}
-	for _, fixed := range []string{"Default", "Guest Profile", "System Profile"} {
-		profile := filepath.Join(root, fixed)
-		if chromiumProfileExists(profile) {
-			out = append(out, profile)
-		}
-	}
-	if matches, err := filepath.Glob(filepath.Join(root, "Profile *")); err == nil {
-		for _, match := range matches {
-			if chromiumProfileExists(match) {
-				out = append(out, match)
-			}
-		}
-	}
-	return uniquePaths(out)
+	return collectProfileDirs(root, chromiumProfileExists, []string{
+		filepath.Join(root, "Default"),
+		filepath.Join(root, "Guest Profile"),
+		filepath.Join(root, "System Profile"),
+		filepath.Join(root, "Profile *"),
+	}, nil)
 }
 
 func chromiumProfileExists(profileDir string) bool {
@@ -454,17 +411,24 @@ func chromiumProfileState(root, profileDir string) (string, time.Time) {
 		filepath.Join(profileDir, "Network", "Cookies"),
 		filepath.Join(profileDir, "Cookies"),
 	)
+	return profileStateWithFallback(cookiePath, cookieTime,
+		filepath.Join(profileDir, "Preferences"),
+		filepath.Join(root, "Local State"),
+		profileDir,
+	)
+}
+
+// profileStateWithFallback prefers the cookie database timestamp and falls
+// back to the given marker paths in order, returning the first one that
+// exists on disk.
+func profileStateWithFallback(cookiePath string, cookieTime time.Time, fallbacks ...string) (string, time.Time) {
 	if !cookieTime.IsZero() {
 		return cookiePath, cookieTime
 	}
-	if info, ok := fileInfo(filepath.Join(profileDir, "Preferences")); ok {
-		return "", info.ModTime()
-	}
-	if info, ok := fileInfo(filepath.Join(root, "Local State")); ok {
-		return "", info.ModTime()
-	}
-	if info, ok := fileInfo(profileDir); ok {
-		return "", info.ModTime()
+	for _, path := range fallbacks {
+		if info, ok := fileInfo(path); ok {
+			return "", info.ModTime()
+		}
 	}
 	return "", time.Time{}
 }
@@ -599,8 +563,8 @@ func resolveUserPath(home, raw string) string {
 	if raw == "" {
 		return ""
 	}
-	if strings.HasPrefix(raw, "~"+string(os.PathSeparator)) {
-		return absoluteIfPossible(filepath.Join(home, strings.TrimPrefix(raw, "~"+string(os.PathSeparator))))
+	if rest, ok := strings.CutPrefix(raw, "~"+string(os.PathSeparator)); ok {
+		return absoluteIfPossible(filepath.Join(home, rest))
 	}
 	if filepath.IsAbs(raw) {
 		return absoluteIfPossible(raw)
@@ -611,52 +575,36 @@ func resolveUserPath(home, raw string) string {
 	return absoluteIfPossible(filepath.Join(home, raw))
 }
 
-func uniquePaths(paths []string) []string {
-	out := make([]string, 0, len(paths))
-	seen := make(map[string]struct{}, len(paths))
-	for _, path := range paths {
-		path = strings.TrimSpace(path)
-		if path == "" {
+// dedupeStrings trims items, drops empties and keeps the first occurrence
+// of every key in order.
+func dedupeStrings(items []string, key func(string) string) []string {
+	out := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
 			continue
 		}
-		key := filepath.Clean(path)
-		if _, ok := seen[key]; ok {
+		k := key(item)
+		if _, ok := seen[k]; ok {
 			continue
 		}
-		seen[key] = struct{}{}
-		out = append(out, key)
+		seen[k] = struct{}{}
+		out = append(out, k)
 	}
 	return out
 }
 
+func uniquePaths(paths []string) []string {
+	return dedupeStrings(paths, filepath.Clean)
+}
+
 func resolveRuntimeDeps(env *Env) CheckDepsResult {
-	env.depsCacheMu.Lock()
-	if time.Now().Before(env.runtimeDepsExpiry) {
-		deps := env.runtimeDepsValue
-		env.depsCacheMu.Unlock()
-		return deps
-	}
-	if call := env.runtimeDepsFlight; call != nil {
-		env.depsCacheMu.Unlock()
-		<-call.done
-		return call.result
-	}
-	call := &depsDetectCall{done: make(chan struct{})}
-	env.runtimeDepsFlight = call
-	env.depsCacheMu.Unlock()
-
-	deps := detectDeps(env, false)
-
-	env.depsCacheMu.Lock()
-	env.runtimeDepsValue = deps
-	env.runtimeDepsExpiry = time.Now().Add(runtimeDepsTTL)
-	if env.runtimeDepsFlight == call {
-		env.runtimeDepsFlight = nil
-	}
-	call.result = deps
-	close(call.done)
-	env.depsCacheMu.Unlock()
-	return deps
+	env.ensureCaches()
+	result, _ := env.runtimeDepsCache.LoadWithTTL(struct{}{}, runtimeDepsTTL, func() (CheckDepsResult, error) {
+		return detectDeps(env, false), nil
+	})
+	return result
 }
 
 func ytdlpCommandArgsFor(env *Env, deps CheckDepsResult, base []string) []string {
@@ -685,7 +633,7 @@ func runtimeUserAgent(env *Env, deps CheckDepsResult) string {
 	if deps.Cookies.Status != StatusActive {
 		return ""
 	}
-	if currentGOOS() != "linux" || !strings.EqualFold(strings.TrimSpace(deps.Cookies.Browser), "firefox") {
+	if runtime.GOOS != "linux" || !strings.EqualFold(strings.TrimSpace(deps.Cookies.Browser), "firefox") {
 		return ""
 	}
 	return env.firefoxUserAgent()
@@ -712,7 +660,7 @@ func detectFirefoxVersion() string {
 	if !ok {
 		return ""
 	}
-	return firefoxVersionFromLine(commandVersionLine(bin, "--version"))
+	return firefoxVersionFromLine(commandVersionLine(context.Background(), bin, "--version"))
 }
 
 func firefoxVersionFromLine(line string) string {
@@ -734,15 +682,7 @@ func firefoxUAPlatform() string {
 	return platform.FirefoxUAPlatform
 }
 
-func ytdlpOutput(env *Env, ctx context.Context, timeout time.Duration, args ...string) ([]byte, error) {
-	return ytdlpOutputFor(env, ctx, timeout, resolveRuntimeDeps(env), args...)
-}
-
-func startYTDLPMergedOutputCommand(env *Env, ctx context.Context, timeout time.Duration, args ...string) (*exec.Cmd, io.ReadCloser, context.Context, context.CancelFunc, error) {
-	return startYTDLPMergedOutputCommandFor(env, ctx, timeout, resolveRuntimeDeps(env), args...)
-}
-
-func ytdlpOutputFor(env *Env, ctx context.Context, timeout time.Duration, deps CheckDepsResult, args ...string) ([]byte, error) {
+func ytdlpOutput(env *Env, ctx context.Context, timeout time.Duration, deps CheckDepsResult, args ...string) ([]byte, error) {
 	bin := strings.TrimSpace(deps.YTDLP.Path)
 	if bin == "" {
 		return nil, fmt.Errorf("yt-dlp is required")
@@ -750,7 +690,7 @@ func ytdlpOutputFor(env *Env, ctx context.Context, timeout time.Duration, deps C
 	return commandOutput(ctx, timeout, bin, ytdlpCommandArgsFor(env, deps, args)...)
 }
 
-func startYTDLPMergedOutputCommandFor(env *Env, ctx context.Context, timeout time.Duration, deps CheckDepsResult, args ...string) (*exec.Cmd, io.ReadCloser, context.Context, context.CancelFunc, error) {
+func startYTDLPMergedOutputCommand(env *Env, ctx context.Context, timeout time.Duration, deps CheckDepsResult, args ...string) (*exec.Cmd, io.ReadCloser, context.Context, context.CancelFunc, error) {
 	bin := strings.TrimSpace(deps.YTDLP.Path)
 	if bin == "" {
 		return nil, nil, nil, nil, fmt.Errorf("yt-dlp is required")
@@ -758,11 +698,11 @@ func startYTDLPMergedOutputCommandFor(env *Env, ctx context.Context, timeout tim
 	return startMergedOutputCommand(ctx, timeout, bin, ytdlpCommandArgsFor(env, deps, args)...)
 }
 
-func commandVersionLine(bin string, args ...string) string {
+func commandVersionLine(ctx context.Context, bin string, args ...string) string {
 	if strings.TrimSpace(bin) == "" {
 		return ""
 	}
-	out, _ := commandCombinedOutput(context.Background(), versionProbeTimeout, bin, args...)
+	out, _ := commandCombinedOutput(ctx, versionProbeTimeout, bin, args...)
 	return firstNonEmptyLine(string(out))
 }
 

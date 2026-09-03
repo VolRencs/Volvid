@@ -32,7 +32,7 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (b limitedBuffer) String() string {
+func (b *limitedBuffer) String() string {
 	return strings.TrimSpace(string(b.buf))
 }
 

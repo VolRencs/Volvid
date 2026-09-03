@@ -1,4 +1,4 @@
-# VolRen Video / Audio Downloader
+# Volvid
 
 <div align="center">
 
@@ -19,7 +19,7 @@
 
 ![youtube downloader screenshot](assets/TUI.png)
 
-**VolRen Downloader** is a keyboard-driven TUI built around **yt-dlp** and **ffmpeg**.
+**Volvid** is a keyboard-driven TUI built around **yt-dlp** and **ffmpeg**.
 
 The application starts with an update and dependency check, then guides the user through target selection, search, playlist handling, profile choice, download progress, and a session summary. System-installed binaries are preferred when available. Managed binaries can also be downloaded into the app data directory. **node** is optional and is used as a JS runtime when available. Browser cookies are auto-detected on **Windows** and **Linux**. The interface supports **English** and **Russian** and can be switched with `Tab`.
 
@@ -42,14 +42,14 @@ The application starts with an update and dependency check, then guides the user
 
 ### Windows amd64
 
-Download `VolRenDownloader.exe` from the [latest release](https://github.com/VolRencs/YouTubeDownloader/releases/latest) and run it.
+Download `Volvid.exe` from the [latest release](https://github.com/VolRencs/Volvid/releases/latest) and run it.
 
 ### Linux amd64
 
 ```bash
-curl -L https://github.com/VolRencs/YouTubeDownloader/releases/latest/download/VolRenDownloader_linux_amd64 -o VolRenDownloader
-chmod +x VolRenDownloader
-./VolRenDownloader
+curl -L https://github.com/VolRencs/Volvid/releases/latest/download/Volvid -o Volvid
+chmod +x Volvid
+./Volvid
 ```
 
 ### Build From Source
@@ -57,10 +57,10 @@ chmod +x VolRenDownloader
 Requires **Go 1.26.2+**.
 
 ```bash
-git clone https://github.com/VolRencs/YouTubeDownloader
-cd YouTubeDownloader
-go build -trimpath -buildvcs=false -ldflags="-s -w" -o VolRenDownloader ./cmd/downloader
-./VolRenDownloader
+git clone https://github.com/VolRencs/Volvid
+cd Volvid
+go build -trimpath -buildvcs=false -ldflags="-s -w" -o Volvid ./cmd/downloader
+./Volvid
 ```
 
 ### Build Windows Executable With Icon
@@ -69,20 +69,20 @@ The repository includes a Windows icon source at `assets/icon/icon.ico`.
 
 ```bash
 go install github.com/akavel/rsrc@latest
-./scripts/build-windows-downloader.sh VolRenDownloader.exe
+./scripts/build-windows-downloader.sh Volvid.exe
 ```
 
 ## Runtime Paths
 
 The app uses standard user directories by default and supports overrides through environment variables:
 
-- `VOLREN_CONFIG_DIR` for configuration files
-- `VOLREN_DATA_DIR` for application data
-- `VOLREN_CACHE_DIR` for cache data
-- `VOLREN_DEPS_DIR` for managed binaries
-- `VOLREN_DOWNLOADS_DIR` to lock the download location
+- `VOLVID_CONFIG_DIR` for configuration files
+- `VOLVID_DATA_DIR` for application data
+- `VOLVID_CACHE_DIR` for cache data
+- `VOLVID_DEPS_DIR` for managed binaries
+- `VOLVID_DOWNLOADS_DIR` to lock the download location
 
-Managed binaries default to the app data directory under `deps/`. If `VOLREN_DOWNLOADS_DIR` is not set, the TUI can persist a user-selected downloads folder.
+Managed binaries default to the app data directory under `deps/`. If `VOLVID_DOWNLOADS_DIR` is not set, the TUI can persist a user-selected downloads folder.
 
 ## TUI Flow
 
@@ -146,7 +146,7 @@ Open the dependency screen and verify cookies and JS runtime status. If cookies 
 Make sure `ffmpeg` is available. If it is missing, install it through the dependency screen or provide a system copy.
 
 **Folder selection does not open**  
-Check that the current platform has the required desktop integration available. You can still set `VOLREN_DOWNLOADS_DIR` directly.
+Check that the current platform has the required desktop integration available. You can still set `VOLVID_DOWNLOADS_DIR` directly.
 
 ## Dependencies
 
@@ -164,6 +164,6 @@ Project source is **MIT**.
 
 <div align="center">
 
-Made by **VolRen**
+Made by **Volvid**
 
 </div>

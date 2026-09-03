@@ -180,6 +180,9 @@ func transcodeDownloadedVideo(
 	if text == "" {
 		text = commandErrorText(lastErr)
 	}
+	if lastErr != nil {
+		return fmt.Errorf("video transcoding failed: %s: %w", text, lastErr)
+	}
 	return fmt.Errorf("video transcoding failed: %s", text)
 }
 
@@ -188,7 +191,7 @@ func transcodeTempPath(outputPath, container string) (string, error) {
 	base := filepath.Base(outputPath)
 	ext := strings.TrimSpace(container)
 	if ext == "" {
-		ext = strings.TrimPrefix(filepath.Ext(base), ".")
+		ext, _ = strings.CutPrefix(filepath.Ext(base), ".")
 	}
 	if ext == "" {
 		ext = "mp4"
@@ -475,7 +478,7 @@ func runPlaylistDownloads(env *Env, ctx context.Context, req DownloadRequest, en
 	workerCount := normalizeWorkerCount(req.Workers, len(entries))
 	jobs := enqueuePlaylistJobs(ctx, entries)
 	outputDir := playlistOutputDir(req)
-	for slot := 0; slot < workerCount; slot++ {
+	for slot := range workerCount {
 		wg.Add(1)
 		go playlistWorker(env, ctx, slot, req, outputDir, jobs, ch, wg, cleanup)
 	}

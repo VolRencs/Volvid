@@ -262,8 +262,10 @@ func (i inputField) View() string {
 	return b.String()
 }
 
+const cursorBlinkInterval = 530 * time.Millisecond
+
 func blinkInputCmd(target inputTarget, tag int) tea.Cmd {
-	return tea.Tick(530*time.Millisecond, func(time.Time) tea.Msg {
+	return tea.Tick(cursorBlinkInterval, func(time.Time) tea.Msg {
 		return cursorBlinkMsg{target: target, tag: tag}
 	})
 }

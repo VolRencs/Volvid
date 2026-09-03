@@ -6,7 +6,7 @@ PKG_DIR="$ROOT_DIR/cmd/downloader"
 ICON_FILE="$ROOT_DIR/assets/icon/icon.ico"
 SYSO_FILE="$PKG_DIR/zz_build_windows_icon.syso"
 
-OUTPUT_PATH="${1:-$ROOT_DIR/VolRenDownloader.exe}"
+OUTPUT_PATH="${1:-$ROOT_DIR/Volvid.exe}"
 
 source "$ROOT_DIR/scripts/go-env.sh"
 

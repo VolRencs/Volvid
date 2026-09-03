@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
-	"time"
 )
 
 type Env struct {
@@ -31,19 +30,10 @@ type Env struct {
 	firefoxUserAgentOnce  sync.Once
 	firefoxUserAgentCache string
 
-	depsCacheMu         sync.Mutex
-	depsCache           CheckDepsResult
-	depsCacheReady      bool
-	depsCacheFlight     *depsDetectCall
-	depsCacheGeneration uint64
+	depsCache        *FlightCache[struct{}, CheckDepsResult]
+	runtimeDepsCache *FlightCache[struct{}, CheckDepsResult]
 
-	runtimeDepsExpiry time.Time
-	runtimeDepsValue  CheckDepsResult
-	runtimeDepsFlight *depsDetectCall
-
-	probeCacheMu sync.RWMutex
-	probeCache   map[string]*MediaProbe
-	probeFlight  map[string]*probeCall
+	probeCache *FlightCache[string, *MediaProbe]
 
 	ffmpegEncodersMu    sync.Mutex
 	ffmpegEncodersValue map[string]map[string]bool
@@ -51,9 +41,10 @@ type Env struct {
 
 func NewEnv() *Env {
 	env := &Env{
-		IsWindows:   runtime.GOOS == "windows",
-		probeCache:  make(map[string]*MediaProbe),
-		probeFlight: make(map[string]*probeCall),
+		IsWindows:        runtime.GOOS == "windows",
+		depsCache:        newFlightCache[struct{}, CheckDepsResult](),
+		runtimeDepsCache: newFlightCache[struct{}, CheckDepsResult](),
+		probeCache:       newFlightCache[string, *MediaProbe](),
 	}
 
 	exe := currentExecutablePath()
@@ -63,6 +54,18 @@ func NewEnv() *Env {
 	env.apiClient = NewHTTPClient(apiClientTimeout)
 	env.dlClient = newDownloadHTTPClient()
 	return env
+}
+
+func (env *Env) ensureCaches() {
+	if env.depsCache == nil {
+		env.depsCache = newFlightCache[struct{}, CheckDepsResult]()
+	}
+	if env.runtimeDepsCache == nil {
+		env.runtimeDepsCache = newFlightCache[struct{}, CheckDepsResult]()
+	}
+	if env.probeCache == nil {
+		env.probeCache = newFlightCache[string, *MediaProbe]()
+	}
 }
 
 func currentExecutablePath() string {

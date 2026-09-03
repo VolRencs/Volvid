@@ -15,11 +15,11 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: VolRenDownloader.exe
-            build_cmd: go install github.com/akavel/rsrc@latest && ./scripts/build-windows-downloader.sh VolRenDownloader.exe
+            artifact: Volvid.exe
+            build_cmd: go install github.com/akavel/rsrc@latest && ./scripts/build-windows-downloader.sh Volvid.exe
           - os: ubuntu-latest
-            artifact: VolRenDownloader_linux_amd64
-            build_cmd: ./scripts/build-linux-downloader.sh VolRenDownloader_linux_amd64
+            artifact: Volvid
+            build_cmd: ./scripts/build-linux-downloader.sh Volvid
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

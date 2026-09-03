@@ -100,7 +100,7 @@ func newDownloadRequest(ctx context.Context, url string) (*http.Request, error) 
 	if err != nil {
 		return nil, fmt.Errorf("создание запроса %s: %w", url, err)
 	}
-	req.Header.Set("User-Agent", "VolRenDownloader/"+Version)
+	req.Header.Set("User-Agent", "Volvid/"+Version)
 	return req, nil
 }
 

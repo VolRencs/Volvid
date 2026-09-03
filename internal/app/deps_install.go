@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+const manifestFetchTimeout = 30 * time.Second
+
 func InstallDependencyFor(env *Env, ctx context.Context, key string, l Locale, ch chan<- FileProgress) error {
 	var err error
 	switch strings.TrimSpace(key) {
@@ -40,7 +42,7 @@ func InstallYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProg
 		return fmt.Errorf("создание DepsDir: %w", err)
 	}
 
-	url, _, checksum, err := ytdlpDownloadAsset(env)
+	url, _, checksum, err := ytdlpDownloadAsset(ctx, env)
 	if err != nil {
 		return fmt.Errorf("yt-dlp asset metadata: %w", err)
 	}
@@ -62,7 +64,7 @@ func InstallYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProg
 			return fmt.Errorf("chmod yt-dlp: %w", err)
 		}
 	}
-	if detectExecutableDependency(depSpec{Key: "ytdlp", Name: "yt-dlp", ManagedPath: stagedYtdlp, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}, true).Version == "" {
+	if detectExecutableDependency(ctx, depSpec{Key: "ytdlp", Name: "yt-dlp", ManagedPath: stagedYtdlp, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}, true).Version == "" {
 		return fmt.Errorf("бинарник yt-dlp скачан, но не запускается")
 	}
 	if err := replaceInstalledBinaries(map[string]string{stagedYtdlp: env.YtdlpBin}); err != nil {
@@ -161,10 +163,10 @@ func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 		}
 	}
 
-	if detectExecutableDependency(depSpec{Key: "ffmpeg", Name: "ffmpeg", ManagedPath: stagedFFmpeg, VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine}, true).Version == "" {
+	if detectExecutableDependency(ctx, depSpec{Key: "ffmpeg", Name: "ffmpeg", ManagedPath: stagedFFmpeg, VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine}, true).Version == "" {
 		return fmt.Errorf("бинарник ffmpeg скачан, но не запускается")
 	}
-	if commandVersionLine(stagedFFprobe, "-version") == "" {
+	if commandVersionLine(ctx, stagedFFprobe, "-version") == "" {
 		return fmt.Errorf("бинарник ffprobe скачан, но не запускается")
 	}
 	if err := replaceInstalledBinaries(map[string]string{
@@ -177,7 +179,7 @@ func InstallFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 }
 
 func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgress) error {
-	url, filename, checksum, err := nodeDownloadAsset(env)
+	url, filename, checksum, err := nodeDownloadAsset(ctx, env)
 	if err != nil {
 		return fmt.Errorf("node asset metadata: %w", err)
 	}
@@ -223,7 +225,7 @@ func InstallNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 		}
 	}
 
-	if detectExecutableDependency(depSpec{Key: "node", Name: "node", ManagedPath: stagedNode, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}, true).Version == "" {
+	if detectExecutableDependency(ctx, depSpec{Key: "node", Name: "node", ManagedPath: stagedNode, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}, true).Version == "" {
 		return fmt.Errorf("бинарник node скачан, но не запускается")
 	}
 	if err := replaceInstalledBinaries(map[string]string{stagedNode: env.NodeBin}); err != nil {
@@ -244,15 +246,15 @@ func ffmpegArchiveAsset() (string, string, error) {
 	return url, filepath.Base(url), nil
 }
 
-func nodeDownloadAsset(env *Env) (string, string, string, error) {
-	filename, checksum, err := nodeAssetFilename(env)
+func nodeDownloadAsset(ctx context.Context, env *Env) (string, string, string, error) {
+	filename, checksum, err := nodeAssetFilename(ctx, env)
 	if err != nil {
 		return "", "", "", fmt.Errorf("resolve node asset: %w", err)
 	}
 	return nodeLatestURL + filename, filename, checksum, nil
 }
 
-func ytdlpDownloadAsset(env *Env) (string, string, string, error) {
+func ytdlpDownloadAsset(ctx context.Context, env *Env) (string, string, string, error) {
 	platform, err := currentPlatform()
 	if err != nil {
 		return "", "", "", fmt.Errorf("detect platform: %w", err)
@@ -261,7 +263,7 @@ func ytdlpDownloadAsset(env *Env) (string, string, string, error) {
 	if asset == "" {
 		return "", "", "", fmt.Errorf("yt-dlp asset name is empty")
 	}
-	checksum, err := ytdlpAssetChecksum(env, context.Background(), asset)
+	checksum, err := ytdlpAssetChecksum(env, ctx, asset)
 	if err != nil {
 		return "", "", "", fmt.Errorf("resolve yt-dlp checksum: %w", err)
 	}
@@ -280,8 +282,8 @@ func ytdlpAssetChecksum(env *Env, ctx context.Context, asset string) (string, er
 	return checksum, nil
 }
 
-func nodeAssetFilename(env *Env) (string, string, error) {
-	manifest, err := downloadText(env, context.Background(), nodeLatestURL+"SHASUMS256.txt")
+func nodeAssetFilename(ctx context.Context, env *Env) (string, string, error) {
+	manifest, err := downloadText(env, ctx, nodeLatestURL+"SHASUMS256.txt")
 	if err != nil {
 		return "", "", fmt.Errorf("node manifest: %w", err)
 	}
@@ -352,7 +354,7 @@ func nodeAssetSuffix() (string, error) {
 
 func downloadText(env *Env, ctx context.Context, url string) (string, error) {
 	ctx = resolveContext(ctx)
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, manifestFetchTimeout)
 	defer cancel()
 
 	req, err := newDownloadRequest(ctx, url)
@@ -554,10 +556,10 @@ func extractTarEntriesWithTar(ctx context.Context, archive, destDir string, entr
 
 func tarCommandError(err error, output []byte) error {
 	if errors.Is(err, exec.ErrNotFound) {
-		return errors.New("tar is required to extract this archive")
+		return fmt.Errorf("tar is required to extract this archive: %w", err)
 	}
 	if line := firstNonEmptyLine(string(output)); line != "" {
-		return errors.New(line)
+		return fmt.Errorf("%w: %s", err, line)
 	}
 	return fmt.Errorf("tar command failed: %w", err)
 }

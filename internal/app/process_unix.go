@@ -5,6 +5,7 @@ package app
 import (
 	"errors"
 	"os/exec"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -28,7 +29,21 @@ func startProcessTree(*exec.Cmd) error {
 	return nil
 }
 
-func cleanupProcessTree(*exec.Cmd) {}
+func cleanupProcessTree(cmd *exec.Cmd) {
+	if cmd == nil {
+		return
+	}
+	if v, ok := killTimers.LoadAndDelete(cmd); ok {
+		if timer, ok := v.(*time.Timer); ok {
+			timer.Stop()
+		}
+	}
+}
+
+// killTimers tracks pending SIGKILL timers armed by interruptProcessTree.
+// The timer is stopped once the command is reaped, so a late SIGKILL can
+// never hit a recycled PID.
+var killTimers sync.Map // *exec.Cmd -> *time.Timer
 
 func interruptProcessTree(cmd *exec.Cmd, grace time.Duration) error {
 	if cmd == nil || cmd.Process == nil {
@@ -42,9 +57,10 @@ func interruptProcessTree(cmd *exec.Cmd, grace time.Duration) error {
 
 	err := signalProcessGroup(pid, syscall.SIGTERM)
 	if grace > 0 {
-		time.AfterFunc(grace, func() {
+		timer := time.AfterFunc(grace, func() {
 			_ = signalProcessGroup(pid, syscall.SIGKILL)
 		})
+		killTimers.Store(cmd, timer)
 	}
 	return err
 }

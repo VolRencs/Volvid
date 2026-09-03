@@ -8,11 +8,11 @@ import (
 )
 
 const (
-	appDirName      = "VolRenDownloader"
-	envConfigDir    = "VOLREN_CONFIG_DIR"
-	envDataDir      = "VOLREN_DATA_DIR"
-	envDownloadsDir = "VOLREN_DOWNLOADS_DIR"
-	envDepsDir      = "VOLREN_DEPS_DIR"
+	appDirName      = "Volvid"
+	envConfigDir    = "VOLVID_CONFIG_DIR"
+	envDataDir      = "VOLVID_DATA_DIR"
+	envDownloadsDir = "VOLVID_DOWNLOADS_DIR"
+	envDepsDir      = "VOLVID_DEPS_DIR"
 )
 
 func (env *Env) initRuntimePaths(exeDir string) {
@@ -30,7 +30,7 @@ func resolveConfigDir(env *Env) string {
 	if root, ok := userConfigRoot(); ok {
 		return filepath.Join(root, appDirName)
 	}
-	return filepath.Join(env.AppDir, ".volren", "config")
+	return filepath.Join(env.AppDir, ".volvid", "config")
 }
 
 func resolveDataDir(env *Env) string {
@@ -40,7 +40,7 @@ func resolveDataDir(env *Env) string {
 	if root, ok := userDataRoot(); ok {
 		return filepath.Join(root, appDirName)
 	}
-	return filepath.Join(env.AppDir, ".volren", "data")
+	return filepath.Join(env.AppDir, ".volvid", "data")
 }
 
 func resolveArtifactDir(envKey, defaultPath string) string {
@@ -83,7 +83,20 @@ func userDataRoot() (string, bool) {
 }
 
 func envPath(key string) string {
-	return cleanAbsPath(os.Getenv(key))
+	if path := cleanAbsPath(os.Getenv(key)); path != "" {
+		return path
+	}
+	if legacy, ok := legacyEnvKey(key); ok {
+		return cleanAbsPath(os.Getenv(legacy))
+	}
+	return ""
+}
+
+func legacyEnvKey(key string) (string, bool) {
+	if rest, ok := strings.CutPrefix(key, "VOLVID_"); ok {
+		return "VOLREN_" + rest, true
+	}
+	return "", false
 }
 
 func cleanAbsPath(path string) string {
@@ -93,7 +106,7 @@ func cleanAbsPath(path string) string {
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return filepath.Clean(path)
+		return path
 	}
 	return filepath.Clean(abs)
 }

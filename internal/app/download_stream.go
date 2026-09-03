@@ -50,7 +50,7 @@ func ffmpegArgs(deps CheckDepsResult) []string {
 }
 
 func streamYtdlp(env *Env, ctx context.Context, slot int, l Locale, deps CheckDepsResult, args []string, ch chan<- DlUpdate, cleanup *downloadCleanup) downloadResult {
-	cmd, pr, runCtx, cancel, err := startYTDLPMergedOutputCommandFor(
+	cmd, pr, runCtx, cancel, err := startYTDLPMergedOutputCommand(
 		env,
 		ctx,
 		0,
@@ -118,7 +118,9 @@ func streamYtdlp(env *Env, ctx context.Context, slot int, l Locale, deps CheckDe
 		return nil
 	}); err != nil {
 		cancel()
-		_ = waitCommand(cmd, runCtx)
+		if waitErr := waitCommand(cmd, runCtx); waitErr != nil {
+			err = errors.Join(err, waitErr)
+		}
 		setDownloadError(&result, fmt.Errorf("yt-dlp output: %w", err))
 		return result
 	}
@@ -150,10 +152,11 @@ func parseMovedOutputPath(line string, result *downloadResult) bool {
 }
 
 func parseJSONStringWithPrefix(line, prefix string) string {
-	if !strings.HasPrefix(line, prefix) {
+	rest, ok := strings.CutPrefix(line, prefix)
+	if !ok {
 		return ""
 	}
-	return parseJSONStringField(strings.TrimPrefix(line, prefix))
+	return parseJSONStringField(rest)
 }
 
 func parseBeforeDownload(line string) (string, string) {
@@ -229,7 +232,8 @@ func parseDownloadInt(raw string) int64 {
 }
 
 func parseDownloadFloat(raw string) float64 {
-	raw = strings.TrimSpace(strings.TrimSuffix(raw, "%"))
+	rest, _ := strings.CutSuffix(raw, "%")
+	raw = strings.TrimSpace(rest)
 	if raw == "" {
 		return 0
 	}
@@ -277,14 +281,7 @@ func setDownloadErrorText(result *downloadResult, text string) {
 }
 
 func clampProgressPercent(pct float64) float64 {
-	switch {
-	case pct < 0:
-		return 0
-	case pct > 100:
-		return 100
-	default:
-		return pct
-	}
+	return min(100, max(0, pct))
 }
 
 func commandErrorText(err error) string {

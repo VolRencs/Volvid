@@ -170,7 +170,7 @@ func portalHandleToken() (string, error) {
 	if _, err := rand.Read(buf); err != nil {
 		return "", fmt.Errorf("generate portal token: %w", err)
 	}
-	return "volren" + hex.EncodeToString(buf), nil
+	return "volvid" + hex.EncodeToString(buf), nil
 }
 
 func portalRequestPath(sender, token string) dbus.ObjectPath {

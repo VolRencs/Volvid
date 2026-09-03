@@ -23,7 +23,7 @@ func (m *menu) SetItems(items []string) {
 	if slices.Equal(m.items, items) {
 		return
 	}
-	m.items = append([]string(nil), items...)
+	m.items = slices.Clone(items)
 	m.cursor = 0
 }
 
@@ -132,7 +132,7 @@ func renderProgressBar(width int, pct float64) string {
 		return ""
 	}
 
-	percent := math.Max(0, math.Min(1, pct/100))
+	percent := min(1, max(0, pct/100))
 	filledWidth := int(math.Round(float64(width) * percent))
 	filledWidth = max(0, min(width, filledWidth))
 

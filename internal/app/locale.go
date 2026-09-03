@@ -36,7 +36,7 @@ func NextLocale(l Locale) Locale {
 	return LocaleEN
 }
 
-const localeFileName = ".volren_locale"
+const localeFileName = ".volvid_locale"
 
 func localePath(env *Env) string {
 	return filepath.Join(env.ConfigDir, localeFileName)

@@ -95,10 +95,10 @@ func normalizeDownloadRequest(env *Env, req DownloadRequest) DownloadRequest {
 
 	req.Profile.VideoFmtChain = slices.Clone(req.Profile.VideoFmtChain)
 	req.Profile.VideoFmtLabels = slices.Clone(req.Profile.VideoFmtLabels)
-	req.Entries = append([]PlaylistEntry(nil), req.Entries...)
+	req.Entries = slices.Clone(req.Entries)
 	if req.PlaylistInfo != nil {
 		info := *req.PlaylistInfo
-		info.Entries = append([]PlaylistEntry(nil), req.PlaylistInfo.Entries...)
+		info.Entries = slices.Clone(req.PlaylistInfo.Entries)
 		req.PlaylistInfo = &info
 	}
 	if req.Fragment != nil {
@@ -143,7 +143,7 @@ func downloadRequestEntries(req DownloadRequest) []PlaylistEntry {
 	if !downloadRequestUsesPlaylist(req) {
 		return nil
 	}
-	return append([]PlaylistEntry(nil), req.Entries...)
+	return slices.Clone(req.Entries)
 }
 
 func downloadRequestAllowsFragment(req DownloadRequest) bool {
@@ -154,7 +154,7 @@ func downloadRequestAllowsFragment(req DownloadRequest) bool {
 }
 
 func downloadRequestRequiresFFmpeg(req DownloadRequest) bool {
-	return req.Profile.Mode == ModeAudio || req.Fragment != nil || req.Profile.RequiresVideoPostprocessing()
+	return ProfileRequiresFFmpeg(req.Profile, req.Fragment)
 }
 
 func downloadRequestFFmpegError(req DownloadRequest) error {
@@ -238,25 +238,43 @@ func videoModeArgs(profile OutputProfile, format string) []string {
 	return []string{"-f", format, "--merge-output-format", container}
 }
 
-func (p OutputProfile) RequiresVideoPostprocessing() bool {
+// videoPostprocessKind describes what ffmpeg must do with a video profile.
+type videoPostprocessKind uint8
+
+const (
+	videoPostprocessNone videoPostprocessKind = iota
+	videoPostprocessRemux
+	videoPostprocessTranscode
+)
+
+func (p OutputProfile) videoPostprocessKind() videoPostprocessKind {
 	if p.Mode != ModeVideo {
-		return false
+		return videoPostprocessNone
 	}
-	return strings.TrimSpace(p.VideoCodec) != "" ||
+	if p.RemuxOnly {
+		return videoPostprocessRemux
+	}
+	if strings.TrimSpace(p.VideoCodec) != "" ||
 		strings.TrimSpace(p.AudioCodec) != "" ||
 		strings.TrimSpace(p.VideoCRF) != "" ||
-		strings.TrimSpace(p.AudioBitrate) != "" ||
-		p.RemuxOnly
+		strings.TrimSpace(p.AudioBitrate) != "" {
+		return videoPostprocessTranscode
+	}
+	return videoPostprocessNone
+}
+
+func (p OutputProfile) RequiresVideoPostprocessing() bool {
+	return p.videoPostprocessKind() != videoPostprocessNone
 }
 
 func (p OutputProfile) NeedsVideoTranscode() bool {
-	if p.Mode != ModeVideo || p.RemuxOnly {
-		return false
-	}
-	return strings.TrimSpace(p.VideoCodec) != "" ||
-		strings.TrimSpace(p.AudioCodec) != "" ||
-		strings.TrimSpace(p.VideoCRF) != "" ||
-		strings.TrimSpace(p.AudioBitrate) != ""
+	return p.videoPostprocessKind() == videoPostprocessTranscode
+}
+
+// ProfileRequiresFFmpeg reports whether downloading with profile and an
+// optional fragment needs ffmpeg available.
+func ProfileRequiresFFmpeg(profile OutputProfile, fragment *DownloadFragment) bool {
+	return profile.Mode == ModeAudio || fragment != nil || profile.RequiresVideoPostprocessing()
 }
 
 func appendFragmentDownloadArgs(args []string, req DownloadRequest) []string {

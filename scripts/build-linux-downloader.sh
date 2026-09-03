@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUTPUT_PATH="${1:-$ROOT_DIR/VolRenDownloader_linux_amd64}"
+OUTPUT_PATH="${1:-$ROOT_DIR/Volvid}"
 
 source "$ROOT_DIR/scripts/go-env.sh"
 

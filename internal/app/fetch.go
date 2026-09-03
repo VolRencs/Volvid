@@ -25,12 +25,14 @@ type dlWriter struct {
 	ch       chan<- FileProgress
 }
 
+const progressEmitInterval = 100 * time.Millisecond
+
 func (w *dlWriter) Write(p []byte) (int, error) {
 	n, err := w.w.Write(p)
 	w.done += int64(n)
 	if w.ch != nil && time.Now().After(w.nextEmit) {
 		w.emit(false, nil)
-		w.nextEmit = time.Now().Add(100 * time.Millisecond)
+		w.nextEmit = time.Now().Add(progressEmitInterval)
 	}
 	return n, err
 }

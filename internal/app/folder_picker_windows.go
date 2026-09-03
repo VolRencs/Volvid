@@ -46,7 +46,7 @@ func pickDirectory(current, title string) (string, error) {
 
 	if err := cmd.Run(); err != nil {
 		if text := strings.TrimSpace(stderr.String()); text != "" {
-			return "", fmt.Errorf("open folder picker: %s", text)
+			return "", fmt.Errorf("open folder picker: %s: %w", text, err)
 		}
 		return "", fmt.Errorf("open folder picker: %w", err)
 	}

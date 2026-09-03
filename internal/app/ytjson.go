@@ -10,7 +10,7 @@ import (
 )
 
 func scanYTDLPJSONLines(env *Env, ctx context.Context, timeout time.Duration, args []string, handle func(map[string]any)) error {
-	cmd, stdout, runCtx, cancel, err := startYTDLPMergedOutputCommand(env, ctx, timeout, args...)
+	cmd, stdout, runCtx, cancel, err := startYTDLPMergedOutputCommand(env, ctx, timeout, resolveRuntimeDeps(env), args...)
 	if err != nil {
 		return fmt.Errorf("yt-dlp start: %w", err)
 	}
@@ -33,7 +33,9 @@ func scanYTDLPJSONLines(env *Env, ctx context.Context, timeout time.Duration, ar
 		return nil
 	}); err != nil {
 		cancel()
-		_ = waitCommand(cmd, runCtx)
+		if waitErr := waitCommand(cmd, runCtx); waitErr != nil {
+			err = errors.Join(err, waitErr)
+		}
 		return fmt.Errorf("yt-dlp output: %w", err)
 	}
 

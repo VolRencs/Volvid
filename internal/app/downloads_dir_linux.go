@@ -31,11 +31,12 @@ func systemDownloadsDirPlatform() string {
 
 	for _, rawLine := range strings.Split(string(b), "\n") {
 		line := strings.TrimSpace(rawLine)
-		if !strings.HasPrefix(line, "XDG_DOWNLOAD_DIR=") {
+		rest, ok := strings.CutPrefix(line, "XDG_DOWNLOAD_DIR=")
+		if !ok {
 			continue
 		}
 
-		value := strings.TrimSpace(strings.TrimPrefix(line, "XDG_DOWNLOAD_DIR="))
+		value := strings.TrimSpace(rest)
 		if value == "" {
 			return ""
 		}
@@ -50,8 +51,8 @@ func systemDownloadsDirPlatform() string {
 		}
 		path := strings.ReplaceAll(unquoted, "${HOME}", home)
 		path = strings.ReplaceAll(path, "$HOME", home)
-		if strings.HasPrefix(path, "~/") {
-			path = filepath.Join(home, strings.TrimPrefix(path, "~/"))
+		if rest, ok := strings.CutPrefix(path, "~/"); ok {
+			path = filepath.Join(home, rest)
 		}
 		return cleanAbsPath(path)
 	}

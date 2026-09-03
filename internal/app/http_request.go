@@ -14,7 +14,7 @@ func doSafeRequest(ctx context.Context, client *http.Client, req *http.Request) 
 	ctx = resolveContext(ctx)
 
 	var lastErr error
-	for attempt := 0; attempt < defaultSafeRetryAttempts; attempt++ {
+	for attempt := range defaultSafeRetryAttempts {
 		resp, err := client.Do(req.Clone(ctx))
 		if err == nil {
 			if shouldRetryStatus(resp.StatusCode) && attempt+1 < defaultSafeRetryAttempts {

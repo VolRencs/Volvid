@@ -1,12 +1,13 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -110,17 +111,7 @@ func (q QualityChoice) Profile(l Locale) OutputProfile {
 }
 
 func compactQualityURLs(urls []string) []string {
-	compacted := make([]string, 0, len(urls))
-	seen := make(map[string]bool, len(urls))
-	for _, url := range urls {
-		url = strings.TrimSpace(url)
-		if url == "" || seen[url] {
-			continue
-		}
-		seen[url] = true
-		compacted = append(compacted, url)
-	}
-	return compacted
+	return dedupeStrings(urls, func(s string) string { return s })
 }
 
 type qualityScanResult struct {
@@ -152,8 +143,7 @@ func scanQualityChoicesContext(env *Env, ctx context.Context, urls []string) ([]
 		return nil, errors.New("quality scan: no formats found")
 	}
 
-	slices.Sort(heights)
-	slices.Reverse(heights)
+	slices.SortFunc(heights, func(a, b int) int { return cmp.Compare(b, a) })
 	return buildQualityChoices(heights, counts, videos, len(urls)), nil
 }
 
@@ -273,8 +263,7 @@ func videoQualityInfoFromProbe(probe *MediaProbe) (videoQualityInfo, error) {
 		}
 	}
 
-	slices.Sort(heights)
-	slices.Reverse(heights)
+	slices.SortFunc(heights, func(a, b int) int { return cmp.Compare(b, a) })
 	return videoQualityInfo{
 		heights:      heights,
 		hasHeight:    heightsSeen,
@@ -365,9 +354,6 @@ func collectQualityScanResults(results <-chan qualityScanResult, total int) ([]i
 		}
 	}
 
-	heights := make([]int, 0, len(seen))
-	for height := range seen {
-		heights = append(heights, height)
-	}
+	heights := slices.Sorted(maps.Keys(seen))
 	return heights, counts, videos, scanned, firstErr
 }

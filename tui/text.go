@@ -79,9 +79,7 @@ func joinFittedParts(width int, parts []string, sep string) string {
 }
 
 func formatElapsed(d time.Duration) string {
-	if d < 0 {
-		d = 0
-	}
+	d = max(d, 0)
 	d = d.Round(time.Second)
 	h := int(d / time.Hour)
 	m := int((d % time.Hour) / time.Minute)

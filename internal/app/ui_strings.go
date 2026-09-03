@@ -85,7 +85,7 @@ var strEN = UIStrings{
 	UpdateAppliedUnix: "Binary replaced. Restart the app.",
 	UpdateDonePrefix:  "Update applied",
 	HelpAnyKey:        "Any key", HelpExit: "exit", DepsOK: "Dependencies updated.",
-	DownloadsDirLocked:  "Download location is fixed by VOLREN_DOWNLOADS_DIR.",
+	DownloadsDirLocked:  "Download location is fixed by VOLVID_DOWNLOADS_DIR.",
 	PickDownloadsFailed: "Failed to choose download folder",
 
 	PasteURL: "Paste a YouTube video or playlist URL", URLErrEmpty: "URL cannot be empty",
@@ -185,7 +185,7 @@ var strRU = UIStrings{
 	UpdateAppliedUnix: "Бинарный файл обновлён. Перезапустите приложение.",
 	UpdateDonePrefix:  "Обновление применено",
 	HelpAnyKey:        "Любая клавиша", HelpExit: "выйти", DepsOK: "Зависимости обновлены.",
-	DownloadsDirLocked:  "Папка загрузки зафиксирована через VOLREN_DOWNLOADS_DIR.",
+	DownloadsDirLocked:  "Папка загрузки зафиксирована через VOLVID_DOWNLOADS_DIR.",
 	PickDownloadsFailed: "Не удалось выбрать папку загрузки",
 
 	PasteURL: "Вставь ссылку на видео или плейлист YouTube", URLErrEmpty: "Ссылка не может быть пустой",

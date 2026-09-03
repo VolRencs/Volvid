@@ -7,10 +7,9 @@ const (
 	ytdlpWorst360Format = "bestvideo[height<=360]+bestaudio/best[height<=360]"
 )
 
-var qualityChains = [3][]string{
-	{ytdlpBestFormat, "bestvideo+bestaudio", "best"},
+var qualityChains = [2][]string{
+	{ytdlpBestFormat, "bestvideo+bestaudio/best", "best"},
 	{ytdlpWorst360Format, "best[height<=360]", "worst"},
-	nil,
 }
 
 func qualityChainAt(idx int) []string {

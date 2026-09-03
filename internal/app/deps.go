@@ -25,7 +25,6 @@ type BrowserCookiesInfo struct {
 	Status       string
 	Browser      string
 	ProfileName  string
-	CookiePath   string
 	YTDLPProfile string
 }
 

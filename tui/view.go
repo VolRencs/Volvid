@@ -37,7 +37,7 @@ func (m Model) View() tea.View {
 	content := m.buildScreen(m.renderCard(m.screenView()))
 	v := tea.NewView(content)
 	v.AltScreen = true
-	v.WindowTitle = "VolRen Downloader · v" + app.Version
+	v.WindowTitle = "Volvid · v" + app.Version
 	v.Cursor = nil
 	return v
 }
@@ -89,8 +89,8 @@ func (m Model) renderSubtitle(text string) string {
 }
 
 func (m Model) renderTopBar() string {
-	left := sBrandMark.Render("◆") + " " + sBold.Render("VolRen") +
-		sSubtitle.Render(" Downloader") + sVersionChip.Render("  v"+app.Version)
+	left := sBrandMark.Render("◆") + " " + sBold.Render("Volvid") +
+		sVersionChip.Render("  v"+app.Version)
 
 	right := m.depBadge()
 	if right == "" {
@@ -138,7 +138,8 @@ func (m Model) depBadge() string {
 }
 
 func (m Model) renderLocaleFooter() string {
-	hint := sLocaleChip.Render(strings.ToUpper(m.locale.String()))
+	hint := sHelpBracket.Render("[") + sHelpKey.Render("Tab") + sHelpBracket.Render("]") +
+		" " + sLocaleChip.Render(strings.ToUpper(m.locale.String()))
 	if m.width == 0 {
 		return hint
 	}
@@ -300,7 +301,7 @@ func (m Model) screenView() screenView {
 	}
 
 	return screenView{
-		title: "VolRen Downloader",
+		title: "Volvid",
 		body:  m.renderSpinnerScreen(m.stageTitle()),
 	}
 }

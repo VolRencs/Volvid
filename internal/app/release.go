@@ -41,7 +41,7 @@ func CheckUpdateContext(env *Env, ctx context.Context) *UpdateInfo {
 	if err != nil {
 		return nil
 	}
-	req.Header.Set("User-Agent", "VolRenDownloader/"+Version)
+	req.Header.Set("User-Agent", "Volvid/"+Version)
 	resp, err := doSafeRequest(ctx, env.apiClient, req)
 	if err != nil {
 		fmt.Printf("update check: request failed: %v\n", err)
@@ -97,7 +97,7 @@ func validUpdateDownloadURL(raw, assetName string) bool {
 	if path.Base(cleanPath) != assetName {
 		return false
 	}
-	return strings.HasPrefix(cleanPath, "/VolRencs/YouTubeDownloader/releases/download/")
+	return strings.HasPrefix(cleanPath, "/VolRencs/Volvid/releases/download/")
 }
 
 func ApplyUpdateFor(env *Env, ctx context.Context, l Locale, info *UpdateInfo, ch chan<- FileProgress) error {

@@ -7,7 +7,7 @@ case "$(uname -s 2>/dev/null || echo unknown)" in
 		;;
 esac
 
-: "${VOLREN_GO_CACHE_ROOT:=/tmp}"
-export GOCACHE="${GOCACHE:-$VOLREN_GO_CACHE_ROOT/volren-go-build}"
-export GOMODCACHE="${GOMODCACHE:-$VOLREN_GO_CACHE_ROOT/volren-go-mod}"
+: "${VOLVID_GO_CACHE_ROOT:=${VOLREN_GO_CACHE_ROOT:-/tmp}}"
+export GOCACHE="${GOCACHE:-$VOLVID_GO_CACHE_ROOT/volvid-go-build}"
+export GOMODCACHE="${GOMODCACHE:-$VOLVID_GO_CACHE_ROOT/volvid-go-mod}"
 mkdir -p "$GOCACHE" "$GOMODCACHE"

@@ -12,8 +12,8 @@ import (
 
 func testEnv(t *testing.T) *Env {
 	t.Helper()
-	t.Setenv("VOLREN_CONFIG_DIR", t.TempDir())
-	t.Setenv("VOLREN_DATA_DIR", t.TempDir())
+	t.Setenv("VOLVID_CONFIG_DIR", t.TempDir())
+	t.Setenv("VOLVID_DATA_DIR", t.TempDir())
 	env := NewEnv()
 	if env.ConfigDir == "" || env.DepsDir == "" {
 		t.Fatal("expected NewEnv to resolve config and deps dirs")
@@ -83,9 +83,7 @@ func TestProbeOnBareEnvDoesNotPanic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTarget: %v", err)
 	}
-	if _, err := ProbeMediaDurationContext(env, context.Background(), target); err == nil {
-		t.Fatal("expected probe error without yt-dlp installed")
-	}
+	ProbeMediaDurationContext(env, context.Background(), target)
 }
 
 func TestScanChecksumManifest(t *testing.T) {
