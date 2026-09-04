@@ -37,7 +37,7 @@ func InstallDependencyFor(env *Env, ctx context.Context, key string, l Locale, c
 }
 
 func ensureDepsDir(env *Env) error {
-	if err := os.MkdirAll(env.DepsDir, 0o755); err != nil {
+	if _, err := prepareDir(env.DepsDir); err != nil {
 		return fmt.Errorf("create DepsDir: %w", err)
 	}
 	return nil
@@ -119,10 +119,16 @@ func extractZipEntry(zf *zip.File, dest string) error {
 	}
 	tmpName := tmp.Name()
 
-	if _, err := io.Copy(tmp, io.LimitReader(rc, maxExtractedFileSize)); err != nil {
+	n, err := io.Copy(tmp, io.LimitReader(rc, maxExtractedFileSize+1))
+	if err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("extract zip data: %w", err)
+	}
+	if n > maxExtractedFileSize {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("extract zip data: entry exceeds %d bytes", maxExtractedFileSize)
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
@@ -145,19 +151,27 @@ func installFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 		return err
 	}
 
-	tmp, err := os.MkdirTemp("", "ffmpeg-*")
+	stagingParent, err := stageDownloadDir(env)
 	if err != nil {
-		return fmt.Errorf("create temp dir: %w", err)
+		return err
 	}
-	defer os.RemoveAll(tmp)
+	defer os.RemoveAll(stagingParent)
 
 	archiveURL, archiveName, err := ffmpegArchiveAsset()
 	if err != nil {
 		return fmt.Errorf("ffmpeg asset metadata: %w", err)
 	}
-	archive := filepath.Join(tmp, archiveName)
+	archive := filepath.Join(stagingParent, archiveName)
 	if err := downloadFileContext(env, ctx, archiveURL, archive, l, ch); err != nil {
 		return fmt.Errorf("download ffmpeg archive: %w", err)
+	}
+	// BtbN не публикует машиночитаемый SHA-манифест как yt-dlp/node,
+	// поэтому проверяем checksum только если он задан явно.
+	// Это закрывает supply-chain для тех, кто пинит хеш.
+	if expected := strings.TrimSpace(os.Getenv("VOLVID_FFMPEG_SHA256")); expected != "" {
+		if err := verifyFileSHA256(archive, expected); err != nil {
+			return fmt.Errorf("verify ffmpeg checksum: %w", err)
+		}
 	}
 
 	staging, err := os.MkdirTemp(env.DepsDir, ".ffmpeg-*")
@@ -175,14 +189,8 @@ func installFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 		ffprobeName: stagedFFprobe,
 	}
 
-	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
-		if err := extractZipBinaries(archive, targets); err != nil {
-			return fmt.Errorf("extract ffmpeg zip: %w", err)
-		}
-	} else {
-		if err := extractArchiveBinariesWithTar(ctx, archive, targets); err != nil {
-			return fmt.Errorf("extract ffmpeg archive: %w", err)
-		}
+	if err := extractBinaries(ctx, archive, targets); err != nil {
+		return fmt.Errorf("extract ffmpeg archive: %w", err)
 	}
 
 	if err := requireStagedBinary(ctx, "ffmpeg", depSpec{Key: "ffmpeg", Name: "ffmpeg", ManagedPath: stagedFFmpeg, VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine}); err != nil {
@@ -209,13 +217,13 @@ func installNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 		return err
 	}
 
-	tmp, err := os.MkdirTemp("", "node-*")
+	stagingParent, err := stageDownloadDir(env)
 	if err != nil {
-		return fmt.Errorf("create temp dir: %w", err)
+		return err
 	}
-	defer os.RemoveAll(tmp)
+	defer os.RemoveAll(stagingParent)
 
-	archive := filepath.Join(tmp, filename)
+	archive := filepath.Join(stagingParent, filename)
 	if err := downloadFileContext(env, ctx, url, archive, l, ch); err != nil {
 		return fmt.Errorf("download node archive: %w", err)
 	}
@@ -233,18 +241,8 @@ func installNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 
 	nodeName := binaryBaseName(env.NodeBin)
 	stagedNode := filepath.Join(staging, nodeName)
-	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
-		if err := extractZipBinaries(archive, map[string]string{
-			nodeName: stagedNode,
-		}); err != nil {
-			return fmt.Errorf("extract node zip: %w", err)
-		}
-	} else {
-		if err := extractArchiveBinariesWithTar(ctx, archive, map[string]string{
-			nodeName: stagedNode,
-		}); err != nil {
-			return fmt.Errorf("extract node archive: %w", err)
-		}
+	if err := extractBinaries(ctx, archive, map[string]string{nodeName: stagedNode}); err != nil {
+		return fmt.Errorf("extract node archive: %w", err)
 	}
 
 	if err := requireStagedBinary(ctx, "node", depSpec{Key: "node", Name: "node", ManagedPath: stagedNode, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}); err != nil {
@@ -254,6 +252,21 @@ func installNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 		return fmt.Errorf("replace node binary: %w", err)
 	}
 	return nil
+}
+
+func extractBinaries(ctx context.Context, archive string, targets map[string]string) error {
+	if strings.HasSuffix(strings.ToLower(archive), ".zip") {
+		return extractZipBinaries(archive, targets)
+	}
+	return extractArchiveBinariesWithTar(ctx, archive, targets)
+}
+
+func stageDownloadDir(env *Env) (string, error) {
+	dir, err := os.MkdirTemp(env.DepsDir, ".dl-*")
+	if err != nil {
+		return "", fmt.Errorf("create download staging dir: %w", err)
+	}
+	return dir, nil
 }
 
 func ffmpegArchiveAsset() (string, string, error) {
@@ -413,9 +426,12 @@ func downloadText(env *Env, ctx context.Context, url string) (string, error) {
 		return "", fmt.Errorf("validate download response: %w", err)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, manifestMaxBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("read response body: %w", err)
+	}
+	if int64(len(data)) > manifestMaxBytes {
+		return "", fmt.Errorf("manifest exceeds %d bytes", manifestMaxBytes)
 	}
 	return string(data), nil
 }
@@ -610,6 +626,14 @@ func copyExtractedBinaries(root string, targets map[string]string) error {
 		if walkErr != nil {
 			return walkErr
 		}
+		// Отказ от symlink-атак: любой symlink внутри распаковки удаляем,
+		// наружу ничего не копируем. Внешний tar распаковывает только
+		// allowlist-entries в свежий пустой destDir, поэтому escape возможен
+		// только через symlink-entry — такие файлы отклоняем здесь.
+		if d.Type()&os.ModeSymlink != 0 {
+			_ = os.Remove(path)
+			return nil
+		}
 		if d.IsDir() {
 			return nil
 		}
@@ -671,7 +695,14 @@ func copyExtractedFile(src, dest string) error {
 		_ = out.Close()
 		return fmt.Errorf("sync destination file: %w", err)
 	}
-	return out.Close()
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("close destination file: %w", err)
+	}
+	// OpenFile учитывает umask, поэтому выставляем 0755 явно.
+	if err := os.Chmod(dest, 0o755); err != nil {
+		return fmt.Errorf("chmod destination file: %w", err)
+	}
+	return nil
 }
 
 func binaryBaseName(path string) string {

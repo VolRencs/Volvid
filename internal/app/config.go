@@ -17,6 +17,7 @@ const (
 	retryBodyDrainLimit          = 1 << 20
 	apiClientTimeout             = 8 * time.Second
 	manifestFetchTimeout         = 30 * time.Second
+	manifestMaxBytes             = 1 << 20
 )
 
 const (
@@ -26,6 +27,7 @@ const (
 	maxDetailedQualityURLs  = 5
 	maxParallelQualityScans = 6
 	runtimeDepsTTL          = 15 * time.Second
+	probeCacheTTL           = 10 * time.Minute
 )
 
 const (
@@ -38,6 +40,7 @@ const (
 const (
 	processTerminateGrace    = 2 * time.Second
 	commandStderrCaptureSize = 8 << 10
+	commandStdoutMaxBytes    = 64 << 20
 	commandLineBufferSize    = 128 << 10
 	commandLineMaxBytes      = 16 << 20
 	maxYtdlpErrorLine        = 512

@@ -155,7 +155,7 @@ func createTempDownloadFile(dest string) (string, *os.File, error) {
 }
 
 func sanitizeTempPattern(name string) string {
-	name = strings.TrimSpace(strings.ReplaceAll(name, "*", "_"))
+	name = invalidFilenameRE.ReplaceAllString(strings.TrimSpace(name), "_")
 	if name == "" || name == "." || name == string(filepath.Separator) {
 		return "download"
 	}

@@ -52,11 +52,16 @@ func loadSavedDownloadsDir(env *Env) string {
 		return ""
 	}
 
+	// Ограничиваем размер, чтобы битый/огромный файл не съедал память.
 	b, err := os.ReadFile(path)
-	if err != nil {
+	if err != nil || len(b) > 8<<10 {
 		return ""
 	}
-	return cleanAbsPath(string(b))
+	dir := cleanAbsPath(string(b))
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return ""
+	}
+	return dir
 }
 
 func saveDownloadsDir(env *Env, path string) error {

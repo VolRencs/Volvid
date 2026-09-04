@@ -55,6 +55,7 @@ func loadDeps(env *Env, force bool) CheckDepsResult {
 func invalidateDepsCache(env *Env) {
 	env.depsCache.InvalidateAll()
 	env.runtimeDepsCache.InvalidateAll()
+	env.invalidateFFmpegEncoders()
 }
 
 type depSpec struct {

@@ -104,6 +104,11 @@ func (m Model) syncMenu() Model {
 	return m
 }
 
+func (m Model) gotoScreen(s screen) Model {
+	m.screen = s
+	return m.syncMenu()
+}
+
 func (m *Model) syncLocalizedInputs() {
 	m.searchInput.SetPlaceholder(m.u().SearchPlaceholder)
 	m.plInput.SetPlaceholder(m.u().PlInputPlaceholder)
@@ -192,7 +197,10 @@ func (m Model) selectedPlaylistCount() int {
 }
 
 func (m *Model) clearPlaylistSelection() {
-	m.plSelected = map[int]bool{}
+	clear(m.plSelected)
+	if m.plSelected == nil {
+		m.plSelected = map[int]bool{}
+	}
 }
 
 func (m *Model) applyPlaylistSelectionIndices(indices []int) {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -51,7 +52,7 @@ func checkUpdateContext(env *Env, ctx context.Context) *UpdateInfo {
 		return nil
 	}
 	var data map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, manifestMaxBytes)).Decode(&data); err != nil {
 		return nil
 	}
 	latest := strings.TrimPrefix(mapString(data, "tag_name", ""), "v")

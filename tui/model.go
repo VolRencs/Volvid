@@ -204,7 +204,13 @@ func (s screen) props() screenProps {
 }
 
 func (m Model) cancelOps() Model {
-	m.opGen++
+	return m.cancelOp(true)
+}
+
+func (m Model) cancelOp(bump bool) Model {
+	if bump {
+		m.opGen++
+	}
 	if m.opCancel != nil {
 		m.opCancel()
 		m.opCancel = nil
@@ -220,9 +226,5 @@ func (m Model) nextOpCtx() (Model, context.Context) {
 }
 
 func (m Model) clearOpCancel() Model {
-	if m.opCancel != nil {
-		m.opCancel()
-		m.opCancel = nil
-	}
-	return m
+	return m.cancelOp(false)
 }

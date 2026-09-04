@@ -103,3 +103,12 @@ func (env *Env) setDownloadsDir(path string) {
 	env.downloadsDir = path
 	env.dlDirMu.Unlock()
 }
+
+func (env *Env) invalidateFFmpegEncoders() {
+	if env == nil {
+		return
+	}
+	env.ffmpegEncodersMu.Lock()
+	defer env.ffmpegEncodersMu.Unlock()
+	clear(env.ffmpegEncodersValue)
+}

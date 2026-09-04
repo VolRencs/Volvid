@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 )
 
@@ -21,6 +22,55 @@ type MediaFormat struct {
 	ACodec         string `json:"acodec"`
 	Filesize       int64  `json:"filesize"`
 	FilesizeApprox int64  `json:"filesize_approx"`
+}
+
+// UnmarshalJSON терпит null в строковых/числовых полях yt-dlp.
+func (f *MediaFormat) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		Height         int `json:"height"`
+		VCodec         any `json:"vcodec"`
+		ACodec         any `json:"acodec"`
+		Filesize       any `json:"filesize"`
+		FilesizeApprox any `json:"filesize_approx"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*f = MediaFormat{
+		Height:         aux.Height,
+		VCodec:         stringOrEmpty(aux.VCodec),
+		ACodec:         stringOrEmpty(aux.ACodec),
+		Filesize:       intOrZero(aux.Filesize),
+		FilesizeApprox: intOrZero(aux.FilesizeApprox),
+	}
+	return nil
+}
+
+func intOrZero(v any) int64 {
+	switch n := v.(type) {
+	case nil:
+		return 0
+	case float64:
+		return int64(n)
+	case string:
+		if f, err := strconv.ParseFloat(strings.TrimSpace(n), 64); err == nil {
+			return int64(f)
+		}
+		return 0
+	default:
+		return 0
+	}
+}
+
+func stringOrEmpty(v any) string {
+	switch s := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return s
+	default:
+		return ""
+	}
 }
 
 type probePayload struct {
@@ -55,7 +105,7 @@ func probeMediaWithDeps(env *Env, ctx context.Context, deps CheckDepsResult, tar
 	key := probeCacheKey(target)
 
 	probe, err := env.probeCache.ProbeLoad(key, ctx, func() (*MediaProbe, error) {
-		return probeMediaUncached(env, context.WithoutCancel(ctx), deps, target)
+		return probeMediaUncached(env, ctx, deps, target)
 	})
 	if err != nil {
 		return nil, err

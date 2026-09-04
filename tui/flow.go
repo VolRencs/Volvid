@@ -118,8 +118,7 @@ func (m Model) exitToURL() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) gotoQualitySelection() (tea.Model, tea.Cmd) {
-	m.screen = scrQuality
-	m = m.syncMenu()
+	m = m.gotoScreen(scrQuality)
 	return m, nil
 }
 
@@ -143,8 +142,7 @@ func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) 
 	m.qualityChoices = nil
 	m.videoProfiles = nil
 	m.audioProfiles = nil
-	m.screen = scrMode
-	m = m.syncMenu()
+	m = m.gotoScreen(scrMode)
 	return m, nil
 }
 
@@ -179,6 +177,13 @@ func (m Model) submitURLInput() (tea.Model, tea.Cmd) {
 	return m.startTargetFlow(rawURL, target)
 }
 
+func (m Model) startOpScreen(s screen, cmd func(ctx context.Context, gen int) tea.Cmd) (tea.Model, tea.Cmd) {
+	var ctx context.Context
+	m, ctx = m.nextOpCtx()
+	m.screen = s
+	return m, tea.Batch(cmd(ctx, m.opGen), spinnerTickCmd())
+}
+
 func (m Model) startTargetFlow(rawURL string, target app.ParsedTarget) (tea.Model, tea.Cmd) {
 	m.url = rawURL
 	m.urlInput.SetValue(rawURL)
@@ -187,14 +192,12 @@ func (m Model) startTargetFlow(rawURL string, target app.ParsedTarget) (tea.Mode
 
 	if target.IsPlaylist() {
 		if target.Kind == app.TargetMixed {
-			m.screen = scrPlaylistAsk
-			m = m.syncMenu()
+			m = m.gotoScreen(scrPlaylistAsk)
 			return m, nil
 		}
-		var ctx context.Context
-		m, ctx = m.nextOpCtx()
-		m.screen = scrPlaylistFetch
-		return m, tea.Batch(fetchPlaylistCmd(m.env, ctx, rawURL, m.locale, m.opGen), spinnerTickCmd())
+		return m.startOpScreen(scrPlaylistFetch, func(ctx context.Context, gen int) tea.Cmd {
+			return fetchPlaylistCmd(m.env, ctx, rawURL, m.locale, gen)
+		})
 	}
 
 	return m.startFragmentFlow()
@@ -202,10 +205,9 @@ func (m Model) startTargetFlow(rawURL string, target app.ParsedTarget) (tea.Mode
 
 func (m Model) startFragmentFlow() (tea.Model, tea.Cmd) {
 	m.resetFragmentState()
-	var ctx context.Context
-	m, ctx = m.nextOpCtx()
-	m.screen = scrFragmentProbe
-	return m, tea.Batch(probeFragmentDurationCmd(m.env, ctx, m.target, m.opGen), spinnerTickCmd())
+	return m.startOpScreen(scrFragmentProbe, func(ctx context.Context, gen int) tea.Cmd {
+		return probeFragmentDurationCmd(m.env, ctx, m.target, gen)
+	})
 }
 
 func (m Model) openSearchInput() (tea.Model, tea.Cmd) {
@@ -225,10 +227,9 @@ func (m Model) submitSearchInput() (tea.Model, tea.Cmd) {
 	m.searchQuery = query
 	m.searchErr = ""
 	m.searchResults = nil
-	var ctx context.Context
-	m, ctx = m.nextOpCtx()
-	m.screen = scrSearchFetch
-	return m, tea.Batch(searchYouTubeCmd(m.env, ctx, query, m.opGen), spinnerTickCmd())
+	return m.startOpScreen(scrSearchFetch, func(ctx context.Context, gen int) tea.Cmd {
+		return searchYouTubeCmd(m.env, ctx, query, gen)
+	})
 }
 
 func (m Model) activateSearchResult(idx int) (tea.Model, tea.Cmd) {
@@ -342,6 +343,9 @@ func (m Model) startDependencyDownload(
 	m.screen = screen
 
 	var cmd tea.Cmd
+	if m.depCancel != nil {
+		m.depCancel()
+	}
 	m.depGen++
 	m.depCh, cmd, m.depCancel = launchProgress(m.baseCtx, fn, isUpdate, m.depGen)
 	return m, cmd
@@ -352,16 +356,15 @@ func (m Model) startQualityScan() (tea.Model, tea.Cmd) {
 	m.videoProfiles = nil
 	m.profile = app.OutputProfile{}
 	m.flowErr = ""
-	var ctx context.Context
-	m, ctx = m.nextOpCtx()
-	m.screen = scrQualityFetch
-	return m, tea.Batch(loadQualityChoicesCmd(m.env, ctx, m.qualityScanURLs(), m.opGen), spinnerTickCmd())
+	urls := m.qualityScanURLs()
+	return m.startOpScreen(scrQualityFetch, func(ctx context.Context, gen int) tea.Cmd {
+		return loadQualityChoicesCmd(m.env, ctx, urls, gen)
+	})
 }
 
 func (m Model) continueAfterProfileSelection() (tea.Model, tea.Cmd) {
 	if len(m.dlEntries) > 1 {
-		m.screen = scrWorkers
-		m = m.syncMenu()
+		m = m.gotoScreen(scrWorkers)
 		return m, nil
 	}
 	return m.startDownload()

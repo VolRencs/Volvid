@@ -136,10 +136,10 @@ func scanQualityChoicesContext(env *Env, ctx context.Context, urls []string) ([]
 	}
 
 	results := runQualityScan(env, ctx, urls)
+	heights, counts, videos, scanned, firstErr := collectQualityScanResults(ctx, results, len(urls))
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	heights, counts, videos, scanned, firstErr := collectQualityScanResults(results, len(urls))
 	if scanned == 0 {
 		if firstErr != nil {
 			return nil, firstErr
@@ -311,32 +311,39 @@ func runQualityScan(env *Env, ctx context.Context, urls []string) <-chan quality
 	return results
 }
 
-func collectQualityScanResults(results <-chan qualityScanResult, total int) ([]int, map[int]int, []videoQualityInfo, int, error) {
+func collectQualityScanResults(ctx context.Context, results <-chan qualityScanResult, total int) ([]int, map[int]int, []videoQualityInfo, int, error) {
 	counts := make(map[int]int)
 	seen := make(map[int]bool)
 	videos := make([]videoQualityInfo, 0, total)
 	scanned := 0
 	var firstErr error
 
-	for res := range results {
-		if res.err != nil {
-			if firstErr == nil {
-				firstErr = res.err
+	for {
+		select {
+		case <-ctx.Done():
+			heights := slices.Sorted(maps.Keys(seen))
+			return heights, counts, videos, scanned, firstErr
+		case res, ok := <-results:
+			if !ok {
+				heights := slices.Sorted(maps.Keys(seen))
+				return heights, counts, videos, scanned, firstErr
 			}
-			continue
-		}
-		if len(res.info.heights) == 0 {
-			continue
-		}
+			if res.err != nil {
+				if firstErr == nil {
+					firstErr = res.err
+				}
+				continue
+			}
+			if len(res.info.heights) == 0 {
+				continue
+			}
 
-		scanned++
-		videos = append(videos, res.info)
-		for _, height := range res.info.heights {
-			counts[height]++
-			seen[height] = true
+			scanned++
+			videos = append(videos, res.info)
+			for _, height := range res.info.heights {
+				counts[height]++
+				seen[height] = true
+			}
 		}
 	}
-
-	heights := slices.Sorted(maps.Keys(seen))
-	return heights, counts, videos, scanned, firstErr
 }

@@ -62,7 +62,9 @@ func shouldRetryHTTPError(err error) bool {
 	if errors.As(err, &netErr) {
 		return netErr.Timeout()
 	}
-	return true
+	// Не ретраим TLS/redirect-policy/url.Error без таймаута:
+	// повтор не поможет, только маскирует ошибку.
+	return false
 }
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {

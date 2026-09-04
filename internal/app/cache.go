@@ -58,14 +58,23 @@ func (fc *flightCache[K, V]) finishFlight(key K, fe *flightEntry[V], val V, err 
 }
 
 func (fc *flightCache[K, V]) Load(key K, fetch func() (V, error)) (V, error) {
-	fe, follower := fc.acquireFlight(key)
-	if follower {
-		<-fe.done
-		return fe.value, fe.err
+	for {
+		fe, follower := fc.acquireFlight(key)
+		if follower {
+			<-fe.done
+			fc.mu.Lock()
+			stale := fe.generation != fc.gen
+			val, err := fe.value, fe.err
+			fc.mu.Unlock()
+			if !stale {
+				return val, err
+			}
+			continue
+		}
+		val, err := fetch()
+		fc.finishFlight(key, fe, val, err)
+		return val, err
 	}
-	val, err := fetch()
-	fc.finishFlight(key, fe, val, err)
-	return val, err
 }
 
 func (fc *flightCache[K, V]) LoadWithTTL(key K, ttl time.Duration, fetch func() (V, error)) (V, error) {
@@ -105,19 +114,48 @@ func (fc *flightCache[K, V]) InvalidateAll() {
 
 func (fc *flightCache[K, V]) ProbeLoad(key K, ctx context.Context, fetch func() (V, error)) (V, error) {
 	if v, ok := fc.Get(key); ok {
-		return v, nil
-	}
-	fe, follower := fc.acquireFlight(key)
-	if follower {
-		select {
-		case <-fe.done:
-			return fe.value, fe.err
-		case <-ctx.Done():
-			var zero V
-			return zero, ctx.Err()
+		if exp, hasExp := fc.expiryOf(key); !hasExp || time.Now().Before(exp) {
+			return v, nil
 		}
 	}
-	val, err := fetch()
-	fc.finishFlight(key, fe, val, err)
-	return val, err
+	for {
+		fe, follower := fc.acquireFlight(key)
+		if follower {
+			select {
+			case <-fe.done:
+				fc.mu.Lock()
+				stale := fe.generation != fc.gen
+				val, err := fe.value, fe.err
+				fc.mu.Unlock()
+				if !stale {
+					return val, err
+				}
+				continue
+			case <-ctx.Done():
+				var zero V
+				return zero, ctx.Err()
+			}
+		}
+		val, err := fetch()
+		fc.finishFlight(key, fe, val, err)
+		if err == nil {
+			fc.setExpiry(key, time.Now().Add(probeCacheTTL))
+		}
+		return val, err
+	}
+}
+
+func (fc *flightCache[K, V]) expiryOf(key K) (time.Time, bool) {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	exp, ok := fc.expiries[key]
+	return exp, ok
+}
+
+func (fc *flightCache[K, V]) setExpiry(key K, exp time.Time) {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	if _, ok := fc.values[key]; ok {
+		fc.expiries[key] = exp
+	}
 }

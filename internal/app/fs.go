@@ -7,13 +7,46 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 )
 
 func writeAppConfig(path, content string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(content), 0o644)
+	return atomicWriteFile(path, []byte(content), 0o644)
+}
+
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".cfg-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return nil
 }
 
 func prepareDir(path string) (string, error) {
@@ -57,6 +90,20 @@ func OpenInFileManager(path string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("open file manager: %w", err)
 	}
-	go cmd.Wait()
+	go func() {
+		timer := time.NewTimer(30 * time.Second)
+		defer timer.Stop()
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			_ = cmd.Wait()
+		}()
+		select {
+		case <-done:
+		case <-timer.C:
+			_ = cmd.Process.Kill()
+			<-done
+		}
+	}()
 	return nil
 }

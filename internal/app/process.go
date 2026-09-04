@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -12,29 +11,56 @@ import (
 )
 
 type limitedBuffer struct {
-	buf []byte
+	buf       []byte
+	truncated bool
 }
 
 func (b *limitedBuffer) Write(p []byte) (int, error) {
+	want := len(p)
 	if len(b.buf) < commandStderrCaptureSize {
 		room := commandStderrCaptureSize - len(b.buf)
 		if len(p) > room {
 			p = p[:room]
+			b.truncated = true
 		}
 		b.buf = append(b.buf, p...)
+	} else if want > 0 {
+		b.truncated = true
 	}
-	return len(p), nil
+	return want, nil
 }
 
 func (b *limitedBuffer) String() string {
 	return strings.TrimSpace(string(b.buf))
 }
 
+type cappedBuffer struct {
+	buf   []byte
+	limit int
+}
+
+func (b *cappedBuffer) Write(p []byte) (int, error) {
+	limit := b.limit
+	if limit <= 0 {
+		limit = commandStdoutMaxBytes
+	}
+	if len(b.buf)+len(p) > limit {
+		return 0, fmt.Errorf("command output exceeds %d bytes", limit)
+	}
+	b.buf = append(b.buf, p...)
+	return len(p), nil
+}
+
+func (b *cappedBuffer) Bytes() []byte { return b.buf }
+
 func commandErrorWithStderr(err error, stderr limitedBuffer) error {
 	if err == nil {
 		return nil
 	}
 	if text := stderr.String(); text != "" {
+		if stderr.truncated {
+			text += "…(truncated)"
+		}
 		return fmt.Errorf("%w: %s", err, text)
 	}
 	return err
@@ -53,7 +79,8 @@ func runCommandOutput(ctx context.Context, timeout time.Duration, merge bool, na
 	defer cancel()
 
 	cmd := newProcessTreeCommand(runCtx, name, args...)
-	var stdout bytes.Buffer
+	var stdout cappedBuffer
+	stdout.limit = commandStdoutMaxBytes
 	var stderr limitedBuffer
 	if merge {
 		cmd.Stdout = &stdout

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +17,12 @@ func sendUpdate(ctx context.Context, ch chan<- DlUpdate, u DlUpdate) bool {
 		return false
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		select {
+		case ch <- u:
+			return true
+		default:
+			return false
+		}
 	}
 	select {
 	case ch <- u:
@@ -73,6 +79,24 @@ func (c *downloadCleanup) add(path string) {
 	c.paths[abs] = struct{}{}
 }
 
+func (c *downloadCleanup) forget(path string) {
+	if c == nil {
+		return
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return
+	}
+	abs = filepath.Clean(abs)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.paths, abs)
+}
+
 func (c *downloadCleanup) cleanup() {
 	if c == nil {
 		return
@@ -111,14 +135,11 @@ func deleteDownloadArtifacts(path string) {
 }
 
 func removeMatchingArtifacts(dir string, paths []string) {
-	type affix struct {
-		base string
-		stem string
-	}
-	affixes := make([]affix, 0, len(paths))
+	bases := make([]string, 0, len(paths))
 	for _, p := range paths {
-		base := filepath.Base(p)
-		affixes = append(affixes, affix{base: base, stem: strings.TrimSuffix(base, filepath.Ext(base))})
+		if base := filepath.Base(p); base != "" {
+			bases = append(bases, base)
+		}
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -129,17 +150,15 @@ func removeMatchingArtifacts(dir string, paths []string) {
 			continue
 		}
 		name := entry.Name()
-		for _, a := range affixes {
-			if strings.HasPrefix(name, a.base+".part-") ||
-				strings.HasPrefix(name, "."+a.base+".transcode-") {
+		for _, base := range bases {
+			// Только точные артефакты: yt-dlp --part фрагменты,
+			// наши tmp транскода и backup замены. Без stem-эвристик,
+			// чтобы не сносить пользовательские video.particular.mp4.
+			if strings.HasPrefix(name, base+".part-") ||
+				strings.HasPrefix(name, "."+base+".transcode-") ||
+				strings.HasPrefix(name, "."+base+".bak-") {
 				_ = os.Remove(filepath.Join(dir, name))
 				break
-			}
-			if a.stem != "" && strings.HasPrefix(name, a.stem+".") {
-				if rest := name[len(a.stem)+1:]; strings.Contains(rest, ".part") || strings.Contains(rest, ".ytdl") {
-					_ = os.Remove(filepath.Join(dir, name))
-					break
-				}
 			}
 		}
 	}
@@ -170,11 +189,23 @@ func runDownloadRequest(env *Env, ctx context.Context, slot int, req DownloadReq
 		}
 		result = streamYtdlp(env, ctx, slot, req.Locale, deps, args, ch, cleanup)
 		if result.Err == nil {
-			if err := transcodeDownloadedVideo(env, ctx, slot, req.Profile, req.Locale, deps, result.OutputPath, ch); err != nil {
+			finalPath, err := transcodeDownloadedVideo(env, ctx, slot, req.Profile, req.Locale, deps, result.OutputPath, ch)
+			if err != nil {
 				if cleanup != nil && result.OutputPath != "" {
 					cleanup.add(result.OutputPath)
 				}
 				return failedDownload(err)
+			}
+			if finalPath != "" {
+				// Транскодинг мог сменить расширение (контейнер):
+				// result.OutputPath — оригинал, finalPath — готовый файл.
+				if finalPath != result.OutputPath {
+					result.OutputPath = finalPath
+				}
+			}
+			if cleanup != nil && result.OutputPath != "" {
+				// Успешный файл нельзя удалять в deferred cleanup.
+				cleanup.forget(result.OutputPath)
 			}
 			return result
 		}
@@ -192,40 +223,51 @@ func transcodeDownloadedVideo(
 	deps CheckDepsResult,
 	outputPath string,
 	ch chan<- DlUpdate,
-) error {
+) (string, error) {
 	if !profile.NeedsVideoTranscode() {
-		return nil
+		return outputPath, nil
 	}
 
 	ffmpeg := ffmpegBinFor(env, deps)
 	if strings.TrimSpace(outputPath) == "" {
-		return errors.New("video transcoding failed: downloaded file path is unknown")
+		return "", errors.New("video transcoding failed: downloaded file path is unknown")
 	}
 
 	if ch != nil {
 		sendUpdate(ctx, ch, DlUpdate{Type: EvProc, Slot: slot, Text: StringsFor(l).VideoConvertProc})
 	}
 
+	finalPath := transcodeFinalPath(outputPath, profile.VideoContainer)
 	commands := ffmpegVideoTranscodeCommands(env, ctx, ffmpeg, outputPath, profile)
 	var lastErr error
 	var lastOut []byte
 	for _, command := range commands {
 		tmp, err := transcodeTempPath(outputPath, profile.VideoContainer)
 		if err != nil {
-			return err
+			return "", err
 		}
 		args := injectOutputPath(command, tmp)
 		out, err := commandCombinedOutput(ctx, 0, ffmpeg, args...)
 		if err == nil {
 			if err := os.Chmod(tmp, 0o644); err != nil {
 				_ = os.Remove(tmp)
-				return fmt.Errorf("video transcoding failed: %w", err)
+				return "", fmt.Errorf("video transcoding failed: %w", err)
 			}
-			if err := replaceDownloadedFile(tmp, outputPath); err != nil {
+			if err := replaceDownloadedFile(tmp, finalPath); err != nil {
 				_ = os.Remove(tmp)
-				return fmt.Errorf("video transcoding failed: %w", err)
+				return "", fmt.Errorf("video transcoding failed: %w", err)
 			}
-			return nil
+			// Сценарий «удалить оригинал после конвертации»:
+			// если контейнер сменил расширение, готовый файл — finalPath,
+			// а исходник нужно удалить сразу, не дожидаясь deferred cleanup.
+			if finalPath != outputPath {
+				if err := os.Remove(outputPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+					// Не удалось удалить сразу — deferred cleanup добьёт,
+					// но успешный finalPath уже не трогаем.
+					_ = err
+				}
+			}
+			return finalPath, nil
 		}
 
 		_ = os.Remove(tmp)
@@ -241,16 +283,30 @@ func transcodeDownloadedVideo(
 		text = commandErrorText(lastErr)
 	}
 	if lastErr != nil {
-		return fmt.Errorf("video transcoding failed: %s: %w", text, lastErr)
+		return "", fmt.Errorf("video transcoding failed: %s: %w", text, lastErr)
 	}
-	return fmt.Errorf("video transcoding failed: %s", text)
+	return "", fmt.Errorf("video transcoding failed: %s", text)
+}
+
+func transcodeFinalPath(outputPath, container string) string {
+	container = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(container), "."))
+	if container == "" {
+		return outputPath
+	}
+	ext := strings.TrimPrefix(filepath.Ext(outputPath), ".")
+	if strings.EqualFold(ext, container) || ext == "" {
+		if ext == "" {
+			return outputPath + "." + container
+		}
+		return outputPath
+	}
+	return strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + "." + container
 }
 
 func injectOutputPath(args []string, output string) []string {
-	if len(args) == 0 {
-		return append(args, output)
-	}
-	return append(args[:len(args)-1], output)
+	out := make([]string, 0, len(args)+1)
+	out = append(out, args...)
+	return append(out, output)
 }
 
 func transcodeTempPath(outputPath, container string) (string, error) {
@@ -423,20 +479,20 @@ func detectFFmpegVideoEncoders(env *Env, ctx context.Context, ffmpeg string) map
 	}
 	if encoders, ok := env.ffmpegEncodersValue[ffmpeg]; ok {
 		env.ffmpegEncodersMu.Unlock()
-		return encoders
+		return maps.Clone(encoders)
 	}
 	env.ffmpegEncodersMu.Unlock()
 
 	out, err := commandOutput(ctx, ffmpegEncodersTimeout, ffmpeg, "-hide_banner", "-encoders")
-	encoders := parseFFmpegVideoEncoders(string(out))
 	if err != nil {
-		encoders = map[string]bool{}
+		return map[string]bool{}
 	}
+	encoders := parseFFmpegVideoEncoders(string(out))
 
 	env.ffmpegEncodersMu.Lock()
 	env.ffmpegEncodersValue[ffmpeg] = encoders
 	env.ffmpegEncodersMu.Unlock()
-	return encoders
+	return maps.Clone(encoders)
 }
 
 func parseFFmpegVideoEncoders(output string) map[string]bool {
@@ -594,9 +650,17 @@ func resetDownloadSlot(ctx context.Context, slot int, ch chan<- DlUpdate) {
 		return
 	case <-timer.C:
 	}
+	if ctx == nil {
+		select {
+		case ch <- DlUpdate{Type: EvReset, Slot: slot}:
+		default:
+		}
+		return
+	}
 	select {
 	case ch <- DlUpdate{Type: EvReset, Slot: slot}:
 	case <-ctx.Done():
+	default:
 	}
 }
 

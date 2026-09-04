@@ -99,7 +99,14 @@ func launchProgress(
 		} else if ctx.Err() != nil {
 			terminal.Err = ctx.Err()
 		}
-		ch <- terminal
+		select {
+		case ch <- terminal:
+		case <-ctx.Done():
+			select {
+			case ch <- terminal:
+			default:
+			}
+		}
 	}()
 
 	return ch, streamFileProgressCmd(ch, isUpdate, gen), cancel
