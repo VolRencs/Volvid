@@ -1,0 +1,33 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.1"
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race ./...
+      - name: Build linux
+        if: matrix.os == 'ubuntu-latest'
+        run: ./scripts/build-linux-downloader.sh ./Volvid
+      - name: Build windows
+        if: matrix.os == 'windows-latest'
+        run: go install github.com/akavel/rsrc@v0.10.2 ; ./scripts/build-windows-downloader.sh ./Volvid.exe

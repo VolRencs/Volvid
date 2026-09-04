@@ -59,8 +59,16 @@ func TestDownloadsDirRoundTripConcurrent(t *testing.T) {
 	wg.Wait()
 }
 
+func newBareEnv() *Env {
+	return &Env{
+		depsCache:        newFlightCache[struct{}, CheckDepsResult](),
+		runtimeDepsCache: newFlightCache[struct{}, CheckDepsResult](),
+		probeCache:       newFlightCache[string, *MediaProbe](),
+	}
+}
+
 func TestScanQualityChoicesCancelledContext(t *testing.T) {
-	env := &Env{}
+	env := newBareEnv()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -71,14 +79,14 @@ func TestScanQualityChoicesCancelledContext(t *testing.T) {
 }
 
 func TestScanQualityChoicesEmptyInput(t *testing.T) {
-	env := &Env{}
+	env := newBareEnv()
 	if _, err := scanQualityChoicesContext(env, context.Background(), nil); err == nil {
 		t.Fatal("expected error for empty input")
 	}
 }
 
 func TestProbeOnBareEnvDoesNotPanic(t *testing.T) {
-	env := &Env{}
+	env := newBareEnv()
 	target, err := ParseTarget("https://youtu.be/dQw4w9WgXcQ")
 	if err != nil {
 		t.Fatalf("ParseTarget: %v", err)

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	app "volvid/internal/app"
@@ -70,6 +71,11 @@ func launchProgress(
 
 		go func() {
 			defer close(progressCh)
+			defer func() {
+				if r := recover(); r != nil {
+					doneCh <- fmt.Errorf("progress worker panicked: %v", r)
+				}
+			}()
 			doneCh <- fn(ctx, progressCh)
 		}()
 

@@ -38,14 +38,14 @@ func InstallDependencyFor(env *Env, ctx context.Context, key string, l Locale, c
 
 func ensureDepsDir(env *Env) error {
 	if err := os.MkdirAll(env.DepsDir, 0o755); err != nil {
-		return fmt.Errorf("создание DepsDir: %w", err)
+		return fmt.Errorf("create DepsDir: %w", err)
 	}
 	return nil
 }
 
 func requireStagedBinary(ctx context.Context, name string, spec depSpec) error {
 	if detectExecutableDependency(ctx, spec, true).Version == "" {
-		return fmt.Errorf("бинарник %s скачан, но не запускается", name)
+		return fmt.Errorf("binary %s downloaded but does not run", name)
 	}
 	return nil
 }
@@ -53,7 +53,7 @@ func requireStagedBinary(ctx context.Context, name string, spec depSpec) error {
 func requireTargetsFound(targets map[string]string, found map[string]bool) error {
 	for _, name := range slices.Sorted(maps.Keys(targets)) {
 		if !found[name] {
-			return fmt.Errorf("%s не найден в архиве", name)
+			return fmt.Errorf("%s not found in archive", name)
 		}
 	}
 	return nil
@@ -70,7 +70,7 @@ func installYtDlpFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProg
 	}
 	staging, err := os.MkdirTemp(env.DepsDir, ".ytdlp-*")
 	if err != nil {
-		return fmt.Errorf("временная директория установки: %w", err)
+		return fmt.Errorf("create install staging dir: %w", err)
 	}
 	defer os.RemoveAll(staging)
 
@@ -147,7 +147,7 @@ func installFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 
 	tmp, err := os.MkdirTemp("", "ffmpeg-*")
 	if err != nil {
-		return fmt.Errorf("временная директория: %w", err)
+		return fmt.Errorf("create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmp)
 
@@ -162,7 +162,7 @@ func installFFmpegFor(env *Env, ctx context.Context, l Locale, ch chan<- FilePro
 
 	staging, err := os.MkdirTemp(env.DepsDir, ".ffmpeg-*")
 	if err != nil {
-		return fmt.Errorf("временная директория установки: %w", err)
+		return fmt.Errorf("create install staging dir: %w", err)
 	}
 	defer os.RemoveAll(staging)
 
@@ -211,7 +211,7 @@ func installNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 
 	tmp, err := os.MkdirTemp("", "node-*")
 	if err != nil {
-		return fmt.Errorf("временная директория: %w", err)
+		return fmt.Errorf("create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmp)
 
@@ -227,7 +227,7 @@ func installNodeFor(env *Env, ctx context.Context, l Locale, ch chan<- FileProgr
 
 	staging, err := os.MkdirTemp(env.DepsDir, ".node-*")
 	if err != nil {
-		return fmt.Errorf("временная директория установки: %w", err)
+		return fmt.Errorf("create install staging dir: %w", err)
 	}
 	defer os.RemoveAll(staging)
 
@@ -457,7 +457,7 @@ func verifyFileSHA256(path, expected string) error {
 func extractZipBinaries(archive string, targets map[string]string) error {
 	zr, err := zip.OpenReader(archive)
 	if err != nil {
-		return fmt.Errorf("открытие архива: %w", err)
+		return fmt.Errorf("open archive: %w", err)
 	}
 	defer zr.Close()
 
@@ -469,7 +469,7 @@ func extractZipBinaries(archive string, targets map[string]string) error {
 			continue
 		}
 		if err := extractZipEntry(zf, dest); err != nil {
-			return fmt.Errorf("ошибка извлечения %s: %w", name, err)
+			return fmt.Errorf("extract %s: %w", name, err)
 		}
 		found[name] = true
 	}
@@ -489,7 +489,7 @@ func extractArchiveBinariesWithTar(ctx context.Context, archive string, targets 
 
 	destDir, err := os.MkdirTemp(filepath.Dir(archive), "extract-*")
 	if err != nil {
-		return fmt.Errorf("временная директория распаковки: %w", err)
+		return fmt.Errorf("create extract temp dir: %w", err)
 	}
 	defer os.RemoveAll(destDir)
 

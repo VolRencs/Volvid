@@ -35,7 +35,6 @@ func init() {
 func detachedProcess() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | createNoWindow,
-		HideWindow:    true,
 	}
 }
 
@@ -54,7 +53,7 @@ func applyUpdatePlatform(tmp, dest string) error {
 
 	if err := os.WriteFile(bat, []byte(content), 0o644); err != nil {
 		_ = os.Remove(tmp)
-		return fmt.Errorf("создание update-bat: %w", err)
+		return fmt.Errorf("write update bat: %w", err)
 	}
 
 	cmd := exec.Command("cmd.exe", "/D", "/C", bat)
@@ -62,8 +61,8 @@ func applyUpdatePlatform(tmp, dest string) error {
 	if err := cmd.Start(); err != nil {
 		_ = os.Remove(tmp)
 		_ = os.Remove(bat)
-		return fmt.Errorf("запуск update-bat: %w", err)
+		return fmt.Errorf("launch update bat: %w", err)
 	}
-	go cmd.Wait()
+	go func() { _ = cmd.Wait() }()
 	return nil
 }

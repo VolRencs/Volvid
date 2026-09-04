@@ -30,7 +30,6 @@ type httpClients struct {
 type depCaches struct {
 	depsCache        *flightCache[struct{}, CheckDepsResult]
 	runtimeDepsCache *flightCache[struct{}, CheckDepsResult]
-	cachesMu         sync.Mutex
 	probeCache       *flightCache[string, *MediaProbe]
 
 	firefoxUserAgentOnce  sync.Once
@@ -67,20 +66,6 @@ func NewEnv() *Env {
 	env.apiClient = newTimeoutHTTPClient(apiClientTimeout)
 	env.dlClient = newDownloadHTTPClient()
 	return env
-}
-
-func (env *Env) ensureCaches() {
-	env.cachesMu.Lock()
-	defer env.cachesMu.Unlock()
-	if env.depsCache == nil {
-		env.depsCache = newFlightCache[struct{}, CheckDepsResult]()
-	}
-	if env.runtimeDepsCache == nil {
-		env.runtimeDepsCache = newFlightCache[struct{}, CheckDepsResult]()
-	}
-	if env.probeCache == nil {
-		env.probeCache = newFlightCache[string, *MediaProbe]()
-	}
 }
 
 func currentExecutablePath() string {

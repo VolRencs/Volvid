@@ -19,7 +19,7 @@ func mustModel(t *testing.T, tm tea.Model) Model {
 }
 
 func renderAllScreens(t *testing.T) {
-	m := newModel()
+	m := newTestModel()
 	m.width, m.height = 110, 40
 	m.menu.SetItems([]string{"One", "Two", "Three"})
 	m.menu.SetCursor(1)
@@ -83,7 +83,7 @@ func TestRenderAllScreens(t *testing.T) {
 }
 
 func TestDigitHandling(t *testing.T) {
-	m := newModel()
+	m := newTestModel()
 	m.width, m.height = 110, 40
 	m.screen = scrMode
 	m = m.syncMenu()
@@ -110,7 +110,7 @@ func TestDigitHandling(t *testing.T) {
 }
 
 func TestOpenFolderNotConsumedByURLClick(t *testing.T) {
-	m := newModel()
+	m := newTestModel()
 	m.screen = scrURL
 	m.urlInput.SetValue("https://youtu.be/abc")
 	m.urlInput.Focus()
@@ -160,7 +160,7 @@ func TestCursorVisibleWhenTextFillsField(t *testing.T) {
 }
 
 func TestCancelResetDownloadState(t *testing.T) {
-	m := newModel()
+	m := newTestModel()
 	m.dlCancelled = true
 	m.resetDownloadState()
 	if m.dlCancelled {

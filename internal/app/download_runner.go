@@ -171,6 +171,9 @@ func runDownloadRequest(env *Env, ctx context.Context, slot int, req DownloadReq
 		result = streamYtdlp(env, ctx, slot, req.Locale, deps, args, ch, cleanup)
 		if result.Err == nil {
 			if err := transcodeDownloadedVideo(env, ctx, slot, req.Profile, req.Locale, deps, result.OutputPath, ch); err != nil {
+				if cleanup != nil && result.OutputPath != "" {
+					cleanup.add(result.OutputPath)
+				}
 				return failedDownload(err)
 			}
 			return result
@@ -199,34 +202,33 @@ func transcodeDownloadedVideo(
 		return errors.New("video transcoding failed: downloaded file path is unknown")
 	}
 
-	tmp, err := transcodeTempPath(outputPath, profile.VideoContainer)
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp)
-
 	if ch != nil {
 		sendUpdate(ctx, ch, DlUpdate{Type: EvProc, Slot: slot, Text: StringsFor(l).VideoConvertProc})
 	}
 
-	commands := ffmpegVideoTranscodeCommands(env, ctx, ffmpeg, outputPath, tmp, profile)
+	commands := ffmpegVideoTranscodeCommands(env, ctx, ffmpeg, outputPath, profile)
 	var lastErr error
 	var lastOut []byte
-	for i, command := range commands {
-		if i > 0 {
-			_ = os.Remove(tmp)
+	for _, command := range commands {
+		tmp, err := transcodeTempPath(outputPath, profile.VideoContainer)
+		if err != nil {
+			return err
 		}
-		out, err := commandCombinedOutput(ctx, 0, ffmpeg, command...)
+		args := injectOutputPath(command, tmp)
+		out, err := commandCombinedOutput(ctx, 0, ffmpeg, args...)
 		if err == nil {
 			if err := os.Chmod(tmp, 0o644); err != nil {
+				_ = os.Remove(tmp)
 				return fmt.Errorf("video transcoding failed: %w", err)
 			}
 			if err := replaceDownloadedFile(tmp, outputPath); err != nil {
+				_ = os.Remove(tmp)
 				return fmt.Errorf("video transcoding failed: %w", err)
 			}
 			return nil
 		}
 
+		_ = os.Remove(tmp)
 		lastErr = err
 		lastOut = out
 		if ctx != nil && ctx.Err() != nil {
@@ -242,6 +244,13 @@ func transcodeDownloadedVideo(
 		return fmt.Errorf("video transcoding failed: %s: %w", text, lastErr)
 	}
 	return fmt.Errorf("video transcoding failed: %s", text)
+}
+
+func injectOutputPath(args []string, output string) []string {
+	if len(args) == 0 {
+		return append(args, output)
+	}
+	return append(args[:len(args)-1], output)
 }
 
 func transcodeTempPath(outputPath, container string) (string, error) {
@@ -271,18 +280,18 @@ type hardwareVideoEncoder struct {
 	Family string
 }
 
-func ffmpegVideoTranscodeCommands(env *Env, ctx context.Context, ffmpeg, inputPath, outputPath string, profile OutputProfile) [][]string {
+func ffmpegVideoTranscodeCommands(env *Env, ctx context.Context, ffmpeg, inputPath string, profile OutputProfile) [][]string {
 	commands := make([][]string, 0, 4)
 	for _, encoder := range hardwareVideoEncodersFor(env, ctx, ffmpeg, profile.VideoCodec) {
 		hwProfile := profile
 		hwProfile.VideoCodec = encoder.Codec
-		commands = append(commands, ffmpegVideoTranscodeArgs(inputPath, outputPath, hwProfile, encoder.Family))
+		commands = append(commands, ffmpegVideoTranscodeArgs(inputPath, hwProfile, encoder.Family))
 	}
-	commands = append(commands, ffmpegVideoTranscodeArgs(inputPath, outputPath, profile, ""))
+	commands = append(commands, ffmpegVideoTranscodeArgs(inputPath, profile, ""))
 	return commands
 }
 
-func ffmpegVideoTranscodeArgs(inputPath, outputPath string, profile OutputProfile, hardwareFamily string) []string {
+func ffmpegVideoTranscodeArgs(inputPath string, profile OutputProfile, hardwareFamily string) []string {
 	args := []string{
 		"-y",
 		"-hide_banner",
@@ -321,7 +330,7 @@ func ffmpegVideoTranscodeArgs(inputPath, outputPath string, profile OutputProfil
 	if strings.EqualFold(strings.TrimSpace(profile.VideoContainer), "mp4") {
 		args = append(args, "-movflags", "+faststart")
 	}
-	return append(args, outputPath)
+	return args
 }
 
 const (
@@ -340,6 +349,8 @@ func hardwareVideoQualityArgs(family, crf string) []string {
 		return []string{"-preset", nvencPreset, "-rc", "vbr", "-cq", crf}
 	case "qsv":
 		return []string{"-global_quality", crf}
+	case "amf":
+		return []string{"-rc", "cqp", "-qp", crf}
 	default:
 		return nil
 	}
@@ -470,9 +481,7 @@ func StartDownloadRequestContext(env *Env, ctx context.Context, req DownloadRequ
 		cleanup := newDownloadCleanup()
 		defer func() {
 			wg.Wait()
-			if ctx != nil && ctx.Err() != nil {
-				cleanup.cleanup()
-			}
+			cleanup.cleanup()
 			close(ch)
 		}()
 		if ctx == nil {

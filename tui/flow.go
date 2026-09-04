@@ -48,6 +48,10 @@ func (m *Model) resetFragmentState() {
 }
 
 func (m *Model) resetDownloadProgressState() {
+	if m.dlCancel != nil {
+		m.dlCancel()
+		m.dlCancel = nil
+	}
 	m.slots = nil
 	m.dlDone = 0
 	m.dlFailed = 0
@@ -57,7 +61,7 @@ func (m *Model) resetDownloadProgressState() {
 	m.dlStartedAt = time.Time{}
 	m.dlElapsed = 0
 	m.timerActive = false
-	m.dlCancel = nil
+	m.dlCh = nil
 	m.dlCancelled = false
 }
 

@@ -105,11 +105,11 @@ func ApplyUpdateFor(env *Env, ctx context.Context, l Locale, info *UpdateInfo, c
 
 	exe, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("путь к исполняемому файлу: %w", err)
+		return fmt.Errorf("locate executable: %w", err)
 	}
 	dest, err := filepath.Abs(exe)
 	if err != nil {
-		return fmt.Errorf("абсолютный путь: %w", err)
+		return fmt.Errorf("resolve absolute path: %w", err)
 	}
 	if env.IsWindows {
 		tmp := strings.TrimSuffix(dest, ".exe") + ".new.exe"

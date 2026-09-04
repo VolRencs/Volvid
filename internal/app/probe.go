@@ -52,7 +52,6 @@ func probeMediaWithDeps(env *Env, ctx context.Context, deps CheckDepsResult, tar
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	env.ensureCaches()
 	key := probeCacheKey(target)
 
 	probe, err := env.probeCache.ProbeLoad(key, ctx, func() (*MediaProbe, error) {

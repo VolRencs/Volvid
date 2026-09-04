@@ -319,7 +319,11 @@ func (m Model) handleDlUpdate(u app.DlUpdate, gen int) (tea.Model, tea.Cmd) {
 		if m.dlTotal > 0 {
 			label += app.PlaylistSuffix(m.locale, m.dlTotal)
 		}
-		m.session.Record(label, m.url, m.dlFailed == 0 || (m.dlTotal == 0 && u.OK))
+		ok := m.dlFailed == 0
+		if m.dlTotal == 0 {
+			ok = u.OK
+		}
+		m.session.Record(label, m.url, ok)
 		m.screen = scrSummary
 		m.timerActive = false
 		m.dlElapsed = time.Since(m.dlStartedAt).Round(time.Second)

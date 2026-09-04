@@ -67,13 +67,15 @@ var (
 	}
 )
 
+const maxSanitizedFilenameLen = 180
+
 func sanitizeDirname(name string) string {
 	name = strings.TrimRight(
 		invalidFilenameRE.ReplaceAllString(strings.TrimSpace(name), "_"),
 		" .",
 	)
-	if r := []rune(name); len(r) > 180 {
-		name = string(r[:180])
+	if r := []rune(name); len(r) > maxSanitizedFilenameLen {
+		name = string(r[:maxSanitizedFilenameLen])
 	}
 	if name == "" {
 		return "playlist"

@@ -37,7 +37,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if isOpenFolderKey(msg) && m.canOpenDownloadsFolder() &&
-		(m.screen != scrURL || isUppercaseOpenFolderKey(msg)) {
+		(m.screen != scrURL || msg.String() == "O" || msg.String() == "Щ") {
 		return m.startOpenDownloadsDir()
 	}
 
@@ -146,15 +146,6 @@ func (m Model) handleEscape(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 func isOpenFolderKey(msg tea.KeyPressMsg) bool {
 	switch msg.String() {
 	case "o", "O", "щ", "Щ":
-		return true
-	default:
-		return false
-	}
-}
-
-func isUppercaseOpenFolderKey(msg tea.KeyPressMsg) bool {
-	switch msg.String() {
-	case "O", "Щ":
 		return true
 	default:
 		return false

@@ -122,23 +122,21 @@ type Model struct {
 }
 
 func New(env *app.Env, ctx context.Context) tea.Model {
-	m := newModel()
-	if env != nil {
-		m.env = env
+	if env == nil {
+		env = app.NewEnv()
 	}
-	if ctx != nil {
-		m.baseCtx = ctx
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return m
+	return newModel(env, ctx)
 }
 
-func newModel() Model {
-	env := app.NewEnv()
+func newModel(env *app.Env, ctx context.Context) Model {
 	loc := app.LoadLocale(env)
 
 	m := Model{
 		env:         env,
-		baseCtx:     context.Background(),
+		baseCtx:     ctx,
 		screen:      scrUpdateCheck,
 		locale:      loc,
 		urlInput:    newInput(inputURL, "https://youtu.be/...", inputW, 300),
@@ -152,6 +150,10 @@ func newModel() Model {
 	}
 	m.syncLayout()
 	return m
+}
+
+func newTestModel() Model {
+	return newModel(app.NewEnv(), context.Background())
 }
 
 func (m Model) Init() tea.Cmd {

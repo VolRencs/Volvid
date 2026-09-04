@@ -10,11 +10,11 @@ import (
 func applyUpdatePlatform(tmp, dest string) error {
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		os.Remove(tmp)
-		return fmt.Errorf("chmod нового бинарника: %w", err)
+		return fmt.Errorf("chmod new binary: %w", err)
 	}
 	if err := os.Rename(tmp, dest); err != nil {
 		os.Remove(tmp)
-		return fmt.Errorf("замена бинарника: %w", err)
+		return fmt.Errorf("replace binary: %w", err)
 	}
 	return nil
 }

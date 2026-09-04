@@ -81,7 +81,7 @@ func downloadFileWith(
 
 func ensureDownloadDir(dest string) error {
 	if _, err := prepareDir(filepath.Dir(dest)); err != nil {
-		return fmt.Errorf("создание директории: %w", err)
+		return fmt.Errorf("create directory: %w", err)
 	}
 	return nil
 }
@@ -92,7 +92,7 @@ func newDownloadRequest(ctx context.Context, url string) (*http.Request, error) 
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("создание запроса %s: %w", url, err)
+		return nil, fmt.Errorf("create request %s: %w", url, err)
 	}
 	req.Header.Set("User-Agent", "Volvid/"+Version)
 	return req, nil
@@ -133,7 +133,7 @@ func isLocalHTTPHost(host string) bool {
 
 func validateDownloadResponse(resp *http.Response, url string) error {
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %s при загрузке %s", resp.Status, url)
+		return fmt.Errorf("HTTP %s while downloading %s", resp.Status, url)
 	}
 	return nil
 }
@@ -143,13 +143,13 @@ func createTempDownloadFile(dest string) (string, *os.File, error) {
 	pattern := sanitizeTempPattern(filepath.Base(dest)) + ".*.part"
 	file, err := os.CreateTemp(dir, pattern)
 	if err != nil {
-		return "", nil, fmt.Errorf("создание временного файла для %s: %w", dest, err)
+		return "", nil, fmt.Errorf("create temp file for %s: %w", dest, err)
 	}
 	if err := file.Chmod(0o644); err != nil {
 		name := file.Name()
 		_ = file.Close()
 		_ = os.Remove(name)
-		return "", nil, fmt.Errorf("права временного файла %s: %w", name, err)
+		return "", nil, fmt.Errorf("chmod temp file %s: %w", name, err)
 	}
 	return file.Name(), file, nil
 }
@@ -199,7 +199,7 @@ func replaceDownloadedFile(tmp, dest string) error {
 		return nil
 	}
 	if err := replaceFilesWithBackup(map[string]string{tmp: dest}); err != nil {
-		return fmt.Errorf("замена файла %s: %w", dest, err)
+		return fmt.Errorf("replace file %s: %w", dest, err)
 	}
 	return nil
 }
@@ -252,15 +252,15 @@ func replacementBackupPath(dest string) (string, error) {
 	for range 8 {
 		var rnd [8]byte
 		if _, err := rand.Read(rnd[:]); err != nil {
-			return "", fmt.Errorf("создание бэкапа для %s: %w", dest, err)
+			return "", fmt.Errorf("create backup for %s: %w", dest, err)
 		}
 		name := filepath.Join(dir, "."+base+".bak-"+hex.EncodeToString(rnd[:]))
 		if _, err := os.Lstat(name); err != nil {
 			if os.IsNotExist(err) {
 				return name, nil
 			}
-			return "", fmt.Errorf("создание бэкапа для %s: %w", dest, err)
+			return "", fmt.Errorf("create backup for %s: %w", dest, err)
 		}
 	}
-	return "", fmt.Errorf("создание бэкапа для %s: too many collisions", dest)
+	return "", fmt.Errorf("create backup for %s: too many collisions", dest)
 }

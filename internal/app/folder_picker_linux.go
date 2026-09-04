@@ -48,16 +48,24 @@ func pickDirectory(current, title string) (string, error) {
 		return "", err
 	}
 	requestPath := portalRequestPath(sender, token)
-	matchList := [][]dbus.MatchOption{portalMatchOptions(requestPath)}
 
-	if err := conn.AddMatchSignal(matchList[0]...); err != nil {
+	subscribe := func(p dbus.ObjectPath) error {
+		return conn.AddMatchSignal(
+			dbus.WithMatchInterface(portalRequestInterface),
+			dbus.WithMatchMember(portalResponseMember),
+			dbus.WithMatchObjectPath(p),
+			dbus.WithMatchSender(portalBusName),
+		)
+	}
+	if err := subscribe(requestPath); err != nil {
 		return "", fmt.Errorf("subscribe portal response: %w", err)
 	}
-	defer func() {
-		for _, match := range matchList {
-			_ = conn.RemoveMatchSignal(match...)
-		}
-	}()
+	defer func() { _ = conn.RemoveMatchSignal(
+		dbus.WithMatchInterface(portalRequestInterface),
+		dbus.WithMatchMember(portalResponseMember),
+		dbus.WithMatchObjectPath(requestPath),
+		dbus.WithMatchSender(portalBusName),
+	) }()
 
 	signals := make(chan *dbus.Signal, 8)
 	conn.Signal(signals)
@@ -87,11 +95,19 @@ func pickDirectory(current, title string) (string, error) {
 	if err := call.Store(&handle); err != nil {
 		return "", fmt.Errorf("decode portal file chooser response: %w", err)
 	}
+
+	subscribed := requestPath
 	if handle != requestPath {
-		matchList = append(matchList, portalMatchOptions(handle))
-		if err := conn.AddMatchSignal(matchList[1]...); err != nil {
+		if err := subscribe(handle); err != nil {
 			return "", fmt.Errorf("subscribe actual portal response: %w", err)
 		}
+		subscribed = handle
+		defer func() { _ = conn.RemoveMatchSignal(
+			dbus.WithMatchInterface(portalRequestInterface),
+			dbus.WithMatchMember(portalResponseMember),
+			dbus.WithMatchObjectPath(subscribed),
+			dbus.WithMatchSender(portalBusName),
+		) }()
 	}
 
 	for {
@@ -114,14 +130,6 @@ func portalSenderName(names []string) string {
 		}
 	}
 	return ""
-}
-
-func portalMatchOptions(objectPath dbus.ObjectPath) []dbus.MatchOption {
-	return []dbus.MatchOption{
-		dbus.WithMatchInterface(portalRequestInterface),
-		dbus.WithMatchMember(portalResponseMember),
-		dbus.WithMatchObjectPath(objectPath),
-	}
 }
 
 func currentFolderURI(path string) string {

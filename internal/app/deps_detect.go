@@ -41,7 +41,6 @@ func DetectDeps(env *Env) CheckDepsResult  { return loadDeps(env, false) }
 func RefreshDeps(env *Env) CheckDepsResult { return loadDeps(env, true) }
 
 func loadDeps(env *Env, force bool) CheckDepsResult {
-	env.ensureCaches()
 	if !force {
 		if v, ok := env.depsCache.Get(struct{}{}); ok {
 			return v
@@ -54,7 +53,6 @@ func loadDeps(env *Env, force bool) CheckDepsResult {
 }
 
 func invalidateDepsCache(env *Env) {
-	env.ensureCaches()
 	env.depsCache.InvalidateAll()
 	env.runtimeDepsCache.InvalidateAll()
 }
@@ -650,7 +648,6 @@ func uniquePaths(paths []string) []string {
 }
 
 func resolveRuntimeDeps(env *Env) CheckDepsResult {
-	env.ensureCaches()
 	result, _ := env.runtimeDepsCache.LoadWithTTL(struct{}{}, runtimeDepsTTL, func() (CheckDepsResult, error) {
 		return detectDeps(env, false), nil
 	})
