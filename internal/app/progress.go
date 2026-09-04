@@ -42,7 +42,7 @@ func (w *dlWriter) emit(fin bool, e error) {
 	now := time.Now()
 	var speed string
 	if elapsed := now.Sub(w.lastTime).Seconds(); elapsed > 0 {
-		speed = fmtSpeedFor(int64(float64(w.done-w.lastDone)/elapsed), w.locale)
+		speed = formatSpeed(int64(float64(w.done-w.lastDone)/elapsed), w.locale)
 		w.lastDone, w.lastTime = w.done, now
 	}
 	pct := 0.0

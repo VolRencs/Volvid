@@ -56,7 +56,7 @@ func (m Model) searchResultOptions() []string {
 			label = fmt.Sprintf(m.u().VideoTitleFmt, i+1)
 		}
 		if result.Duration > 0 {
-			label += "  ·  " + app.FmtDuration(result.Duration)
+			label += "  ·  " + app.FormatDuration(result.Duration)
 		}
 		options = append(options, label)
 	}

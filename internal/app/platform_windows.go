@@ -13,29 +13,29 @@ import (
 
 var (
 	kernel32           = syscall.NewLazyDLL("kernel32.dll")
-	ole32              = syscall.NewLazyDLL("ole32.dll")
 	procGetConsoleMode = kernel32.NewProc("GetConsoleMode")
 	procSetConsoleMode = kernel32.NewProc("SetConsoleMode")
 )
 
-const enableVirtualTerminalProcessing = 0x0004
+const (
+	vtProcessingFlag = 0x0004
+	createNoWindow   = 0x00000008
+)
 
-const createNoWindow = 0x00000008
+func detachedProcess() *syscall.SysProcAttr {
+	return &syscall.SysProcAttr{
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | createNoWindow,
+	}
+}
 
-func init() {
+func enableConsoleVirtualTerminal() {
 	handle := syscall.Handle(os.Stdout.Fd())
 	var mode uint32
 	_, _, err := procGetConsoleMode.Call(uintptr(handle), uintptr(unsafe.Pointer(&mode)))
 	if err != nil {
 		return
 	}
-	procSetConsoleMode.Call(uintptr(handle), uintptr(mode|enableVirtualTerminalProcessing))
-}
-
-func detachedProcess() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{
-		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | createNoWindow,
-	}
+	procSetConsoleMode.Call(uintptr(handle), uintptr(mode|vtProcessingFlag))
 }
 
 func applyUpdatePlatform(tmp, dest string) error {

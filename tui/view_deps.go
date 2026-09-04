@@ -14,9 +14,9 @@ func (m Model) viewDependencyProgress() string {
 	var meta strings.Builder
 	meta.WriteString(sOk.Render(fmt.Sprintf("%.1f%%", m.depProgress.Pct)))
 	if m.depProgress.DoneB > 0 {
-		meta.WriteString("  " + sValue.Render(app.FmtBytesFor(m.depProgress.DoneB, m.locale)))
+		meta.WriteString("  " + sValue.Render(app.FormatBytes(m.depProgress.DoneB, m.locale)))
 		if m.depProgress.TotalB > 0 {
-			meta.WriteString(sMeta.Render(" / " + app.FmtBytesFor(m.depProgress.TotalB, m.locale)))
+			meta.WriteString(sMeta.Render(" / " + app.FormatBytes(m.depProgress.TotalB, m.locale)))
 		}
 		if m.depProgress.Speed != "" {
 			meta.WriteString("  " + sTitle.Render(m.depProgress.Speed))

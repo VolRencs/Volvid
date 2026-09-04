@@ -230,7 +230,7 @@ func formatProgressSpeed(raw string, l Locale) string {
 	if value <= 0 {
 		return ""
 	}
-	return fmtSpeedFor(value, l)
+	return formatSpeed(value, l)
 }
 
 func parseDownloadInt(raw string) int64 {

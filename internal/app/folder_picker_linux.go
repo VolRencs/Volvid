@@ -23,8 +23,11 @@ const (
 	portalCancelResponse   = uint32(1)
 )
 
-func pickDirectory(current, title string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), folderPickerTimeout)
+func pickDirectory(parent context.Context, current, title string) (string, error) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, folderPickerTimeout)
 	defer cancel()
 
 	conn, err := dbus.ConnectSessionBus()
@@ -60,12 +63,14 @@ func pickDirectory(current, title string) (string, error) {
 	if err := subscribe(requestPath); err != nil {
 		return "", fmt.Errorf("subscribe portal response: %w", err)
 	}
-	defer func() { _ = conn.RemoveMatchSignal(
-		dbus.WithMatchInterface(portalRequestInterface),
-		dbus.WithMatchMember(portalResponseMember),
-		dbus.WithMatchObjectPath(requestPath),
-		dbus.WithMatchSender(portalBusName),
-	) }()
+	defer func() {
+		_ = conn.RemoveMatchSignal(
+			dbus.WithMatchInterface(portalRequestInterface),
+			dbus.WithMatchMember(portalResponseMember),
+			dbus.WithMatchObjectPath(requestPath),
+			dbus.WithMatchSender(portalBusName),
+		)
+	}()
 
 	signals := make(chan *dbus.Signal, 8)
 	conn.Signal(signals)
@@ -102,12 +107,14 @@ func pickDirectory(current, title string) (string, error) {
 			return "", fmt.Errorf("subscribe actual portal response: %w", err)
 		}
 		subscribed = handle
-		defer func() { _ = conn.RemoveMatchSignal(
-			dbus.WithMatchInterface(portalRequestInterface),
-			dbus.WithMatchMember(portalResponseMember),
-			dbus.WithMatchObjectPath(subscribed),
-			dbus.WithMatchSender(portalBusName),
-		) }()
+		defer func() {
+			_ = conn.RemoveMatchSignal(
+				dbus.WithMatchInterface(portalRequestInterface),
+				dbus.WithMatchMember(portalResponseMember),
+				dbus.WithMatchObjectPath(subscribed),
+				dbus.WithMatchSender(portalBusName),
+			)
+		}()
 	}
 
 	for {

@@ -169,10 +169,10 @@ func TestReplaceFilesWithBackupRollbackOnMissingSource(t *testing.T) {
 }
 
 func TestFmtSpeedForLocaleSuffix(t *testing.T) {
-	if got := fmtSpeedFor(2048, LocaleEN); !strings.HasSuffix(got, "/s") {
+	if got := formatSpeed(2048, LocaleEN); !strings.HasSuffix(got, "/s") {
 		t.Fatalf("EN speed %q lacks /s", got)
 	}
-	if got := fmtSpeedFor(2048, LocaleRU); !strings.HasSuffix(got, "/с") {
+	if got := formatSpeed(2048, LocaleRU); !strings.HasSuffix(got, "/с") {
 		t.Fatalf("RU speed %q lacks /с", got)
 	}
 }

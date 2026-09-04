@@ -9,7 +9,7 @@
 ![Go](https://img.shields.io/badge/Go-1.27.0%2B-00ADD8?style=flat-square&logo=go)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-7.2.2-orange?style=flat-square)
+![Version](https://img.shields.io/badge/Version-7.2.3-orange?style=flat-square)
 
 </div>
 
@@ -78,7 +78,6 @@ The app uses standard user directories by default and supports overrides through
 
 - `VOLVID_CONFIG_DIR` for configuration files
 - `VOLVID_DATA_DIR` for application data
-- `VOLVID_CACHE_DIR` for cache data
 - `VOLVID_DEPS_DIR` for managed binaries
 - `VOLVID_DOWNLOADS_DIR` to lock the download location
 
@@ -133,6 +132,10 @@ On startup:
 | `internal/app/` | runtime helpers: downloads, search, deps, updates, locale, playlists, and HTTP client |
 | `scripts/` | build and verification helpers |
 | `assets/` | icons and screenshots |
+
+## Continuous Integration
+
+The `checks.yml` workflow runs on every push and pull request. It runs `go vet`, `go test -race`, and a build matrix on `ubuntu-latest` and `windows-latest`. The `build.yml` workflow runs on release publication and uploads signed binaries.
 
 ## Troubleshooting
 

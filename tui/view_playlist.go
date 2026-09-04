@@ -37,7 +37,7 @@ func (m Model) renderPlaylistItems() string {
 	lines := make([]string, 0, end-start)
 	for i := start; i < end; i++ {
 		entry := entries[i]
-		duration := fmt.Sprintf("%8s", app.FmtDuration(entry.Duration))
+		duration := fmt.Sprintf("%8s", app.FormatDuration(entry.Duration))
 		data := listRowData{
 			index:    fmt.Sprintf("%*d", indexWidth, entry.Index),
 			hasCheck: true,

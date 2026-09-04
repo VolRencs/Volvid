@@ -157,7 +157,9 @@ func (m Model) startOpenDownloadsDir() (tea.Model, tea.Cmd) {
 
 func (m Model) startPickDownloadsDir() (tea.Model, tea.Cmd) {
 	m.urlErr = ""
-	return m, pickDownloadsDirCmd(m.env, m.env.DownloadsDir(), m.locale)
+	var ctx context.Context
+	m, ctx = m.nextOpCtx()
+	return m, pickDownloadsDirCmd(ctx, m.env, m.env.DownloadsDir(), m.locale)
 }
 
 func (m Model) submitURLInput() (tea.Model, tea.Cmd) {

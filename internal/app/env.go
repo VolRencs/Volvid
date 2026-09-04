@@ -65,6 +65,9 @@ func NewEnv() *Env {
 
 	env.apiClient = newTimeoutHTTPClient(apiClientTimeout)
 	env.dlClient = newDownloadHTTPClient()
+	if env.IsWindows {
+		enableConsoleVirtualTerminal()
+	}
 	return env
 }
 

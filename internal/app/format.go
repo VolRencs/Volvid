@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func FmtBytesFor(n int64, l Locale) string {
+func FormatBytes(n int64, l Locale) string {
 	ru := l == LocaleRU
 	switch {
 	case n >= 1_099_511_627_776:
@@ -37,7 +37,7 @@ func FmtBytesFor(n int64, l Locale) string {
 	}
 }
 
-func FmtDuration(secs int) string {
+func FormatDuration(secs int) string {
 	if secs <= 0 {
 		return "??:??"
 	}
@@ -48,12 +48,12 @@ func FmtDuration(secs int) string {
 	return fmt.Sprintf("%d:%02d", m, s)
 }
 
-func fmtSpeedFor(bytesPerSec int64, l Locale) string {
+func formatSpeed(bytesPerSec int64, l Locale) string {
 	suffix := "/s"
 	if l == LocaleRU {
 		suffix = "/с"
 	}
-	return FmtBytesFor(bytesPerSec, l) + suffix
+	return FormatBytes(bytesPerSec, l) + suffix
 }
 
 var (

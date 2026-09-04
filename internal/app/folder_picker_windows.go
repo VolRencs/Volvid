@@ -12,7 +12,13 @@ import (
 	"unicode/utf16"
 )
 
-func pickDirectory(current, title string) (string, error) {
+func pickDirectory(parent context.Context, current, title string) (string, error) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, folderPickerTimeout)
+	defer cancel()
+
 	script := strings.Join([]string{
 		"Add-Type -AssemblyName System.Windows.Forms",
 		"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
@@ -24,9 +30,6 @@ func pickDirectory(current, title string) (string, error) {
 		"  [Console]::Write($dialog.SelectedPath)",
 		"}",
 	}, "\n")
-
-	ctx, cancel := context.WithTimeout(context.Background(), folderPickerTimeout)
-	defer cancel()
 
 	cmd := exec.CommandContext(
 		ctx,

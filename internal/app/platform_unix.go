@@ -18,3 +18,5 @@ func applyUpdatePlatform(tmp, dest string) error {
 	}
 	return nil
 }
+
+func enableConsoleVirtualTerminal() {}

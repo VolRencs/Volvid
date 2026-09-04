@@ -93,9 +93,9 @@ func formatElapsed(d time.Duration) string {
 func fmtStats(l app.Locale, done, total int64, speed string) string {
 	switch {
 	case total > 0:
-		return sValue.Render(app.FmtBytesFor(done, l)) + sDim.Render("/"+app.FmtBytesFor(total, l)) + speedSuffix(speed)
+		return sValue.Render(app.FormatBytes(done, l)) + sDim.Render("/"+app.FormatBytes(total, l)) + speedSuffix(speed)
 	case done > 0:
-		return sValue.Render(app.FmtBytesFor(done, l)) + speedSuffix(speed)
+		return sValue.Render(app.FormatBytes(done, l)) + speedSuffix(speed)
 	default:
 		return sDim.Render("…")
 	}

@@ -11,6 +11,23 @@ import (
 	"sync"
 )
 
+const (
+	ytdlpBestFormat     = "bestvideo+bestaudio/best"
+	ytdlpWorst360Format = "bestvideo[height<=360]+bestaudio/best[height<=360]"
+)
+
+var qualityChains = [2][]string{
+	{ytdlpBestFormat, "best"},
+	{ytdlpWorst360Format, "best[height<=360]", "worst"},
+}
+
+func qualityChainAt(idx int) []string {
+	if idx < 0 || idx >= len(qualityChains) {
+		return nil
+	}
+	return slices.Clone(qualityChains[idx])
+}
+
 type QualityChoice struct {
 	Key       string
 	Height    int
@@ -72,7 +89,7 @@ func QualityChoiceLabels(choices []QualityChoice, l Locale) []string {
 func (q QualityChoice) Label(l Locale) string {
 	label := q.labelWithoutSize(l)
 	if q.SizeBytes > 0 {
-		label += " ~" + FmtBytesFor(q.SizeBytes, l)
+		label += " ~" + FormatBytes(q.SizeBytes, l)
 	}
 	return label
 }

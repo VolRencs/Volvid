@@ -34,9 +34,9 @@ func openDownloadsDirCmd(path string) tea.Cmd {
 	}
 }
 
-func pickDownloadsDirCmd(env *app.Env, path string, locale app.Locale) tea.Cmd {
+func pickDownloadsDirCmd(ctx context.Context, env *app.Env, path string, locale app.Locale) tea.Cmd {
 	return func() tea.Msg {
-		dir, err := app.PickDownloadsDir(env, path, locale)
+		dir, err := app.PickDownloadsDir(ctx, env, path, locale)
 		return msgPickDownloadsDirDone{path: dir, err: err}
 	}
 }

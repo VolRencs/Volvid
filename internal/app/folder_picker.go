@@ -1,13 +1,16 @@
 package app
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 var (
 	ErrFolderPickerCancelled   = errors.New("folder selection canceled")
 	errFolderPickerUnsupported = errors.New("folder picker is not supported on this platform")
 )
 
-func PickDownloadsDir(env *Env, current string, locale Locale) (string, error) {
+func PickDownloadsDir(ctx context.Context, env *Env, current string, locale Locale) (string, error) {
 	current = cleanAbsPath(current)
 	if current == "" {
 		current = cleanAbsPath(env.DownloadsDir())
@@ -15,7 +18,7 @@ func PickDownloadsDir(env *Env, current string, locale Locale) (string, error) {
 	if current == "" {
 		current = systemDownloadsDir(env)
 	}
-	return pickDirectory(current, StringsFor(locale).PickDownloadsTitle)
+	return pickDirectory(ctx, current, StringsFor(locale).PickDownloadsTitle)
 }
 
 func IsFolderPickerCancelled(err error) bool {
