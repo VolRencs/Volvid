@@ -23,7 +23,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
 .nav-inner{display:flex;align-items:center;justify-content:space-between;height:60px}
 .logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text)}
 .logo-banner{height:38px;width:auto;display:block}
-.logo.sm .logo-banner{height:32px}
+.logo.sm .logo-banner{height:44px}
 .nav-right{display:flex;align-items:center;gap:12px}
 .gh{color:var(--muted);text-decoration:none;display:inline-flex}.gh:hover{color:var(--blue)}.gh svg{display:block}
 .langseg{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}

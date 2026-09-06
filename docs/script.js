@@ -121,7 +121,6 @@ const I18N = {
     'show.desc': 'Volvid даёт вам всю мощь, не отвлекая лишним. Никаких окон, никаких переключений — только то, что нужно, именно тогда, когда нужно.',
     'c1': 'Управление с клавиатуры', 'c2': 'Быстрый и лёгкий', 'c3': 'Красивый и минималистичный TUI',
     'show.fmt': 'Форматы:',
-    'foot.tag': 'YouTube-загрузчик для терминала.',
     'foot.rel': 'Релизы', 'foot.src': 'Исходный код', 'foot.iss': 'Сообщить об ошибке',
     'foot.right': 'Открытый код &nbsp;•&nbsp; Лицензия MIT'
   },
@@ -164,7 +163,6 @@ const I18N = {
     'show.desc': 'Volvid gives you full power without distractions. No windows, no switching — only what you need, exactly when you need it.',
     'c1': 'Keyboard-driven', 'c2': 'Fast and lightweight', 'c3': 'Beautiful minimalist TUI',
     'show.fmt': 'Formats:',
-    'foot.tag': 'YouTube downloader for the terminal.',
     'foot.rel': 'Releases', 'foot.src': 'Source code', 'foot.iss': 'Report an issue',
     'foot.right': 'Open source &nbsp;•&nbsp; MIT License'
   }
