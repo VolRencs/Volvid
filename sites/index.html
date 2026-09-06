@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VolVid — YouTube Downloader for Terminal</title>
+<meta name="description" content="VolVid — быстрый и удобный TUI-интерфейс для скачивания видео, аудио и превью с YouTube прямо в терминале.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="https://raw.githubusercontent.com/VolRencs/Volvid/refs/heads/Dev/assets/icon/icon.ico" type="image/x-icon">
+</head>
+<body>
+<header class="nav">
+  <div class="container nav-inner">
+    <a href="#top" class="logo">
+      <img src="https://raw.githubusercontent.com/VolRencs/Volvid/refs/heads/Dev/assets/icon/icon.ico" alt="VolVid" class="logo-img">
+      <span class="logo-text">VOL<span>VID</span><small>YOUTUBE DOWNLOADER</small></span>
+    </a>
+    <nav class="links" id="navLinks">
+      <a href="#top" class="active" data-i18n="nav.home">Главная</a>
+      <a href="#features" data-i18n="nav.features">Возможности</a>
+    </nav>
+    <div class="nav-right">
+      <div class="langseg" role="group" aria-label="Language / Язык"><button type="button" data-lang="ru" class="on">RU</button><button type="button" data-lang="en">EN</button></div>
+      <a href="https://github.com/VolRencs/Volvid" target="_blank" rel="noopener" class="gh" aria-label="GitHub"><svg viewBox="0 0 16 16" width="22" height="22" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
+      <button class="burger" id="burger" aria-label="Меню"><span></span><span></span><span></span></button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+<!-- HERO -->
+<section class="hero">
+  <div class="container hero-grid">
+    <div class="hero-left">
+      <p class="tagline" data-i18n="hero.tagline">Быстрый. Удобный. Клавиатурный.</p>
+      <div class="big-logo">
+        <img src="https://raw.githubusercontent.com/VolRencs/Volvid/refs/heads/Dev/assets/icon/icon.ico" alt="VolVid" class="big-img">
+        <span class="big-text">VOL<span>VID</span><small>YOUTUBE DOWNLOADER</small></span>
+      </div>
+      <h1 data-i18n="hero.title" data-i18n-html>Загружай видео и аудио<br>с YouTube <span class="blue">прямо в терминале.</span></h1>
+      <p class="desc" data-i18n="hero.desc" data-i18n-html>Volvid — это быстрый и удобный TUI-интерфейс<br>для скачивания видео, аудио и превью<br>с YouTube и не только.</p>
+      <div class="btns">
+        <a class="btn primary" href="https://github.com/VolRencs/Volvid/releases/latest/download/Volvid.exe" id="dlWin">⬇ <b data-i18n="hero.dl">Скачать</b><small data-i18n="hero.forWin">для Windows</small></a>
+        <a class="btn outline" href="https://github.com/VolRencs/Volvid/releases/latest/download/Volvid" id="dlLin">🐧 <b data-i18n="hero.dl2">Скачать</b><small data-i18n="hero.forLin">для Linux</small></a>
+        <a class="btn ghost" href="https://github.com/VolRencs/Volvid" target="_blank" rel="noopener" data-i18n="hero.github" data-i18n-html>◉ Смотреть на GitHub ⧉</a>
+      </div>
+      <p class="release"><span data-i18n="hero.release">Последний релиз:</span> <span data-volvid-version>v7.4.0</span> &nbsp;•&nbsp; Go 1.27+</p>
+    </div>
+    <div class="hero-right">
+      <div class="app">
+        <div class="app-box">
+          <p class="app-title"><span class="blue">❚</span> <span data-i18n="app.paste">Вставь ссылку на видео или плейлист YouTube</span></p>
+          <p class="muted small">youtube.com/watch &nbsp;·&nbsp; youtube.com/playlist &nbsp;·&nbsp; youtu.be</p>
+          <hr>
+          <p class="lbl" data-i18n="app.target">Цель</p>
+          <div class="urlbox app-url"><span class="muted">https://youtu.be/...</span><span id="typed"></span><span class="caret"></span></div>
+          <p class="lbl" data-i18n="app.dlLoc">Папка загрузки</p>
+          <p class="path">/home/volvid/video/YouTube</p>
+          <p class="lbl" data-i18n="app.recent">Текущая сессия</p>
+          <p class="sess"><span class="green">●</span> <span data-i18n="app.ok">ок</span> <b>0</b> &nbsp; <span class="red">●</span> <span data-i18n="app.fail">ошибки</span> <b>0</b></p>
+          <p class="muted" data-i18n="app.noDl">│ В этой сессии ещё не было загрузок.</p>
+          <hr>
+          <p class="keys"><span class="hk">[<b>Enter</b>]</span> <span data-i18n="app.cont">продолжить</span> &nbsp;·&nbsp; <span class="hk">[<b>Ctrl+G</b>]</span> <span data-i18n="app.search">поиск</span> &nbsp;·&nbsp; <span class="hk">[<b>Ctrl+O</b>]</span> <span data-i18n="app.folder">выбрать папку</span><br><span class="hk">[<b>O</b>]</span> <span data-i18n="app.open">открыть папку</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="container">
+    <h2 data-i18n="feat.title">Возможности</h2>
+    <p class="sub" data-i18n="feat.sub">Все, что нужно для удобной загрузки, в одном инструменте.</p>
+    <div class="grid8">
+      <div class="f"><div class="ic">▶</div><h3 data-i18n="f1t">Видео, аудио и превью</h3><p data-i18n="f1d">Скачивайте видео, аудиодорожки и миниатюры через единый пошаговый TUI: от проверки обновлений до итога сессии.</p></div>
+      <div class="f"><div class="ic">★</div><h3 data-i18n="f2t">Пресеты качества</h3><p data-i18n="f2d">Best и экономные пресеты видео со сканированием качества через yt-dlp. Аудио: MP3 320k и 192k, M4A/AAC Best, Opus Best, FLAC.</p></div>
+      <div class="f"><div class="ic">☰</div><h3 data-i18n="f3t">Плейлисты</h3><p data-i18n="f3d">Браузер плейлистов: выбор клавишей Space, всё сразу — клавишей A, ручные диапазоны — через /.</p></div>
+      <div class="f"><div class="ic">⌕</div><h3 data-i18n="f4t">Поиск на YouTube</h3><p data-i18n="f4d">Поиск видео с главного экрана по Ctrl+G — ссылку вставлять не обязательно.</p></div>
+      <div class="f"><div class="ic">✿</div><h3 data-i18n="f5t">Зависимости под контролем</h3><p data-i18n="f5d">Проверка yt-dlp и ffmpeg на старте и обновление прямо в интерфейсе по Ctrl+U. Системные бинари в приоритете.</p></div>
+      <div class="f"><div class="ic">🛡</div><h3 data-i18n="f6t">Cookies и JS-runtime</h3><p data-i18n="f6d">Автодетект кукисов браузера на Windows и Linux, проверка опционального node для обхода защиты.</p></div>
+      <div class="f"><div class="ic">📁</div><h3 data-i18n="f7t">Папка загрузок</h3><p data-i18n="f7d">Выбор папки внутри приложения по Ctrl+O и быстрое открытие. Свой путь — через VOLVID_DOWNLOADS_DIR.</p></div>
+      <div class="f"><div class="ic">📊</div><h3 data-i18n="f8t">Итоги сессии</h3><p data-i18n="f8d">Сводка после загрузок: история успехов и ошибок, счётчики ok и failed.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- SHOWCASE -->
+<section class="showcase" id="showcase">
+  <div class="container show-grid">
+    <div class="app">
+      <div class="app-box">
+        <p class="app-title"><span class="blue">❚</span> <span data-i18n="q.title">Выбери качество</span></p>
+        <hr>
+        <ul class="qlist-num" id="qList">
+          <li class="sel"><span class="mark">❱</span><span class="n">1</span><span class="t">2160p ~368.6 <span class="unit">МБ</span></span></li>
+          <li><span class="mark">❱</span><span class="n">2</span><span class="t">1440p ~125.3 <span class="unit">МБ</span></span></li>
+          <li><span class="mark">❱</span><span class="n">3</span><span class="t">1080p ~68.9 <span class="unit">МБ</span></span></li>
+          <li><span class="mark">❱</span><span class="n">4</span><span class="t">720p ~34.9 <span class="unit">МБ</span></span></li>
+          <li><span class="mark">❱</span><span class="n">5</span><span class="t">480p ~20.0 <span class="unit">МБ</span></span></li>
+          <li><span class="mark">❱</span><span class="n">6</span><span class="t">360p ~12.7 <span class="unit">МБ</span></span></li>
+          <li><span class="mark">❱</span><span class="n">7</span><span class="t">240p ~8.6 <span class="unit">МБ</span></span></li>
+          <li><span class="mark">❱</span><span class="n">8</span><span class="t">144p ~6.5 <span class="unit">МБ</span></span></li>
+        </ul>
+        <hr>
+        <p class="keys"><span class="hk">[<b>↑/↓</b>]</span> <span data-i18n="q.move">движение</span> &nbsp;·&nbsp; <span class="hk">[<b>1–9</b>]</span> <span data-i18n="q.choose">выбрать</span> &nbsp;·&nbsp; <span class="hk">[<b>Enter</b>]</span> <span data-i18n="q.cont">продолжить</span> &nbsp;·&nbsp; <span class="hk">[<b>Esc</b>]</span> <span data-i18n="q.back">назад</span></p>
+      </div>
+    </div>
+    <div class="show-text">
+      <p class="eyebrow" data-i18n="show.eyebrow">ПРОСТОЙ И ИНТУИТИВНЫЙ</p>
+      <h2 data-i18n="show.title" data-i18n-html>Чистый интерфейс.<br><span class="blue">Максимальный контроль.</span></h2>
+      <p class="desc" data-i18n="show.desc">Volvid даёт вам всю мощь, не отвлекая лишним. Никаких окон, никаких переключений — только то, что нужно, именно тогда, когда нужно.</p>
+      <ul class="checks">
+        <li data-i18n="c1">Управление с клавиатуры</li>
+        <li data-i18n="c2">Быстрый и лёгкий</li>
+        <li data-i18n="c3">Красивый и минималистичный TUI</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="container foot-top">
+    <div>
+      <a href="#top" class="logo sm">
+        <img src="https://raw.githubusercontent.com/VolRencs/Volvid/refs/heads/Dev/assets/icon/icon.ico" alt="VolVid" class="logo-img sm">
+        <span class="logo-text">VOL<span>VID</span><small>YOUTUBE DOWNLOADER</small></span>
+      </a>
+      <p class="muted small" data-i18n="foot.tag">YouTube-загрузчик для терминала.</p>
+    </div>
+  </div>
+  <div class="container foot-bot">
+    <p>© 2026 Volvid.</p>
+    <p class="muted small" data-i18n="foot.right" data-i18n-html>Открытый код &nbsp;•&nbsp; Лицензия MIT</p>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
