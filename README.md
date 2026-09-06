@@ -1,16 +1,18 @@
 # Volvid
 
+<div align="center">
+
+![downloader](assets/Downloader.png)
+
 **Keyboard-driven TUI for downloading YouTube video, audio and thumbnails — via yt-dlp + ffmpeg.**
 
 [![Go](https://img.shields.io/badge/Go-1.27.0%2B-00ADD8?style=flat-square&logo=go)](go.mod)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)](#platforms)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-<details><summary>Screenshot</summary>
+</div>
 
-![Volvid TUI](assets/TUI.png)
-
-</details>
+---
 
 ## Contents
 
@@ -26,6 +28,8 @@
 - [Dependencies](#dependencies)
 
 ## About
+
+![youtube downloader screenshot](assets/TUI.png)
 
 Volvid guides you through update check → dependencies → URL or search → playlist → fragment → profile → download → summary. System binaries are preferred; missing ones can be installed as managed copies under the app data dir. `node` is optional (JS runtime). Browser cookies are auto-detected on Windows and Linux. UI language is English/Russian, toggle with `Tab`.
 
