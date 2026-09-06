@@ -12,7 +12,7 @@ function typeLoop() {
   setTimeout(typeLoop, dir === 1 ? 60 : 20);
 }
 typeLoop();
-
+//
 // TUI menu keyboard nav (hero menu removed — guard)
 const items = [...document.querySelectorAll('#tuiMenu li')];
 let sel = 0;
@@ -86,7 +86,7 @@ const I18N = {
     'doc.title': 'Volvid — YouTube-загрузчик для терминала',
     'hero.tagline': 'Быстрый. Удобный. Клавиатурный.',
     'hero.title': 'Загружай видео и аудио<br>с YouTube <span class="blue">прямо в терминале.</span>',
-    'hero.desc': 'Volvid — это быстрый и удобный TUI-интерфейс<br>для скачивания видео, аудио и превью<br>с YouTube и не только.',
+    'hero.desc': 'Volvid — это быстрый и удобный TUI-интерфейс<br>для скачивания видео, аудио и превью<br>с YouTube.',
     'hero.dl': 'Скачать', 'hero.dl2': 'Скачать',
     'hero.forWin': 'для Windows', 'hero.forLin': 'для Linux',
     'hero.github': 'Смотреть на GitHub',
