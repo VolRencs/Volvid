@@ -8,7 +8,6 @@
   --sans:Inter,system-ui,'Segoe UI',Roboto,Arial,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
 ::selection{background:rgba(90,176,255,.35)}
 :focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:4px}
 ::-webkit-scrollbar{width:10px;height:10px}
@@ -21,7 +20,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
 /* NAV */
 .nav{position:sticky;top:0;z-index:50;background:rgba(10,18,32,.9);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
 .nav-inner{display:flex;align-items:center;justify-content:space-between;height:60px}
-.logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text)}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text);background:none;border:0;padding:0;font:inherit;cursor:pointer}
 .logo-banner{height:38px;width:auto;display:block}
 .logo.sm .logo-banner{height:44px}
 .nav-right{display:flex;align-items:center;gap:12px}
@@ -110,7 +109,6 @@ footer{padding:28px 0 18px}
 .rv{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
 .rv.vis{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){
-  html{scroll-behavior:auto}
   .rv{opacity:1;transform:none;transition:none}
 }
 @media(max-width:900px){

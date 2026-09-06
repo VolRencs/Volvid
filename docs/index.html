@@ -11,9 +11,9 @@
 <body>
 <header class="nav">
   <div class="container nav-inner">
-    <a href="#top" class="logo">
+    <button type="button" class="logo" data-scroll-top aria-label="Наверх / To top">
       <img src="https://raw.githubusercontent.com/VolRencs/Volvid/refs/heads/Dev/assets/logo-2.png" alt="VOLVID — YOUTUBE DOWNLOADER" class="logo-banner">
-    </a>
+    </button>
     <div class="nav-right">
       <div class="langseg" role="group" aria-label="Language / Язык"><button type="button" data-lang="ru" class="on">RU</button><button type="button" data-lang="en">EN</button></div>
       <a href="https://github.com/VolRencs/Volvid" target="_blank" rel="noopener" class="gh" aria-label="GitHub"><svg viewBox="0 0 16 16" width="22" height="22" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
@@ -21,7 +21,7 @@
   </div>
 </header>
 
-<main id="top">
+<main>
 <!-- HERO -->
 <section class="hero">
   <div class="container hero-grid">
@@ -45,12 +45,12 @@
           <p class="app-title"><span class="blue">❚</span> <span data-i18n="app.paste">Вставь ссылку на видео или плейлист YouTube</span></p>
           <p class="muted small">youtube.com/watch &nbsp;·&nbsp; youtube.com/playlist &nbsp;·&nbsp; youtu.be</p>
           <hr>
-          <p class="lbl" data-i18n="app.target">Цель</p>
+          <p class="lbl" data-i18n="app.target">Источник</p>
           <div class="urlbox app-url"><span class="muted">https://youtu.be/...</span><span id="typed"></span><span class="caret"></span></div>
           <p class="lbl" data-i18n="app.dlLoc">Папка загрузки</p>
           <p class="path">/home/volvid/video/YouTube</p>
           <p class="lbl" data-i18n="app.recent">Текущая сессия</p>
-          <p class="sess"><span class="green">●</span> <span data-i18n="app.ok">ок</span> <b>0</b> &nbsp; <span class="red">●</span> <span data-i18n="app.fail">ошибки</span> <b>0</b></p>
+          <p class="sess"><span class="green">●</span> <span data-i18n="app.ok">успешно</span> <b>0</b> &nbsp; <span class="red">●</span> <span data-i18n="app.fail">ошибки</span> <b>0</b></p>
           <p class="muted" data-i18n="app.noDl">│ В этой сессии ещё не было загрузок.</p>
           <hr>
           <p class="keys"><span class="hk">[<b>Enter</b>]</span> <span data-i18n="app.cont">продолжить</span> &nbsp;·&nbsp; <span class="hk">[<b>Ctrl+G</b>]</span> <span data-i18n="app.search">поиск</span> &nbsp;·&nbsp; <span class="hk">[<b>Ctrl+O</b>]</span> <span data-i18n="app.folder">выбрать папку</span><br><span class="hk">[<b>O</b>]</span> <span data-i18n="app.open">открыть папку</span></p>
@@ -61,7 +61,7 @@
 </section>
 
 <!-- FEATURES -->
-<section class="features" id="features">
+<section class="features">
   <div class="container">
     <h2 data-i18n="feat.title">Возможности</h2>
     <p class="sub" data-i18n="feat.sub">Все, что нужно для удобной загрузки, в одном инструменте.</p>
@@ -79,7 +79,7 @@
 </section>
 
 <!-- SHOWCASE -->
-<section class="showcase" id="showcase">
+<section class="showcase">
   <div class="container show-grid">
     <div class="app">
       <div class="app-box">
@@ -118,9 +118,9 @@
 <footer>
   <div class="container foot-top center">
     <div>
-      <a href="#top" class="logo sm">
+      <button type="button" class="logo sm" data-scroll-top aria-label="Наверх / To top">
         <img src="https://raw.githubusercontent.com/VolRencs/Volvid/refs/heads/Dev/assets/logo-2.png" alt="VOLVID — YOUTUBE DOWNLOADER" class="logo-banner">
-      </a>
+      </button>
     </div>
     <div class="fres">
       <a href="https://github.com/VolRencs/Volvid/releases" target="_blank" rel="noopener" data-i18n="foot.rel">Релизы</a>

@@ -12,17 +12,6 @@ function typeLoop() {
   setTimeout(typeLoop, dir === 1 ? 60 : 20);
 }
 typeLoop();
-//
-// TUI menu keyboard nav (hero menu removed — guard)
-const items = [...document.querySelectorAll('#tuiMenu li')];
-let sel = 0;
-document.addEventListener('keydown', e => {
-  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-  if (!items.length) return;
-  e.preventDefault();
-  sel = (sel + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
-  items.forEach((li, k) => { li.classList.toggle('sel', k === sel); li.textContent = (k === sel ? '➤ ' : '') + li.textContent.replace(/^➤\s*/, ''); });
-});
 
 // Quality list interactive (numbered picker)
 const q = [...document.querySelectorAll('#qList li')];
@@ -92,9 +81,9 @@ const I18N = {
     'hero.github': 'Смотреть на GitHub',
     'hero.release': 'Последний релиз:',
     'app.paste': 'Вставь ссылку на видео или плейлист YouTube',
-    'app.target': 'Цель', 'app.dlLoc': 'Папка загрузки', 'app.recent': 'Текущая сессия',
+    'app.target': 'Источник', 'app.dlLoc': 'Папка загрузки', 'app.recent': 'Текущая сессия',
     'app.noDl': '│ В этой сессии ещё не было загрузок.',
-    'app.ok': 'ок', 'app.fail': 'ошибки',
+    'app.ok': 'успешно', 'app.fail': 'ошибки',
     'app.cont': 'продолжить', 'app.search': 'поиск', 'app.folder': 'выбрать папку', 'app.open': 'открыть папку',
     'feat.title': 'Возможности',
     'feat.sub': 'Все, что нужно для удобной загрузки, в одном инструменте.',
@@ -189,6 +178,14 @@ function setLang(l) {
 }
 document.querySelectorAll('.langseg button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
 setLang(lang);
+
+// Scroll to top for logo buttons (no anchor ids on this small site)
+document.querySelectorAll('[data-scroll-top]').forEach(b =>
+  b.addEventListener('click', () => {
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+  })
+);
 
 // Reveal on scroll (respects prefers-reduced-motion via CSS)
 (function reveal() {
