@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![downloader](assets/Downloader.png)
+![downloader](assets/logo-1.png)
 
 **Keyboard-driven TUI for downloading YouTube video, audio and thumbnails — via yt-dlp + ffmpeg.**
 
@@ -29,7 +29,7 @@
 
 ## About
 
-![youtube downloader screenshot](assets/TUI.png)
+![youtube downloader screenshot](assets/tui.png)
 
 Volvid guides you through update check → dependencies → URL or search → playlist → fragment → profile → download → summary. System binaries are preferred; missing ones can be installed as managed copies under the app data dir. `node` is optional (JS runtime). Browser cookies are auto-detected on Windows and Linux. UI language is English/Russian, toggle with `Tab`.
 

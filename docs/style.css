@@ -16,8 +16,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
 .logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text)}
 .logo-img{width:34px;height:34px;border-radius:8px}
 .logo-img.sm{width:30px;height:30px}
-.logo-text{font-weight:900;letter-spacing:1px;line-height:1}.logo-text span{color:var(--red)}
-.logo-text small{display:block;font-size:7px;letter-spacing:2px;color:var(--muted);font-weight:600}
+.logo-banner{height:28px;width:auto;display:block}
+.logo.sm .logo-banner{height:24px}
 .logo.sm .logo-icon{width:30px;height:30px}
 .big-img{width:64px;height:64px;border-radius:14px}
 .links{display:flex;gap:26px}.links a{color:var(--muted);text-decoration:none;font-size:14px}.links a.active,.links a:hover{color:var(--blue)}
@@ -36,8 +36,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
 .big-logo{display:flex;align-items:center;gap:16px;margin:6px 0 18px}
 .big-icon{width:64px;height:64px;background:linear-gradient(135deg,#ff5a5a,#b71c1c);border-radius:16px;display:grid;place-items:center;font-size:26px;position:relative}
 .big-icon .dl{position:absolute;right:-7px;bottom:-7px;background:#7f0000;border-radius:50%;width:24px;height:24px;font-size:14px;display:grid;place-items:center;border:2px solid var(--bg)}
-.big-text{font-size:52px;font-weight:900;letter-spacing:1px;line-height:.9}.big-text span{color:var(--red)}
-.big-text small{display:block;font-size:11px;letter-spacing:4px;color:var(--muted);margin-top:6px}
+.big-banner{height:52px;width:auto;max-width:100%;display:block}
 .hero h1{font-size:26px;line-height:1.3;margin:10px 0}
 .hero .desc{color:var(--muted);font-size:15px;margin-bottom:22px}
 .btns{display:flex;gap:12px;flex-wrap:wrap}
@@ -109,5 +108,5 @@ footer{padding:28px 0 18px}
   .grid8{grid-template-columns:repeat(2,1fr)}
   .links{display:none;position:absolute;top:60px;left:0;right:0;background:#0d1628;flex-direction:column;padding:16px 24px;border-bottom:1px solid var(--border)}
   .links.open{display:flex}.burger{display:block}
-  .big-text{font-size:40px}
+  .big-banner{height:40px}
 }
