@@ -193,7 +193,6 @@ func formatProgressSpeed(raw string, l core.Locale) string {
 	return i18n.FormatSpeed(value, l)
 }
 
-// Deprecated: use parseIntOrZero/parsePercentOrZero in decode.go.
 func postprocessLabel(line string, l core.Locale) string {
 	name := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(line, ytdlpLinePost)))
 	loc := i18n.StringsFor(l)

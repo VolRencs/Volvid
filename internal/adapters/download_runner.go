@@ -201,13 +201,6 @@ func resetDownloadSlot(ctx context.Context, slot int, ch chan<- core.DlUpdate) {
 		return
 	case <-timer.C:
 	}
-	if ctx == nil {
-		select {
-		case ch <- core.DlUpdate{Type: core.EvReset, Slot: slot}:
-		default:
-		}
-		return
-	}
 	select {
 	case ch <- core.DlUpdate{Type: core.EvReset, Slot: slot}:
 	case <-ctx.Done():

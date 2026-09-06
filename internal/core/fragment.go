@@ -263,9 +263,6 @@ func parseDigits(value string) (int, bool) {
 }
 
 func parseClockParts(minutes, hours, seconds int) (int, error) {
-	if minutes < 0 || hours < 0 || seconds < 0 {
-		return 0, fmt.Errorf("timestamp must not be negative")
-	}
 	if seconds >= 60 {
 		return 0, fmt.Errorf("seconds must be < 60")
 	}

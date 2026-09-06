@@ -173,7 +173,6 @@ func ParseSelectionFor(raw string, maxIdx int, l core.Locale) ([]int, error) {
 	return slices.Sorted(maps.Keys(seen)), nil
 }
 
-// ---- merged from search.go ----
 func SearchYouTubeContext(env *Env, ctx context.Context, query string) ([]core.SearchResult, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {

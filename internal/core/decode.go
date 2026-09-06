@@ -10,12 +10,12 @@ import (
 // yt-dlp emits numbers as float64, int or numeric strings (sometimes with
 // a "%" suffix in progress lines, sometimes null). Single source of truth
 // for all adapters.
-func DecodeString(v any) string {
+func decodeString(v any) string {
 	s, _ := v.(string)
 	return s
 }
 
-func DecodeStringOr(v any, def string) string {
+func decodeStringOr(v any, def string) string {
 	if s, ok := v.(string); ok && s != "" {
 		return s
 	}
@@ -27,10 +27,10 @@ func MapString(m map[string]any, key, def string) string {
 	if m == nil {
 		return def
 	}
-	return DecodeStringOr(m[key], def)
+	return decodeStringOr(m[key], def)
 }
 
-func DecodeFloat(v any) float64 {
+func decodeFloat(v any) float64 {
 	switch n := v.(type) {
 	case nil:
 		return 0
@@ -52,7 +52,7 @@ func DecodeFloat(v any) float64 {
 	}
 }
 
-func DecodeInt(v any) int64 {
+func decodeInt(v any) int64 {
 	switch n := v.(type) {
 	case nil:
 		return 0
@@ -79,7 +79,7 @@ func MapFloat(m map[string]any, key string) float64 {
 	if m == nil {
 		return 0
 	}
-	return DecodeFloat(m[key])
+	return decodeFloat(m[key])
 }
 
 // parseIntOrZero parses CLI/progress integers ("12", " 7 ") -> 0 on error.

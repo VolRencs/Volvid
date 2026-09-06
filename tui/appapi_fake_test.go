@@ -61,10 +61,6 @@ func (s *stubAPI) DefaultProfileForMode(mode core.DownloadMode, l core.Locale) c
 	return i18n.DefaultProfileForMode(mode, l)
 }
 
-func (s *stubAPI) ProfileRequiresFFmpeg(p core.OutputProfile, f *core.DownloadFragment) bool {
-	return core.ProfileRequiresFFmpeg(p, f)
-}
-
 func (s *stubAPI) DownloadsDir() string { return s.dir }
 
 func (s *stubAPI) DownloadsDirLocked() bool { return false }

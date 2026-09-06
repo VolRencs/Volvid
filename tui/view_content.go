@@ -8,8 +8,6 @@ import (
 	"volvid/internal/core"
 )
 
-// ---- merged from view_home.go ----
-
 func (m Model) viewHome() string {
 	parts := []string{
 		m.viewHomeInput(),
@@ -60,8 +58,6 @@ func (m Model) viewHomeSession() string {
 	}
 	return m.renderSectionBlock(m.u().HomeSessionTitle, strings.Join(rows, "\n\n"))
 }
-
-// ---- merged from view_playlist.go ----
 
 func (m Model) viewPlaylist() string {
 	if m.plInfo == nil {

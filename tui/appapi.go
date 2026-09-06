@@ -29,7 +29,6 @@ type AppAPI interface {
 	StartDownload(ctx context.Context, req core.DownloadRequest, deps core.CheckDepsResult, ch chan<- core.DlUpdate)
 	DefaultVideoProfile(l core.Locale) core.OutputProfile
 	DefaultProfileForMode(mode core.DownloadMode, l core.Locale) core.OutputProfile
-	ProfileRequiresFFmpeg(profile core.OutputProfile, fragment *core.DownloadFragment) bool
 
 	// Fragment / playlist selection validation.
 	ParseFragment(raw string, mediaDuration int) (core.DownloadFragment, error)
@@ -108,10 +107,6 @@ func (a appAPIAdapter) DefaultVideoProfile(l core.Locale) core.OutputProfile {
 
 func (a appAPIAdapter) DefaultProfileForMode(mode core.DownloadMode, l core.Locale) core.OutputProfile {
 	return i18n.DefaultProfileForMode(mode, l)
-}
-
-func (a appAPIAdapter) ProfileRequiresFFmpeg(profile core.OutputProfile, fragment *core.DownloadFragment) bool {
-	return core.ProfileRequiresFFmpeg(profile, fragment)
 }
 
 func (a appAPIAdapter) ParseFragment(raw string, mediaDuration int) (core.DownloadFragment, error) {

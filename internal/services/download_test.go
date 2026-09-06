@@ -67,15 +67,3 @@ func TestPlanDownloadValidationErrorPassthrough(t *testing.T) {
 		t.Fatalf("expected %v, got %v", want, err)
 	}
 }
-
-func TestWorkerCount(t *testing.T) {
-	if got := WorkerCount(5, 0); got != 1 {
-		t.Fatalf("empty entries: expected 1, got %d", got)
-	}
-	if got := WorkerCount(0, 3); got != 1 {
-		t.Fatalf("zero workers: expected 1, got %d", got)
-	}
-	if got := WorkerCount(3, 10); got != 3 {
-		t.Fatalf("expected 3, got %d", got)
-	}
-}

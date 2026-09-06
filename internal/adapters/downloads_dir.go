@@ -5,11 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"volvid/internal/core"
 )
 
 const downloadsDirFileName = ".volvid_downloads_dir"
-
-var ErrDownloadsDirLocked = errors.New("download location is fixed by VOLVID_DOWNLOADS_DIR")
 
 func resolveDownloadsDir(env *Env) string {
 	if path := envPath(envDownloadsDir); path != "" {
@@ -27,7 +26,7 @@ func DownloadsDirLocked() bool {
 
 func SetDownloadsDir(env *Env, path string) error {
 	if DownloadsDirLocked() {
-		return ErrDownloadsDirLocked
+		return core.ErrDownloadsDirLocked
 	}
 
 	path, err := prepareDir(path)
@@ -48,9 +47,6 @@ func downloadsDirPath(env *Env) string {
 
 func loadSavedDownloadsDir(env *Env) string {
 	path := downloadsDirPath(env)
-	if strings.TrimSpace(path) == "" {
-		return ""
-	}
 
 	// Ограничиваем размер, чтобы битый/огромный файл не съедал память.
 	b, err := os.ReadFile(path)

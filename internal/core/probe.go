@@ -30,10 +30,10 @@ func (f *MediaFormat) UnmarshalJSON(data []byte) error {
 	}
 	*f = MediaFormat{
 		Height:         aux.Height,
-		VCodec:         DecodeString(aux.VCodec),
-		ACodec:         DecodeString(aux.ACodec),
-		Filesize:       DecodeInt(aux.Filesize),
-		FilesizeApprox: DecodeInt(aux.FilesizeApprox),
+		VCodec:         decodeString(aux.VCodec),
+		ACodec:         decodeString(aux.ACodec),
+		Filesize:       decodeInt(aux.Filesize),
+		FilesizeApprox: decodeInt(aux.FilesizeApprox),
 	}
 	return nil
 }

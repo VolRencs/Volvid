@@ -14,7 +14,6 @@ import (
 
 type videoQualityInfo struct {
 	heights      []int
-	hasHeight    map[int]bool
 	sizeByHeight map[int]int64
 }
 
@@ -164,7 +163,6 @@ func videoQualityInfoFromProbe(probe *core.MediaProbe) (videoQualityInfo, error)
 	slices.SortFunc(heights, func(a, b int) int { return cmp.Compare(b, a) })
 	return videoQualityInfo{
 		heights:      heights,
-		hasHeight:    heightsSeen,
 		sizeByHeight: sizeByHeight,
 	}, nil
 }

@@ -15,8 +15,6 @@ import (
 	"unsafe"
 )
 
-// ---- merged from process_windows.go ----
-
 var processJobs sync.Map
 
 func configureCommandForProcessTree(cmd *exec.Cmd) {
@@ -114,8 +112,6 @@ func loadCommandJob(cmd *exec.Cmd) (windows.Handle, bool) {
 	}
 	return job, true
 }
-
-// ---- merged from platform_windows.go ----
 
 var (
 	kernel32           = syscall.NewLazyDLL("kernel32.dll")

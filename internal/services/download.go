@@ -81,11 +81,3 @@ func PlanDownload(
 		Total:   len(entries),
 	}, nil
 }
-
-// WorkerCount centralizes the workers=max(n,1) policy (empty playlist -> 1).
-func WorkerCount(numWorkers, numEntries int) int {
-	if numEntries == 0 {
-		return 1
-	}
-	return max(numWorkers, 1)
-}

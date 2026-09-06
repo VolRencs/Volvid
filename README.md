@@ -1,50 +1,41 @@
 # Volvid
 
-<div align="center">
+**Keyboard-driven TUI for downloading YouTube video, audio and thumbnails — via yt-dlp + ffmpeg.**
 
-![downloader](assets/Downloader.png)
+[![Go](https://img.shields.io/badge/Go-1.27.0%2B-00ADD8?style=flat-square&logo=go)](go.mod)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)](#platforms)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-**Download YouTube video, audio, and thumbnails through a terminal UI.**
+<details><summary>Screenshot</summary>
 
-![Go](https://img.shields.io/badge/Go-1.27.0%2B-00ADD8?style=flat-square&logo=go)
-![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)
-![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Version](https://img.shields.io/badge/Version-7.3.0-orange?style=flat-square)
+![Volvid TUI](assets/TUI.png)
 
-</div>
+</details>
 
----
+## Contents
+
+- [About](#about)
+- [Quick Start](#quick-start)
+- [TUI Flow](#tui-flow)
+- [Controls](#controls)
+- [Runtime Paths](#runtime-paths)
+- [Architecture](#architecture)
+- [Platforms](#platforms)
+- [Continuous Integration](#continuous-integration)
+- [Troubleshooting](#troubleshooting)
+- [Dependencies](#dependencies)
 
 ## About
 
-![youtube downloader screenshot](assets/TUI.png)
-
-**Volvid** is a keyboard-driven TUI built around **yt-dlp** and **ffmpeg**.
-
-The application starts with an update and dependency check, then guides the user through target selection, search, playlist handling, profile choice, download progress, and a session summary. System-installed binaries are preferred when available. Managed binaries can also be downloaded into the app data directory. **node** is optional and is used as a JS runtime when available. Browser cookies are auto-detected on **Windows** and **Linux**. The interface supports **English** and **Russian** and can be switched with `Tab`.
-
-## Features
-
-- Unified stage-based TUI: update, dependencies, target, search, playlist, fragment, profile, download, summary
-- Video, audio, and thumbnail downloads
-- Best and economy video presets with yt-dlp quality scan
-- Audio presets for MP3 320k, MP3 192k, M4A/AAC Best, Opus Best, and FLAC
-- Optional fragment download for single video or audio jobs
-- Open-ended fragments with `start-` / `start+` and URL timestamp support
-- YouTube search from the main screen with `Ctrl+G`
-- Playlist browser with `Space`, `a`, and manual ranges via `/`
-- Managed dependency refresh inside the UI with `Ctrl+U`
-- Quick open for the downloads folder from the main screen and summary
-- In-app download folder picker on supported platforms
-- Per-session summary with success and failure history
+Volvid guides you through update check → dependencies → URL or search → playlist → fragment → profile → download → summary. System binaries are preferred; missing ones can be installed as managed copies under the app data dir. `node` is optional (JS runtime). Browser cookies are auto-detected on Windows and Linux. UI language is English/Russian, toggle with `Tab`.
 
 ## Quick Start
 
-### Windows amd64
+### Windows (amd64)
 
 Download `Volvid.exe` from the [latest release](https://github.com/VolRencs/Volvid/releases/latest) and run it.
 
-### Linux amd64
+### Linux (amd64)
 
 ```bash
 curl -L https://github.com/VolRencs/Volvid/releases/latest/download/Volvid -o Volvid
@@ -52,9 +43,9 @@ chmod +x Volvid
 ./Volvid
 ```
 
-### Build From Source
+### Build from source
 
-Requires **Go 1.27.0+**.
+Requires **Go 1.27.0+** (`go.mod`; CI uses `1.27.1`).
 
 ```bash
 git clone https://github.com/VolRencs/Volvid
@@ -63,97 +54,103 @@ go build -trimpath -buildvcs=false -ldflags="-s -w" -o Volvid ./cmd/downloader
 ./Volvid
 ```
 
-### Build Windows Executable With Icon
+Release Linux builds additionally inject the version: `-X volvid/internal/adapters.Version=$VOLVID_VERSION` (see `scripts/build-linux-downloader.sh`).
 
-The repository includes a Windows icon source at `assets/icon/icon.ico`.
+### Build Windows .exe with icon
+
+Icon source: `assets/icon/icon.ico`.
 
 ```bash
 go install github.com/akavel/rsrc@v0.10.2
 ./scripts/build-windows-downloader.sh Volvid.exe
 ```
 
-## Runtime Paths
-
-The app uses standard user directories by default and supports overrides through environment variables:
-
-- `VOLVID_CONFIG_DIR` for configuration files
-- `VOLVID_DATA_DIR` for application data
-- `VOLVID_DEPS_DIR` for managed binaries
-- `VOLVID_DOWNLOADS_DIR` to lock the download location
-
-Managed binaries default to the app data directory under `deps/`. If `VOLVID_DOWNLOADS_DIR` is not set, the TUI can persist a user-selected downloads folder.
-
 ## TUI Flow
 
-1. Start at the update and dependency check.
-2. Paste a YouTube link on the target screen or press `Ctrl+G` to search.
-3. If the target is a playlist, choose entries with `Space`, `a`, or `/`.
-4. Choose Video, Audio, or Thumbnail mode.
-5. Optionally choose a fragment for single video or audio downloads.
-6. Watch progress in the download stage and review the session summary.
-
-On startup:
-
-1. `yt-dlp` and `ffmpeg` are treated as required dependencies.
-2. If one of them is missing, the TUI opens the dependency screen before the main target screen.
-3. `node` is optional and does not block the app.
-4. Browser cookies and JS runtime status are detected automatically.
+1. Update + dependency check (`yt-dlp`, `ffmpeg` required; `node` optional).
+2. Paste a YouTube link, or press `Ctrl+G` to search.
+3. For playlists pick entries with `Space`, `a`, or `/` (manual ranges).
+4. Choose Video / Audio / Thumbnail.
+5. Video: quality scan (`Best`/`Economy`/height) → output (`Original`, `H264`, `H265`, `VP9`, `AV1`, `MKV-copy`). Audio: `MP3 320k`, `MP3 192k`, `M4A Best`, `Opus Best`, `FLAC`.
+6. Optional fragment for single video/audio (video/audio only): `1:00-2:30`, open-ended `start-` / `start+`, or URL timestamp (`t`/`start`).
+7. Playlist downloads ask for worker count; watch progress (`Esc` cancels). Summary keeps session success/failure history.
 
 ## Controls
 
-| Key | Action |
-|-----|--------|
-| `↑` / `↓` | Move in menus |
-| `1-9` | Select a menu item by its number |
-| `Enter` | Continue |
-| `Space` | Select item in playlist view |
-| `/` | Enter playlist indices manually |
-| `Ctrl+G` | Open YouTube search from the main target screen |
-| `Esc` | Leave search or fragment input |
-| `a` / `а` | Select all or clear all in playlists |
-| `Tab` | Switch UI language |
-| `Ctrl+U` | Open dependency management |
-| `Ctrl+O` | Choose downloads folder |
-| `O` | Open the downloads folder (summary screen) |
+| Key | Scope | Action |
+|-----|-------|--------|
+| `↑` / `↓` | menus, playlist | Move |
+| `0-9` (multi-digit, e.g. `12`) | menus | Jump to item, `Enter` confirms |
+| `Enter` | menus, inputs | Continue / confirm |
+| `Space` | playlist (not in `/`-input) | Toggle entry |
+| `a` / `а` | playlist | Select all / clear all |
+| `/` then `Enter` / `Esc` | playlist | Manual indices / cancel |
+| `Ctrl+G` | target screen | YouTube search |
+| `Ctrl+U` | when not busy/updating | Dependency management |
+| `Ctrl+O` (`Ctrl+Щ`) | target screen | Choose downloads folder |
+| `O` (`o`/`щ`/`Щ`; on target screen only `Shift`) | target + summary (if downloads exist) | Open downloads folder |
+| `Esc` | everywhere (context) | Back / cancel / leave input |
+| `Tab` | everywhere | Switch language EN↔RU |
+| any key | update-done screen | Exit |
+
+## Runtime Paths
+
+Defaults use standard user dirs; overrides via env:
+
+| Variable | Role | Default |
+|----------|------|---------|
+| `VOLVID_CONFIG_DIR` | config (locale, saved folder) | `UserConfigDir/Volvid` |
+| `VOLVID_DATA_DIR` | app data | `%LOCALAPPDATA%/Volvid` (win), `$XDG_DATA_HOME` or `~/.local/share/Volvid` (linux) |
+| `VOLVID_DEPS_DIR` | managed `yt-dlp`/`ffmpeg`/`node` | `DataDir/deps` |
+| `VOLVID_DOWNLOADS_DIR` | lock download location (disables picker) | system `Downloads`, saved choice in `ConfigDir/.volvid_downloads_dir` |
+
+Also: `VOLVID_FFMPEG_SHA256` (pin ffmpeg), `VOLVID_VERSION` (release version injection, Linux script), `VOLVID_GO_CACHE_ROOT`/`GOCACHE`/`GOMODCACHE` (build cache, `scripts/go-env.sh`).
+
+## Architecture
+
+```text
+cmd/downloader/   composition root: adapters.NewEnv + tui.New(env, ctx)
+tui/              Bubble Tea UI: screen.go (state machine), menu/flow/keys/bindings,
+                  view*.go + deps_*.go (render), appapi.go (seam), *_state.go
+internal/core/    pure domain, no I/O: target/fragment/request/playlist/probe/quality/deps/session
+internal/i18n/    UIStrings + locale formatting + profile factories
+internal/services/ use-cases: PlanDownload (validation), LaunchProgress (worker)
+internal/adapters/ I/O: http/process/request/playlist/deps*/download_*/release/probe/
+                  quality_scan/ytjson + platform paths (downloads_dir_*) and pickers (folder_picker_*)
+scripts/          build-linux-downloader.sh, build-windows-downloader.sh, go-env.sh
+assets/           TUI.png, Downloader.png, icon/icon.ico
+```
+
+```text
+cmd/downloader -> tui -> AppAPI (interface)
+tui -> core + i18n (pure, no adapters except constructors)
+adapters -> core + i18n
+services -> core
+Production: tui.New(env, ctx) wraps newAppAPI(env). Tests: tui.NewWithDeps(ctx, stubAPI).
+```
 
 ## Platforms
 
-| OS | Arch | yt-dlp | ffmpeg | node | App update |
-|----|------|--------|--------|------|------------|
-| Windows | amd64 | system or managed | system or managed | system or managed | `.bat` replace after close |
-| Linux | amd64 | system or managed | system or managed | system or managed | binary replace |
-
-## Source Layout
-
-| Path | Role |
-|------|------|
-| `cmd/downloader/` | TUI entrypoint (composition root) |
-| `tui/` | Bubble Tea UI: `screen.go` (state-machine), `menu.go`, `flow*.go` (transitions), `keys*.go` (input), `bindings.go`, `deps_*.go`/`view_*.go` (rendering), `appapi.go` (domain seam), `*_state.go` (feature state) |
-| `internal/core/` | pure domain: target/fragment/request/playlist/probe/quality/deps/session types, tolerant JSON decoding, filename policy — no I/O |
-| `internal/i18n/` | translated strings (`UIStrings`), locale-aware formatting, profile factories with labels |
-| `internal/ports/` | infrastructure seams: `Executor`, `HTTPDoer`, `FileSystem`, `Clock`, `DirPicker` |
-| `internal/services/` | use-cases: `PlanDownload` (validation policy), `LaunchProgress` (worker) |
-| `internal/adapters/` | implementations: `http.go`, `process*.go`, `request.go` (validation/argv), `playlist.go` (fetch/search), `deps*.go` (detect/cookies/ytdlp-args/install), `download_*.go` (runner/cleanup/transcode/stream), `release.go`, platform paths/pickers |
-| `scripts/` | build and verification helpers |
-| `assets/` | icons and screenshots |
+| OS | Arch | yt-dlp / ffmpeg / node | App update |
+|----|------|------------------------|------------|
+| Windows | amd64 | system or managed | `*.update.bat` replaces binary after exit |
+| Linux | amd64 | system or managed | binary replace |
 
 ## Continuous Integration
 
-The `checks.yml` workflow runs on every push and pull request. It runs `go vet`, `go test -race`, and a build matrix on `ubuntu-latest` and `windows-latest`. The `build.yml` workflow runs on release publication and uploads signed binaries.
+`checks.yml` (push/PR to `main`): `go vet`, `go test -race`, build matrix `ubuntu-latest` + `windows-latest` via the two scripts. `build.yml` (on release `published`): version from tag (`VOLVID_VERSION=${GITHUB_REF_NAME#v}`), builds `Volvid.exe` / `Volvid`, uploads with `ncipollo/release-action@v1` (no signing).
 
 ## Troubleshooting
 
-**yt-dlp fails to download**  
-Check access to GitHub or install `yt-dlp` system-wide.
+**yt-dlp fails to download** — check GitHub access, or install `yt-dlp` system-wide / via dependency screen (`Ctrl+U`).
 
-**YouTube says “Sign in to confirm you’re not a bot”**  
-Open the dependency screen and verify cookies and JS runtime status. If cookies are inactive, make sure a supported browser profile exists on the same machine.
+**“Sign in to confirm you’re not a bot”** — open `Ctrl+U`, check cookies + JS runtime; needs a supported browser profile on the same machine.
 
-**HD merge or audio conversion fails**  
-Make sure `ffmpeg` is available. If it is missing, install it through the dependency screen or provide a system copy.
+**HD merge / audio conversion fails** — needs `ffmpeg` (system or `Ctrl+U`).
 
-**Folder selection does not open**  
-Check that the current platform has the required desktop integration available. You can still set `VOLVID_DOWNLOADS_DIR` directly.
+**Folder picker won’t open** — unsupported desktop integration; set `VOLVID_DOWNLOADS_DIR` directly.
+
+**Update applied but old version runs (Windows)** — the `.bat` swaps the binary after you close the app; restart once.
 
 ## Dependencies
 

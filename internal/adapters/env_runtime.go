@@ -12,8 +12,6 @@ import (
 	"volvid/internal/core"
 )
 
-// ---- merged from adapters.go ----
-
 var (
 	Version = "7.3.0"
 
@@ -63,8 +61,6 @@ func optimalParallelism(items, hardLimit int) int {
 	}
 	return min(items, limit)
 }
-
-// ---- merged from config.go ----
 
 const (
 	defaultDialTimeout           = 30 * time.Second
@@ -122,8 +118,6 @@ const (
 	slotResetDelay       = 300 * time.Millisecond
 )
 
-// ---- merged from env.go ----
-
 type runtimePaths struct {
 	AppDir    string
 	ConfigDir string
@@ -163,8 +157,26 @@ type Env struct {
 	httpClients
 	depCaches
 
-	dlDirMu      sync.RWMutex
-	downloadsDir string
+	dirs dirStore
+}
+
+// dirStore owns the mutable downloads-folder override behind a lock,
+// so path state is not scattered across Env methods.
+type dirStore struct {
+	mu  sync.RWMutex
+	dir string
+}
+
+func (s *dirStore) get() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.dir
+}
+
+func (s *dirStore) set(path string) {
+	s.mu.Lock()
+	s.dir = path
+	s.mu.Unlock()
 }
 
 func NewEnv() *Env {
@@ -209,15 +221,17 @@ func (env *Env) initBinaryPaths() {
 }
 
 func (env *Env) DownloadsDir() string {
-	env.dlDirMu.RLock()
-	defer env.dlDirMu.RUnlock()
-	return env.downloadsDir
+	if env == nil {
+		return ""
+	}
+	return env.dirs.get()
 }
 
 func (env *Env) setDownloadsDir(path string) {
-	env.dlDirMu.Lock()
-	env.downloadsDir = path
-	env.dlDirMu.Unlock()
+	if env == nil {
+		return
+	}
+	env.dirs.set(path)
 }
 
 func (env *Env) invalidateFFmpegEncoders() {
@@ -228,8 +242,6 @@ func (env *Env) invalidateFFmpegEncoders() {
 	defer env.ffmpegEncodersMu.Unlock()
 	clear(env.ffmpegEncodersValue)
 }
-
-// ---- merged from runtime_paths.go ----
 
 const (
 	appDirName      = "Volvid"
@@ -244,7 +256,7 @@ func (env *Env) initRuntimePaths(exeDir string) {
 	env.ConfigDir = resolveConfigDir(env)
 	env.DataDir = resolveDataDir(env)
 	env.DepsDir = resolveArtifactDir(envDepsDir, filepath.Join(env.DataDir, "deps"))
-	env.downloadsDir = resolveDownloadsDir(env)
+	env.dirs.set(resolveDownloadsDir(env))
 }
 
 func resolveConfigDir(env *Env) string {

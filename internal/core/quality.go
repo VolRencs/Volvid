@@ -4,12 +4,12 @@ import "slices"
 
 const (
 	YtdlpBestFormat     = "bestvideo+bestaudio/best"
-	YtdlpWorst360Format = "bestvideo[height<=360]+bestaudio/best[height<=360]"
+	ytdlpWorst360Format = "bestvideo[height<=360]+bestaudio/best[height<=360]"
 )
 
 var qualityChains = [2][]string{
 	{YtdlpBestFormat, "best"},
-	{YtdlpWorst360Format, "best[height<=360]", "worst"},
+	{ytdlpWorst360Format, "best[height<=360]", "worst"},
 }
 
 // QualityChainAt returns a clone of the static format chain (nil if OOB).

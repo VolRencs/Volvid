@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-// ---- merged from process.go ----
-
 type limitedBuffer struct {
 	buf       []byte
 	truncated bool
@@ -188,8 +186,6 @@ func normalizeCommandError(ctx context.Context, err error) error {
 	}
 	return err
 }
-
-// ---- merged from output_lines.go ----
 
 var ErrCommandLineTooLong = errors.New("command output line exceeds safe limit")
 

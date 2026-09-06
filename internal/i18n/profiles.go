@@ -95,12 +95,12 @@ func DefaultVideoProfile(l core.Locale) core.OutputProfile {
 func QualityChoiceLabels(choices []core.QualityChoice, l core.Locale) []string {
 	labels := make([]string, len(choices))
 	for i, choice := range choices {
-		labels[i] = QualityLabel(choice, l)
+		labels[i] = qualityLabel(choice, l)
 	}
 	return labels
 }
 
-func QualityLabel(q core.QualityChoice, l core.Locale) string {
+func qualityLabel(q core.QualityChoice, l core.Locale) string {
 	label := qualityLabelWithoutSize(q, l)
 	if q.SizeBytes > 0 {
 		label += " ~" + FormatBytes(q.SizeBytes, l)
@@ -126,7 +126,7 @@ func qualityLabelWithoutSize(q core.QualityChoice, l core.Locale) string {
 func QualityProfile(q core.QualityChoice, l core.Locale) core.OutputProfile {
 	return core.OutputProfile{
 		Key:            q.Key,
-		Label:          QualityLabel(q, l),
+		Label:          qualityLabel(q, l),
 		Mode:           core.ModeVideo,
 		VideoFmtChain:  slices.Clone(q.FmtChain),
 		VideoFmtLabels: slices.Clone(q.FmtLabels),

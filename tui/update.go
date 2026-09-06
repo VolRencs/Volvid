@@ -7,8 +7,6 @@ import (
 	"volvid/internal/core"
 	"volvid/internal/i18n"
 
-	"volvid/internal/adapters"
-
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -127,7 +125,7 @@ func (m Model) handlePickDownloadsDirDone(msg msgPickDownloadsDirDone) (tea.Mode
 	}
 
 	if err := m.api.SetDownloadsDir(msg.path); err != nil {
-		if err == adapters.ErrDownloadsDirLocked {
+		if err == core.ErrDownloadsDirLocked {
 			m.urlErr = m.u().DownloadsDirLocked
 			return m, nil
 		}

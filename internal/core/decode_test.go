@@ -3,16 +3,16 @@ package core
 import "testing"
 
 func TestDecodeStringOr(t *testing.T) {
-	if got := DecodeStringOr("a", "d"); got != "a" {
+	if got := decodeStringOr("a", "d"); got != "a" {
 		t.Fatalf("got %q", got)
 	}
-	if got := DecodeStringOr("", "d"); got != "d" {
+	if got := decodeStringOr("", "d"); got != "d" {
 		t.Fatalf("got %q", got)
 	}
-	if got := DecodeStringOr(nil, "d"); got != "d" {
+	if got := decodeStringOr(nil, "d"); got != "d" {
 		t.Fatalf("got %q", got)
 	}
-	if got := DecodeStringOr(42, "d"); got != "d" {
+	if got := decodeStringOr(42, "d"); got != "d" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -31,20 +31,20 @@ func TestDecodeFloat(t *testing.T) {
 		{true, 0},
 	}
 	for _, c := range cases {
-		if got := DecodeFloat(c.in); got != c.want {
-			t.Fatalf("DecodeFloat(%v)=%v want %v", c.in, got, c.want)
+		if got := decodeFloat(c.in); got != c.want {
+			t.Fatalf("decodeFloat(%v)=%v want %v", c.in, got, c.want)
 		}
 	}
 }
 
 func TestDecodeInt(t *testing.T) {
-	if got := DecodeInt("42"); got != 42 {
+	if got := decodeInt("42"); got != 42 {
 		t.Fatalf("got %d", got)
 	}
-	if got := DecodeInt(3.9); got != 3 {
+	if got := decodeInt(3.9); got != 3 {
 		t.Fatalf("got %d", got)
 	}
-	if got := DecodeInt(nil); got != 0 {
+	if got := decodeInt(nil); got != 0 {
 		t.Fatalf("got %d", got)
 	}
 }

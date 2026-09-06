@@ -131,9 +131,6 @@ func downloadModeArgs(profile core.OutputProfile, format string) ([]string, erro
 		}
 		return args, nil
 	case core.ModeVideo:
-		if format == "" {
-			format = core.YtdlpBestFormat
-		}
 		return videoModeArgs(profile, format), nil
 	default:
 		return nil, fmt.Errorf("unsupported download mode %d", profile.Mode)
@@ -164,5 +161,3 @@ func appendFragmentDownloadArgs(args []string, req core.DownloadRequest) []strin
 	}
 	return args
 }
-
-// ---- merged from profiles.go ----

@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-// ---- merged from process_unix.go ----
-
 func configureCommandForProcessTree(cmd *exec.Cmd) {
 	if cmd == nil {
 		return
@@ -87,8 +85,6 @@ func signalProcessGroup(pid int, sig syscall.Signal) error {
 	}
 	return err
 }
-
-// ---- merged from platform_unix.go ----
 
 func applyUpdatePlatform(tmp, dest string) error {
 	if err := os.Chmod(tmp, 0o755); err != nil {

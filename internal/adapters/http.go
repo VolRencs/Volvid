@@ -128,7 +128,6 @@ func resolveContext(ctx context.Context) context.Context {
 	return context.Background()
 }
 
-// ---- merged from http_request.go ----
 func doSafeRequest(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
 	ctx = resolveContext(ctx)
 
@@ -197,7 +196,6 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// ---- merged from http_download.go ----
 func downloadFileContext(
 	env *Env,
 	ctx context.Context,
@@ -314,11 +312,7 @@ func validateDownloadResponse(resp *http.Response, url string) error {
 	return nil
 }
 func tempFilePattern(name string) string {
-	name = core.SanitizeFileStem(name, "download")
-	if name == string(filepath.Separator) {
-		return "download"
-	}
-	return name
+	return core.SanitizeFileStem(name, "download")
 }
 
 func createTempDownloadFile(dest string) (string, *os.File, error) {
@@ -436,7 +430,6 @@ func replacementBackupPath(dest string) (string, error) {
 	return "", fmt.Errorf("create backup for %s: too many collisions", dest)
 }
 
-// ---- merged from progress.go ----
 type dlWriter struct {
 	w        io.Writer
 	total    int64
