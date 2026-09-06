@@ -128,7 +128,7 @@ const I18N = {
     'doc.title': 'Volvid — YouTube Downloader for the Terminal',
     'hero.tagline': 'Fast. Handy. Keyboard-driven.',
     'hero.title': 'Download video & audio<br>from YouTube <span class="blue">right in the terminal.</span>',
-    'hero.desc': 'Volvid is a fast, handy TUI<br>for downloading video, audio & thumbnails<br>from YouTube and beyond.',
+    'hero.desc': 'Volvid is a fast, handy TUI<br>for downloading video, audio & thumbnails<br>from YouTube.',
     'hero.dl': 'Download', 'hero.dl2': 'Download',
     'hero.forWin': 'for Windows', 'hero.forLin': 'for Linux',
     'hero.github': 'View on GitHub',
