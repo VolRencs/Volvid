@@ -127,9 +127,13 @@ On startup:
 
 | Path | Role |
 |------|------|
-| `cmd/downloader/` | TUI entrypoint |
-| `tui/` | Bubble Tea model, events, rendering, and widgets |
-| `internal/app/` | runtime helpers: downloads, search, deps, updates, locale, playlists, and HTTP client |
+| `cmd/downloader/` | TUI entrypoint (composition root) |
+| `tui/` | Bubble Tea UI: `screen.go` (state-machine), `menu.go`, `flow*.go` (transitions), `keys*.go` (input), `bindings.go`, `deps_*.go`/`view_*.go` (rendering), `appapi.go` (domain seam), `*_state.go` (feature state) |
+| `internal/core/` | pure domain: target/fragment/request/playlist/probe/quality/deps/session types, tolerant JSON decoding, filename policy — no I/O |
+| `internal/i18n/` | translated strings (`UIStrings`), locale-aware formatting, profile factories with labels |
+| `internal/ports/` | infrastructure seams: `Executor`, `HTTPDoer`, `FileSystem`, `Clock`, `DirPicker` |
+| `internal/services/` | use-cases: `PlanDownload` (validation policy), `LaunchProgress` (worker) |
+| `internal/adapters/` | implementations: `http.go`, `process*.go`, `request.go` (validation/argv), `playlist.go` (fetch/search), `deps*.go` (detect/cookies/ytdlp-args/install), `download_*.go` (runner/cleanup/transcode/stream), `release.go`, platform paths/pickers |
 | `scripts/` | build and verification helpers |
 | `assets/` | icons and screenshots |
 

@@ -1,0 +1,76 @@
+package core
+
+type DependencySource string
+
+const (
+	DepMissing DependencySource = "missing"
+	DepSystem  DependencySource = "system"
+	DepManaged DependencySource = "deps"
+)
+
+type DependencyInfo struct {
+	Key          string
+	Name         string
+	Path         string
+	Version      string
+	Source       DependencySource
+	Required     bool
+	Downloadable bool
+	Available    bool
+}
+
+type BrowserCookiesInfo struct {
+	Status       string
+	Browser      string
+	ProfileName  string
+	YTDLPProfile string
+}
+
+type JSRuntimeInfo struct {
+	Status string
+	Name   string
+	Path   string
+}
+
+const (
+	StatusActive    = "active"
+	StatusNoProfile = "browser found but no usable profile"
+	StatusNotFound  = "not found"
+
+	FamilyFirefox  = "firefox"
+	FamilyChromium = "chromium"
+)
+
+type CheckDepsResult struct {
+	YTDLP   DependencyInfo
+	FFmpeg  DependencyInfo
+	Node    DependencyInfo
+	Cookies BrowserCookiesInfo
+	Runtime JSRuntimeInfo
+}
+
+func (r CheckDepsResult) Dependencies() []DependencyInfo {
+	return []DependencyInfo{r.YTDLP, r.FFmpeg, r.Node}
+}
+
+func (r CheckDepsResult) MissingRequired() bool {
+	return len(filterDependencies(r.Dependencies(), func(dep DependencyInfo) bool {
+		return dep.Required && !dep.Available
+	})) > 0
+}
+
+func (r CheckDepsResult) ActionableDependencies() []DependencyInfo {
+	return filterDependencies(r.Dependencies(), func(dep DependencyInfo) bool {
+		return dep.Downloadable && (!dep.Available || dep.Source == DepManaged)
+	})
+}
+
+func filterDependencies(deps []DependencyInfo, keep func(DependencyInfo) bool) []DependencyInfo {
+	out := make([]DependencyInfo, 0, len(deps))
+	for _, dep := range deps {
+		if keep(dep) {
+			out = append(out, dep)
+		}
+	}
+	return out
+}

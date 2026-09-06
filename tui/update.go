@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"time"
+	"volvid/internal/core"
+	"volvid/internal/i18n"
 
-	app "volvid/internal/app"
+	"volvid/internal/adapters"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -117,15 +119,15 @@ func (m Model) handlePickDownloadsDirDone(msg msgPickDownloadsDirDone) (tea.Mode
 	switch {
 	case msg.err == nil && msg.path == "":
 		return m, nil
-	case app.IsFolderPickerCancelled(msg.err):
+	case m.api.IsPickerCancelled(msg.err):
 		return m, nil
 	case msg.err != nil:
 		m.urlErr = m.u().PickDownloadsFailed + ": " + msg.err.Error()
 		return m, nil
 	}
 
-	if err := app.SetDownloadsDir(m.env, msg.path); err != nil {
-		if err == app.ErrDownloadsDirLocked {
+	if err := m.api.SetDownloadsDir(msg.path); err != nil {
+		if err == adapters.ErrDownloadsDirLocked {
 			m.urlErr = m.u().DownloadsDirLocked
 			return m, nil
 		}
@@ -150,7 +152,7 @@ func (m Model) handleDepDone(msg msgDepDone) (tea.Model, tea.Cmd) {
 		return m.navigateDepBack(), nil
 	}
 	if msg.isUpdate {
-		if m.env.IsWindows {
+		if m.api.IsWindows() {
 			return m, tea.Quit
 		}
 		m.screen = scrUpdateDone
@@ -184,7 +186,7 @@ func (m Model) handleQualityScanned(msg msgQualityScanned) (tea.Model, tea.Cmd) 
 	m = m.clearOpCancel()
 	m.qualityChoices = msg.choices
 	if len(m.qualityChoices) == 0 {
-		m.qualityChoices = app.DefaultQualityChoices()
+		m.qualityChoices = core.DefaultQualityChoices()
 	}
 	if msg.err != nil {
 		m.flowErr = msg.err.Error()
@@ -246,7 +248,7 @@ func (m Model) handleFragmentDurationMsg(msg msgFragmentDuration) (tea.Model, te
 	if msg.err != nil || msg.duration <= 0 {
 		m.mediaDuration = 0
 		m.fragment = nil
-		return m.startModeSelectionWithNotice(app.FragmentUnavailableText(m.locale))
+		return m.startModeSelectionWithNotice(i18n.FragmentUnavailableText(m.locale))
 	}
 
 	m.mediaDuration = msg.duration
@@ -255,11 +257,11 @@ func (m Model) handleFragmentDurationMsg(msg msgFragmentDuration) (tea.Model, te
 	return m, nil
 }
 
-func (m Model) handleDlUpdate(u app.DlUpdate, gen int) (tea.Model, tea.Cmd) {
+func (m Model) handleDlUpdate(u core.DlUpdate, gen int) (tea.Model, tea.Cmd) {
 	if gen != m.dlGen {
 		return m, nil
 	}
-	if u.Type == app.EvClosed {
+	if u.Type == core.EvClosed {
 		return m, nil
 	}
 
@@ -270,22 +272,22 @@ func (m Model) handleDlUpdate(u app.DlUpdate, gen int) (tea.Model, tea.Cmd) {
 	if u.Slot >= 0 && u.Slot < len(m.slots) {
 		s := &m.slots[u.Slot]
 		switch u.Type {
-		case app.EvStart:
+		case core.EvStart:
 			*s = slotState{title: trunc(u.Text, m.slotTitleWidth())}
-		case app.EvDest:
+		case core.EvDest:
 			s.title = trunc(u.Text, m.slotTitleWidth())
-		case app.EvProgress:
+		case core.EvProgress:
 			s.pct = u.Pct
 			s.doneB = u.DoneB
 			s.totalB = u.TotalB
 			s.speed = u.Speed
 			s.proc = false
-		case app.EvProc, app.EvFallback:
+		case core.EvProc, core.EvFallback:
 			s.proc = true
 			s.label = u.Text
-		case app.EvReset:
+		case core.EvReset:
 			*s = slotState{}
-		case app.EvDone:
+		case core.EvDone:
 			s.done = u.OK
 			s.failed = !u.OK
 			s.proc = false
@@ -294,7 +296,7 @@ func (m Model) handleDlUpdate(u app.DlUpdate, gen int) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if u.Type != app.EvDone {
+	if u.Type != core.EvDone {
 		return m, listenDownloadCmd(m.dlCh, m.dlGen)
 	}
 
@@ -317,7 +319,7 @@ func (m Model) handleDlUpdate(u app.DlUpdate, gen int) (tea.Model, tea.Cmd) {
 		}
 		label := m.downloadLabel()
 		if m.dlTotal > 0 {
-			label += app.PlaylistSuffix(m.locale, m.dlTotal)
+			label += i18n.PlaylistSuffix(m.locale, m.dlTotal)
 		}
 		ok := m.dlFailed == 0
 		if m.dlTotal == 0 {

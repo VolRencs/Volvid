@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"volvid/internal/app"
+	"volvid/internal/adapters"
 	"volvid/tui"
 
 	tea "charm.land/bubbletea/v2"
@@ -17,7 +17,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	env := app.NewEnv()
+	env := adapters.NewEnv()
 	p := tea.NewProgram(tui.New(env, ctx), tea.WithContext(ctx))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

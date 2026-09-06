@@ -2,131 +2,25 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
+	"volvid/internal/core"
 
-	app "volvid/internal/app"
+	"volvid/internal/services"
 
 	tea "charm.land/bubbletea/v2"
 )
-
-func (m *Model) resetSearchState() {
-	m.searchQuery = ""
-	m.searchErr = ""
-	m.searchResults = nil
-	m.searchInput.SetValue("")
-	m.searchInput.Blur()
-}
-
-func (m *Model) resetPlaylistState() {
-	m.plInfo = nil
-	m.plCursor = 0
-	m.plTop = 0
-	m.clearPlaylistSelection()
-	m.plInput.SetValue("")
-	m.closePlaylistInput()
-}
-
-func (m *Model) resetProfileState() {
-	m.forceSingle = false
-	m.numWorkers = 1
-	m.mode = app.ModeVideo
-	m.profile = app.DefaultVideoProfile(m.locale)
-	m.flowErr = ""
-	m.dlEntries = nil
-	m.qualityChoices = nil
-	m.videoProfiles = nil
-	m.audioProfiles = nil
-}
-
-func (m *Model) resetFragmentState() {
-	m.mediaDuration = 0
-	m.fragment = nil
-	m.fragmentErr = ""
-	m.fragmentIn.SetValue("")
-	m.fragmentIn.Blur()
-}
-
-func (m *Model) resetDownloadProgressState() {
-	if m.dlCancel != nil {
-		m.dlCancel()
-		m.dlCancel = nil
-	}
-	m.slots = nil
-	m.dlDone = 0
-	m.dlFailed = 0
-	m.dlTotal = 0
-	m.singleOK = false
-	m.downloadErr = ""
-	m.dlStartedAt = time.Time{}
-	m.dlElapsed = 0
-	m.timerActive = false
-	m.dlCh = nil
-	m.dlCancelled = false
-}
-
-func (m *Model) resetDownloadState() {
-	m.resetProfileState()
-	m.resetFragmentState()
-	m.resetDownloadProgressState()
-}
-
-func (m *Model) resetTargetFlowState() {
-	m.resetPlaylistState()
-	m.resetProfileState()
-	m.resetFragmentState()
-	m.searchResults = nil
-	m.searchErr = ""
-}
-
-func (m Model) resetForNext() (tea.Model, tea.Cmd) {
-	m.screen = scrURL
-	m.url = ""
-	m.urlErr = ""
-	m.urlInput.SetValue("")
-	m.target = app.ParsedTarget{}
-	m.resetSearchState()
-	m.resetPlaylistState()
-	m.resetDownloadState()
-	return m, m.urlInput.Focus()
-}
-
-func (m Model) restoreActiveScreen() (tea.Model, tea.Cmd) {
-	switch m.screen {
-	case scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrVideoOutput, scrSearchResults, scrFragmentChoice, scrPlaylistAsk:
-		m = m.syncMenu()
-		return m, nil
-	case scrURL:
-		return m, m.urlInput.Focus()
-	case scrSearchInput:
-		return m, m.searchInput.Focus()
-	case scrFragmentInput:
-		return m, m.fragmentIn.Focus()
-	case scrPlaylist:
-		if m.plInputMode {
-			return m, m.plInput.Focus()
-		}
-	}
-	return m, nil
-}
-
-func (m Model) exitToURL() (tea.Model, tea.Cmd) {
-	m = m.cancelOps()
-	m.resetTargetFlowState()
-	m.screen = scrURL
-	return m, m.urlInput.Focus()
-}
 
 func (m Model) gotoQualitySelection() (tea.Model, tea.Cmd) {
 	m = m.gotoScreen(scrQuality)
 	return m, nil
 }
-
 func (m Model) gotoWorkersBack() (tea.Model, tea.Cmd) {
 	switch m.mode {
-	case app.ModeAudio:
+	case core.ModeAudio:
 		m.screen = scrAudio
-	case app.ModeThumbnail:
+	case core.ModeThumbnail:
 		m.screen = scrMode
 	default:
 		m.screen = scrVideoOutput
@@ -134,10 +28,9 @@ func (m Model) gotoWorkersBack() (tea.Model, tea.Cmd) {
 	m = m.syncMenu()
 	return m, nil
 }
-
 func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) {
-	m.mode = app.ModeVideo
-	m.profile = app.DefaultVideoProfile(m.locale)
+	m.mode = core.ModeVideo
+	m.profile = m.defaultVideoProfile()
 	m.flowErr = notice
 	m.qualityChoices = nil
 	m.videoProfiles = nil
@@ -145,21 +38,18 @@ func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) 
 	m = m.gotoScreen(scrMode)
 	return m, nil
 }
-
 func (m Model) startOpenDownloadsDir() (tea.Model, tea.Cmd) {
 	if m.screen == scrURL {
 		m.urlErr = ""
 	}
-	return m, openDownloadsDirCmd(m.env.DownloadsDir())
+	return m, openDownloadsDirCmd(m.api, m.api.DownloadsDir())
 }
-
 func (m Model) startPickDownloadsDir() (tea.Model, tea.Cmd) {
 	m.urlErr = ""
 	var ctx context.Context
 	m, ctx = m.nextOpCtx()
-	return m, pickDownloadsDirCmd(ctx, m.env, m.env.DownloadsDir(), m.locale)
+	return m, pickDownloadsDirCmd(ctx, m.api, m.api.DownloadsDir(), m.locale)
 }
-
 func (m Model) submitURLInput() (tea.Model, tea.Cmd) {
 	rawURL := strings.TrimSpace(m.urlInput.Value())
 	if rawURL == "" {
@@ -167,7 +57,7 @@ func (m Model) submitURLInput() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	target, err := app.ParseTarget(rawURL)
+	target, err := m.api.ParseTarget(rawURL)
 	if err != nil {
 		m.urlErr = m.u().URLErrBad + ": " + err.Error()
 		return m, nil
@@ -176,47 +66,42 @@ func (m Model) submitURLInput() (tea.Model, tea.Cmd) {
 	m.urlErr = ""
 	return m.startTargetFlow(rawURL, target)
 }
-
 func (m Model) startOpScreen(s screen, cmd func(ctx context.Context, gen int) tea.Cmd) (tea.Model, tea.Cmd) {
 	var ctx context.Context
 	m, ctx = m.nextOpCtx()
 	m.screen = s
 	return m, tea.Batch(cmd(ctx, m.opGen), spinnerTickCmd())
 }
-
-func (m Model) startTargetFlow(rawURL string, target app.ParsedTarget) (tea.Model, tea.Cmd) {
+func (m Model) startTargetFlow(rawURL string, target core.ParsedTarget) (tea.Model, tea.Cmd) {
 	m.url = rawURL
 	m.urlInput.SetValue(rawURL)
 	m.target = target
 	m.resetTargetFlowState()
 
 	if target.IsPlaylist() {
-		if target.Kind == app.TargetMixed {
+		if target.Kind == core.TargetMixed {
 			m = m.gotoScreen(scrPlaylistAsk)
 			return m, nil
 		}
 		return m.startOpScreen(scrPlaylistFetch, func(ctx context.Context, gen int) tea.Cmd {
-			return fetchPlaylistCmd(m.env, ctx, rawURL, m.locale, gen)
+			return fetchPlaylistCmd(m.api, ctx, rawURL, m.locale, gen)
 		})
 	}
 
 	return m.startFragmentFlow()
 }
-
 func (m Model) startFragmentFlow() (tea.Model, tea.Cmd) {
 	m.resetFragmentState()
 	return m.startOpScreen(scrFragmentProbe, func(ctx context.Context, gen int) tea.Cmd {
-		return probeFragmentDurationCmd(m.env, ctx, m.target, gen)
+		return probeFragmentDurationCmd(m.api, ctx, m.target, gen)
 	})
 }
-
 func (m Model) openSearchInput() (tea.Model, tea.Cmd) {
 	m.screen = scrSearchInput
 	m.searchErr = ""
 	m.searchResults = nil
 	return m, m.searchInput.Focus()
 }
-
 func (m Model) submitSearchInput() (tea.Model, tea.Cmd) {
 	query := strings.TrimSpace(m.searchInput.Value())
 	if query == "" {
@@ -228,10 +113,9 @@ func (m Model) submitSearchInput() (tea.Model, tea.Cmd) {
 	m.searchErr = ""
 	m.searchResults = nil
 	return m.startOpScreen(scrSearchFetch, func(ctx context.Context, gen int) tea.Cmd {
-		return searchYouTubeCmd(m.env, ctx, query, gen)
+		return searchYouTubeCmd(m.api, ctx, query, gen)
 	})
 }
-
 func (m Model) activateSearchResult(idx int) (tea.Model, tea.Cmd) {
 	if idx < 0 || idx >= len(m.searchResults) {
 		m.screen = scrSearchInput
@@ -246,7 +130,7 @@ func (m Model) activateSearchResult(idx int) (tea.Model, tea.Cmd) {
 		return m, m.searchInput.Focus()
 	}
 
-	target, err := app.ParseTarget(result.URL)
+	target, err := m.api.ParseTarget(result.URL)
 	if err != nil {
 		m.screen = scrSearchInput
 		m.searchErr = m.u().SearchErrFailed + ": " + err.Error()
@@ -254,7 +138,6 @@ func (m Model) activateSearchResult(idx int) (tea.Model, tea.Cmd) {
 	}
 	return m.startTargetFlow(result.URL, target)
 }
-
 func (m Model) exitSearch() (tea.Model, tea.Cmd) {
 	m = m.cancelOps()
 	m.screen = scrURL
@@ -263,26 +146,22 @@ func (m Model) exitSearch() (tea.Model, tea.Cmd) {
 	m.searchInput.Blur()
 	return m, m.urlInput.Focus()
 }
-
 func (m Model) gotoChecks() (tea.Model, tea.Cmd) {
-	deps := app.DetectDeps(m.env)
+	deps := m.api.DetectDeps()
 	m.deps = deps
 	if deps.MissingRequired() {
 		return m.openDependencyScreen(depModeStartup)
 	}
 	return m.gotoURLWithDeps(deps)
 }
-
-func (m Model) gotoURLWithDeps(deps app.CheckDepsResult) (tea.Model, tea.Cmd) {
+func (m Model) gotoURLWithDeps(deps core.CheckDepsResult) (tea.Model, tea.Cmd) {
 	m.deps = deps
 	m.screen = scrURL
 	return m, m.urlInput.Focus()
 }
-
 func (m Model) openDependencyScreen(mode depScreenMode) (tea.Model, tea.Cmd) {
 	return m.openDependencyScreenWithError(mode, "")
 }
-
 func (m Model) openDependencyScreenWithError(mode depScreenMode, errText string) (tea.Model, tea.Cmd) {
 	if mode == depModeStartup {
 		m.depReturnScreen = scrURL
@@ -296,27 +175,24 @@ func (m Model) openDependencyScreenWithError(mode depScreenMode, errText string)
 	}
 	return m, nil
 }
-
 func (m Model) startDepUpdate() (tea.Model, tea.Cmd) {
 	m.depReturnScreen = m.screen
 	m.depUpdateDone = false
 	return m.openDependencyScreen(depModeManage)
 }
-
 func (m Model) startDepsRefresh() (tea.Model, tea.Cmd) {
 	m.depRefreshToken++
 	m.depRefreshing = true
 	if m.screen == scrDepUpdate {
 		m = m.syncMenu()
 	}
-	return m, refreshDepsCmd(m.env, m.depRefreshToken)
+	return m, refreshDepsCmd(m.api, m.depRefreshToken)
 }
-
 func (m Model) returnFromDependencyScreen() (tea.Model, tea.Cmd) {
 	if m.depMode == depModeStartup {
 		m.depErr = ""
 		if !m.deps.MissingRequired() {
-			return m.gotoURLWithDeps(app.DetectDeps(m.env))
+			return m.gotoURLWithDeps(m.api.DetectDeps())
 		}
 		return m, tea.Quit
 	}
@@ -330,15 +206,14 @@ func (m Model) returnFromDependencyScreen() (tea.Model, tea.Cmd) {
 	m.screen = target
 	return m.restoreActiveScreen()
 }
-
 func (m Model) startDependencyDownload(
 	screen screen,
 	label string,
 	isUpdate bool,
-	fn func(context.Context, chan<- app.FileProgress) error,
+	fn func(context.Context, chan<- core.FileProgress) error,
 ) (tea.Model, tea.Cmd) {
 	m.depLabel = label
-	m.depProgress = app.FileProgress{}
+	m.depProgress = core.FileProgress{}
 	m.depErr = ""
 	m.screen = screen
 
@@ -350,18 +225,16 @@ func (m Model) startDependencyDownload(
 	m.depCh, cmd, m.depCancel = launchProgress(m.baseCtx, fn, isUpdate, m.depGen)
 	return m, cmd
 }
-
 func (m Model) startQualityScan() (tea.Model, tea.Cmd) {
 	m.qualityChoices = nil
 	m.videoProfiles = nil
-	m.profile = app.OutputProfile{}
+	m.profile = core.OutputProfile{}
 	m.flowErr = ""
 	urls := m.qualityScanURLs()
 	return m.startOpScreen(scrQualityFetch, func(ctx context.Context, gen int) tea.Cmd {
-		return loadQualityChoicesCmd(m.env, ctx, urls, gen)
+		return loadQualityChoicesCmd(m.api, ctx, urls, gen)
 	})
 }
-
 func (m Model) continueAfterProfileSelection() (tea.Model, tea.Cmd) {
 	if len(m.dlEntries) > 1 {
 		m = m.gotoScreen(scrWorkers)
@@ -370,47 +243,43 @@ func (m Model) continueAfterProfileSelection() (tea.Model, tea.Cmd) {
 	return m.startDownload()
 }
 
+// startDownload now delegates validation/planning to services.PlanDownload.
+// UI only maps the plan onto slots/channels and opens the dep screen on
+// MissingDependencyError.
 func (m Model) startDownload() (tea.Model, tea.Cmd) {
-	deps := app.DetectDeps(m.env)
+	deps := m.api.DetectDeps()
 	m.deps = deps
 
-	switch {
-	case !deps.YTDLP.Available:
-		m.depReturnScreen = m.screen
-		return m.openDependencyScreenWithError(depModeManage, m.depRequirementText(deps.YTDLP.Name))
-	case app.ProfileRequiresFFmpeg(m.currentProfile(), m.fragment) && !deps.FFmpeg.Available:
-		m.depReturnScreen = m.screen
-		return m.openDependencyScreenWithError(depModeManage, m.depRequirementText(deps.FFmpeg.Name))
-	}
-
-	req := app.DownloadRequest{
-		Target:        m.target,
-		Profile:       m.currentProfile(),
-		Fragment:      m.fragment,
-		MediaDuration: m.mediaDuration,
-		ForceSingle:   m.forceSingle,
-		PlaylistInfo:  m.plInfo,
-		Entries:       m.dlEntries,
-		Workers:       max(m.numWorkers, 1),
-		OutputDir:     m.env.DownloadsDir(),
-		Locale:        m.locale,
-	}
-	if _, err := app.PrepareDownloadRequestWithDeps(m.env, req, deps); err != nil {
+	plan, err := services.PlanDownload(
+		deps,
+		m.target,
+		m.currentProfile(),
+		m.fragment,
+		m.mediaDuration,
+		m.forceSingle,
+		m.plInfo,
+		m.dlEntries,
+		m.numWorkers,
+		m.api.DownloadsDir(),
+		m.locale,
+		m.api.PrepareDownload,
+	)
+	if err != nil {
+		var missing *services.MissingDependencyError
+		if errors.As(err, &missing) {
+			m.depReturnScreen = m.screen
+			return m.openDependencyScreenWithError(depModeManage, m.depRequirementText(missing.Name))
+		}
 		m.flowErr = err.Error()
 		m.restoreDownloadConfigScreen()
 		m = m.syncMenu()
 		return m, nil
 	}
 
-	workers := max(m.numWorkers, 1)
-	if len(m.dlEntries) == 0 {
-		workers = 1
-	}
-
-	m.slots = make([]slotState, workers)
+	m.slots = make([]slotState, plan.Workers)
 	m.dlDone = 0
 	m.dlFailed = 0
-	m.dlTotal = len(m.dlEntries)
+	m.dlTotal = plan.Total
 	m.singleOK = false
 	m.downloadErr = ""
 	m.dlStartedAt = time.Now()
@@ -418,7 +287,7 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	m.timerActive = true
 	m.dlCancelled = false
 
-	ch := make(chan app.DlUpdate, 256)
+	ch := make(chan core.DlUpdate, 256)
 	m.dlCh = ch
 	m.dlGen++
 	m.screen = scrDownload
@@ -426,11 +295,9 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	dlCtx, dlCancel := context.WithCancel(m.baseCtx)
 	m.dlCancel = dlCancel
 
-	req.Workers = workers
-	app.StartDownloadRequestContext(m.env, dlCtx, req, deps, ch)
+	m.api.StartDownload(dlCtx, plan.Request, plan.Deps, ch)
 	return m, tea.Batch(listenDownloadCmd(ch, m.dlGen), timerTickCmd())
 }
-
 func (m Model) cancelDownload() (tea.Model, tea.Cmd) {
 	if m.dlCancel != nil {
 		m.dlCancel()
@@ -442,14 +309,13 @@ func (m Model) cancelDownload() (tea.Model, tea.Cmd) {
 	m.screen = scrURL
 	return m, m.urlInput.Focus()
 }
-
 func (m *Model) restoreDownloadConfigScreen() {
 	switch m.currentProfile().Mode {
-	case app.ModeAudio:
+	case core.ModeAudio:
 		if m.profile.Mode == 0 {
 			m.screen = scrAudio
 		}
-	case app.ModeThumbnail:
+	case core.ModeThumbnail:
 		m.screen = scrMode
 	default:
 		if m.profile.Mode == 0 {

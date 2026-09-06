@@ -88,7 +88,7 @@ func (m Model) viewSummary() string {
 	var parts []string
 
 	if m.singleOK || m.dlDone > 0 {
-		parts = append(parts, m.renderSectionBlock(m.u().SummaryLocation, renderFileLink(m.env.DownloadsDir())))
+		parts = append(parts, m.renderSectionBlock(m.u().SummaryLocation, renderFileLink(m.api.DownloadsDir())))
 	}
 	if m.dlTotal > 0 {
 		counts := renderStatusChip(m.u().SummaryPlaylistTitle,

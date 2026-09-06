@@ -19,7 +19,7 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 
 LD_FLAGS="-s -w"
 if [[ -n "${VOLVID_VERSION:-}" ]]; then
-	LD_FLAGS="$LD_FLAGS -X volvid/internal/app.Version=$VOLVID_VERSION"
+	LD_FLAGS="$LD_FLAGS -X volvid/internal/adapters.Version=$VOLVID_VERSION"
 fi
 
 GOOS="${GOOS:-linux}" GOARCH="${GOARCH:-amd64}" go build -trimpath -buildvcs=false -ldflags="$LD_FLAGS" -o "$OUTPUT_PATH" "$ROOT_DIR/cmd/downloader"

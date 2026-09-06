@@ -3,51 +3,11 @@ package tui
 import (
 	"fmt"
 	"math"
-	"slices"
-	"strconv"
 	"strings"
-
-	app "volvid/internal/app"
+	"volvid/internal/i18n"
 
 	"charm.land/lipgloss/v2"
 )
-
-// ---------- menu component (state) ----------
-
-type menu struct {
-	items  []string
-	cursor int
-}
-
-func (m *menu) SetItems(items []string) {
-	if slices.Equal(m.items, items) {
-		return
-	}
-	m.items = slices.Clone(items)
-	m.cursor = 0
-}
-
-func (m *menu) SetCursor(index int) {
-	if len(m.items) == 0 {
-		m.cursor = 0
-		return
-	}
-	m.cursor = max(0, min(index, len(m.items)-1))
-}
-
-func (m *menu) Move(delta int) {
-	if len(m.items) == 0 {
-		return
-	}
-	m.cursor = max(0, min(m.cursor+delta, len(m.items)-1))
-}
-
-func (m menu) Index() int {
-	if len(m.items) == 0 {
-		return 0
-	}
-	return m.cursor
-}
 
 // ---------- list rendering (shared by menu and playlist) ----------
 
@@ -101,20 +61,6 @@ func renderListRow(width int, data listRowData) string {
 	b.WriteString(textStyle.Render(data.label))
 
 	return style.Render(b.String())
-}
-
-func (m menu) View(width int) string {
-	lines := make([]string, len(m.items))
-	for i, item := range m.items {
-		data := listRowData{
-			index:  strconv.Itoa(i + 1),
-			label:  item,
-			active: i == m.cursor,
-		}
-		data.label = trunc(item, listLabelWidth(width, data))
-		lines[i] = renderListRow(width, data)
-	}
-	return strings.Join(lines, "\n")
 }
 
 // ---------- primitives ----------
@@ -194,7 +140,7 @@ func versionBadgeValue(value string) string {
 	return value
 }
 
-func noticeTag(u *app.UIStrings, kind noticeKind) string {
+func noticeTag(u *i18n.UIStrings, kind noticeKind) string {
 	switch kind {
 	case noticeSuccess:
 		return sNoticeTag.Background(cSuccess).Render(u.NoticeSuccess) + " "

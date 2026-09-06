@@ -2,8 +2,7 @@ package tui
 
 import (
 	"time"
-
-	app "volvid/internal/app"
+	"volvid/internal/core"
 )
 
 type inputTarget uint8
@@ -51,9 +50,9 @@ type depAction struct {
 }
 
 type (
-	msgUpdateChecked struct{ info *app.UpdateInfo }
+	msgUpdateChecked struct{ info *core.UpdateInfo }
 	msgDepProgress   struct {
-		progress app.FileProgress
+		progress core.FileProgress
 		gen      int
 	}
 	msgDepDone struct {
@@ -62,21 +61,21 @@ type (
 		gen      int
 	}
 	msgDepsRefreshed struct {
-		deps  app.CheckDepsResult
+		deps  core.CheckDepsResult
 		token int
 	}
 	msgPlaylistFetched struct {
-		info *app.PlaylistInfo
+		info *core.PlaylistInfo
 		err  error
 		gen  int
 	}
 	msgSearchResults struct {
-		results []app.SearchResult
+		results []core.SearchResult
 		err     error
 		gen     int
 	}
 	msgQualityScanned struct {
-		choices []app.QualityChoice
+		choices []core.QualityChoice
 		err     error
 		gen     int
 	}
@@ -86,7 +85,7 @@ type (
 		gen      int
 	}
 	msgDlUpdate struct {
-		update app.DlUpdate
+		update core.DlUpdate
 		gen    int
 	}
 	msgOpenDownloadsDirDone struct{ err error }

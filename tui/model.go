@@ -3,71 +3,44 @@ package tui
 import (
 	"context"
 	"time"
+	"volvid/internal/core"
+	"volvid/internal/i18n"
 
-	app "volvid/internal/app"
+	"volvid/internal/adapters"
 
 	tea "charm.land/bubbletea/v2"
 )
 
-type screen int
-
-const (
-	scrUpdateCheck screen = iota
-	scrUpdateReady
-	scrUpdateDl
-	scrUpdateDone
-	scrDepDl
-	scrDepUpdate
-	scrURL
-	scrSearchInput
-	scrSearchFetch
-	scrSearchResults
-	scrPlaylistAsk
-	scrPlaylistFetch
-	scrPlaylist
-	scrFragmentProbe
-	scrFragmentChoice
-	scrFragmentInput
-	scrMode
-	scrAudio
-	scrQualityFetch
-	scrQuality
-	scrVideoOutput
-	scrWorkers
-	scrDownload
-	scrSummary
-)
-
 type Model struct {
-	env    *app.Env
+	api    AppAPI
 	screen screen
 
 	width  int
 	height int
 
-	locale app.Locale
+	locale core.Locale
 
 	spinnerFrame int
 
-	deps    app.CheckDepsResult
+	deps    core.CheckDepsResult
 	depMode depScreenMode
 
-	updateInfo  *app.UpdateInfo
-	depProgress app.FileProgress
+	updateInfo  *core.UpdateInfo
+	depProgress core.FileProgress
 	depLabel    string
 	depErr      string
-	depCh       <-chan app.FileProgress
+	depCh       <-chan core.FileProgress
 	depGen      int
 
 	urlInput      inputField
 	urlErr        string
-	target        app.ParsedTarget
+	target        core.ParsedTarget
 	searchInput   inputField
 	searchQuery   string
 	searchErr     string
-	searchResults []app.SearchResult
+	searchResults []core.SearchResult
 
-	plInfo        *app.PlaylistInfo
+	plInfo        *core.PlaylistInfo
 	plCursor      int
 	plTop         int
 	plSelected    map[int]bool
@@ -75,7 +48,7 @@ type Model struct {
 	plInput       inputField
 	plInputErr    string
 	mediaDuration int
-	fragment      *app.DownloadFragment
+	fragment      *core.DownloadFragment
 	fragmentErr   string
 	fragmentIn    inputField
 
@@ -84,17 +57,17 @@ type Model struct {
 	menuDigits       string
 	menuDigitsScreen screen
 
-	mode           app.DownloadMode
-	profile        app.OutputProfile
-	qualityChoices []app.QualityChoice
-	videoProfiles  []app.OutputProfile
-	audioProfiles  []app.OutputProfile
+	mode           core.DownloadMode
+	profile        core.OutputProfile
+	qualityChoices []core.QualityChoice
+	videoProfiles  []core.OutputProfile
+	audioProfiles  []core.OutputProfile
 	flowErr        string
 	url            string
-	dlEntries      []app.PlaylistEntry
+	dlEntries      []core.PlaylistEntry
 	forceSingle    bool
 	numWorkers     int
-	dlCh           <-chan app.DlUpdate
+	dlCh           <-chan core.DlUpdate
 	slots          []slotState
 	dlDone         int
 	dlFailed       int
@@ -105,7 +78,7 @@ type Model struct {
 	dlElapsed      time.Duration
 	timerActive    bool
 
-	session         app.Session
+	session         core.Session
 	depReturnScreen screen
 	depRefreshing   bool
 	depRefreshToken int
@@ -121,30 +94,39 @@ type Model struct {
 	dlGen       int
 }
 
-func New(env *app.Env, ctx context.Context) tea.Model {
-	if env == nil {
-		env = app.NewEnv()
-	}
+func New(env *adapters.Env, ctx context.Context) tea.Model {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return newModel(env, ctx)
+	return newModelWithAPI(ctx, newAppAPI(env))
 }
 
-func newModel(env *app.Env, ctx context.Context) Model {
-	loc := app.LoadLocale(env)
+// NewWithDeps injects a custom AppAPI (fake in tests, adapter in prod).
+// This is the seam that breaks the hard tui -> adapters coupling.
+func NewWithDeps(ctx context.Context, api AppAPI) tea.Model {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if api == nil {
+		api = newAppAPI(adapters.NewEnv())
+	}
+	return newModelWithAPI(ctx, api)
+}
+
+func newModelWithAPI(ctx context.Context, api AppAPI) Model {
+	loc := api.LoadLocale()
 
 	m := Model{
-		env:         env,
+		api:         api,
 		baseCtx:     ctx,
 		screen:      scrUpdateCheck,
 		locale:      loc,
 		urlInput:    newInput(inputURL, "https://youtu.be/...", inputW, 300),
-		searchInput: newInput(inputSearch, app.StringsFor(loc).SearchPlaceholder, inputW, 120),
-		plInput:     newInput(inputPlaylist, app.StringsFor(loc).PlInputPlaceholder, 38, 100),
+		searchInput: newInput(inputSearch, api.Strings(loc).SearchPlaceholder, inputW, 120),
+		plInput:     newInput(inputPlaylist, api.Strings(loc).PlInputPlaceholder, 38, 100),
 		fragmentIn:  newInput(inputFragment, "1:00-2:30", 28, 32),
-		mode:        app.ModeVideo,
-		profile:     app.DefaultVideoProfile(loc),
+		mode:        core.ModeVideo,
+		profile:     api.DefaultVideoProfile(loc),
 		numWorkers:  1,
 		plSelected:  map[int]bool{},
 	}
@@ -153,54 +135,18 @@ func newModel(env *app.Env, ctx context.Context) Model {
 }
 
 func newTestModel() Model {
-	return newModel(app.NewEnv(), context.Background())
+	return newModelWithAPI(context.Background(), newAppAPI(adapters.NewEnv()))
 }
 
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		spinnerTickCmd(),
-		checkUpdateCmd(m.env),
+		checkUpdateCmd(m.api),
 	)
 }
 
-func (m Model) u() *app.UIStrings {
-	return app.StringsFor(m.locale)
-}
-
-func (m Model) spinnerVisible() bool {
-	return m.screen.props().spinner
-}
-
-type screenProps struct {
-	spinner  bool
-	menu     bool
-	busy     bool
-	updating bool
-}
-
-func (s screen) props() screenProps {
-	switch s {
-	case scrUpdateCheck:
-		return screenProps{spinner: true, busy: true, updating: true}
-	case scrUpdateReady:
-		return screenProps{menu: true, updating: true}
-	case scrUpdateDl:
-		return screenProps{busy: true, updating: true}
-	case scrUpdateDone:
-		return screenProps{updating: true}
-	case scrDepDl:
-		return screenProps{busy: true}
-	case scrDepUpdate:
-		return screenProps{menu: true, busy: true}
-	case scrSearchFetch, scrPlaylistFetch, scrFragmentProbe, scrQualityFetch:
-		return screenProps{spinner: true, busy: true}
-	case scrPlaylistAsk, scrSearchResults, scrFragmentChoice, scrMode, scrAudio, scrQuality, scrVideoOutput, scrWorkers, scrSummary:
-		return screenProps{menu: true}
-	case scrDownload:
-		return screenProps{busy: true}
-	default:
-		return screenProps{}
-	}
+func (m Model) u() *i18n.UIStrings {
+	return m.api.Strings(m.locale)
 }
 
 func (m Model) cancelOps() Model {
