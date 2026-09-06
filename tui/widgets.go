@@ -23,6 +23,9 @@ func listLabelWidth(width int, data listRowData) int {
 	rowWidth := fitWidth(width, menuW, 24)
 	indexWidth := max(2, lipgloss.Width(data.index))
 	labelWidth := rowWidth - 2 - indexWidth - 2
+	if data.active {
+		labelWidth--
+	}
 	if data.hasCheck {
 		labelWidth -= 4
 	}
@@ -35,19 +38,24 @@ func renderListRow(width int, data listRowData) string {
 	textStyle := sListItemText
 	indexStyle := sListIndex.Width(indexWidth)
 	style := sListRow
+	indent := ""
 	marker := sListLead.Render("  ")
+	gap := "  "
 
 	if data.active {
+		indent = "  "
 		marker = sListLeadAct.Render(iconMarker + " ")
+		gap = " "
 		textStyle = sListItemTextAct
 		indexStyle = sListIndexAct.Width(indexWidth)
 		style = sListRowAct
 	}
 
 	var b strings.Builder
+	b.WriteString(indent)
 	b.WriteString(marker)
 	b.WriteString(indexStyle.Render(fmt.Sprintf("%*s", indexWidth, data.index)))
-	b.WriteString("  ")
+	b.WriteString(gap)
 
 	if data.hasCheck {
 		check := sMeta.Render(iconDotOff)

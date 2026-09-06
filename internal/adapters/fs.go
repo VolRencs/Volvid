@@ -82,8 +82,6 @@ func OpenInFileManager(path string) error {
 	switch runtime.GOOS {
 	case "windows":
 		name = "explorer.exe"
-	case "darwin":
-		name = "open"
 	}
 
 	cmd := exec.Command(name, path)

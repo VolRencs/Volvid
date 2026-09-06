@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	Version = "7.4.0"
+	Version = "7.4.1"
 
 	ffmpegWinURL   = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ffmpegLinuxURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
@@ -299,10 +299,6 @@ func userDataRoot() (string, bool) {
 	case "windows":
 		if root := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); root != "" {
 			return cleanAbsPath(root), true
-		}
-	case "darwin":
-		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-			return filepath.Join(home, "Library", "Application Support"), true
 		}
 	default:
 		if root := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); root != "" {

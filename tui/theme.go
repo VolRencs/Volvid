@@ -95,15 +95,12 @@ var (
 	sListLead        = lipgloss.NewStyle()
 	sListLeadAct     = sListLead.Bold(true).Foreground(cPrimary)
 	sListIndex       = lipgloss.NewStyle().Width(3).Align(lipgloss.Right).Foreground(cDim)
-	sListIndexAct    = lipgloss.NewStyle().Width(3).Align(lipgloss.Right).Bold(true).Foreground(cWhite)
+	sListIndexAct    = lipgloss.NewStyle().Width(3).Align(lipgloss.Right).Bold(true).Foreground(cPrimary)
 	sListItemText    = lipgloss.NewStyle().Foreground(cGray)
 	sListItemTextAct = lipgloss.NewStyle()
 
 	sListRow    = lipgloss.NewStyle().Padding(0, 1)
-	sListRowAct = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(cWhite).
-			Background(cPrimaryDeep)
+	sListRowAct = lipgloss.NewStyle().Padding(0, 1).Bold(true).Foreground(cWhite)
 )
 
 // Notice styles: left-accent strips with solid tags.
@@ -160,5 +157,5 @@ const (
 	iconCross  = "✗"
 	iconDotOn  = "●"
 	iconDotOff = "○"
-	iconMarker = "❯"
+	iconMarker = "❱"
 )
