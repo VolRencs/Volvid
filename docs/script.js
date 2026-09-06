@@ -1,9 +1,3 @@
-// Mobile nav
-const burger = document.getElementById('burger');
-const navLinks = document.getElementById('navLinks');
-burger.addEventListener('click', () => navLinks.classList.toggle('open'));
-navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', () => navLinks.classList.remove('open')));
-
 // Typing animation for URL (inside Target box, replaces placeholder)
 const url = 'https://youtu.be/dQw4w9WgXcQ';
 const typedEl = document.getElementById('typed');
@@ -46,15 +40,6 @@ document.addEventListener('keydown', e => {
   if (n >= 1 && n <= q.length) { qs = n - 1; paintQ(); }
 });
 
-// Active nav on scroll
-const secs = ['top', 'features', 'showcase'];
-const links = [...navLinks.querySelectorAll('a')];
-window.addEventListener('scroll', () => {
-  let cur = 'top';
-  secs.forEach(id => { const el = document.getElementById(id); if (el && el.getBoundingClientRect().top < 120) cur = id; });
-  links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + cur));
-}, { passive: true });
-
 // Live version + release links from GitHub (fallback stays if API is unreachable)
 const REPO = 'VolRencs/Volvid';
 async function loadVersion() {
@@ -79,17 +64,32 @@ async function loadVersion() {
 }
 loadVersion();
 
+// First download button matches the visitor's OS (Linux → Volvid, else → Volvid.exe)
+(function osFirst() {
+  const box = document.querySelector('.btns');
+  const dlWin = document.getElementById('dlWin');
+  const dlLin = document.getElementById('dlLin');
+  if (!box || !dlWin || !dlLin) return;
+  const ghost = box.querySelector('.btn.ghost');
+  const plat = String((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '').toLowerCase();
+  const first = plat.includes('linux') ? dlLin : dlWin;
+  const second = first === dlLin ? dlWin : dlLin;
+  box.prepend(first);
+  if (ghost) box.appendChild(ghost);
+  first.classList.add('primary'); first.classList.remove('outline');
+  second.classList.add('outline'); second.classList.remove('primary');
+})();
+
 // RU / EN language switch for the whole site
 const I18N = {
   ru: {
-    'doc.title': 'VolVid — YouTube-загрузчик для терминала',
-    'nav.home': 'Главная', 'nav.features': 'Возможности',
+    'doc.title': 'Volvid — YouTube-загрузчик для терминала',
     'hero.tagline': 'Быстрый. Удобный. Клавиатурный.',
     'hero.title': 'Загружай видео и аудио<br>с YouTube <span class="blue">прямо в терминале.</span>',
     'hero.desc': 'Volvid — это быстрый и удобный TUI-интерфейс<br>для скачивания видео, аудио и превью<br>с YouTube и не только.',
     'hero.dl': 'Скачать', 'hero.dl2': 'Скачать',
     'hero.forWin': 'для Windows', 'hero.forLin': 'для Linux',
-    'hero.github': '◉ Смотреть на GitHub ⧉',
+    'hero.github': 'Смотреть на GitHub',
     'hero.release': 'Последний релиз:',
     'app.paste': 'Вставь ссылку на видео или плейлист YouTube',
     'app.target': 'Цель', 'app.dlLoc': 'Папка загрузки', 'app.recent': 'Текущая сессия',
@@ -120,18 +120,19 @@ const I18N = {
     'show.title': 'Чистый интерфейс.<br><span class="blue">Максимальный контроль.</span>',
     'show.desc': 'Volvid даёт вам всю мощь, не отвлекая лишним. Никаких окон, никаких переключений — только то, что нужно, именно тогда, когда нужно.',
     'c1': 'Управление с клавиатуры', 'c2': 'Быстрый и лёгкий', 'c3': 'Красивый и минималистичный TUI',
+    'show.fmt': 'Форматы:',
     'foot.tag': 'YouTube-загрузчик для терминала.',
+    'foot.rel': 'Релизы', 'foot.src': 'Исходный код', 'foot.iss': 'Сообщить об ошибке',
     'foot.right': 'Открытый код &nbsp;•&nbsp; Лицензия MIT'
   },
   en: {
-    'doc.title': 'VolVid — YouTube Downloader for the Terminal',
-    'nav.home': 'Home', 'nav.features': 'Features',
+    'doc.title': 'Volvid — YouTube Downloader for the Terminal',
     'hero.tagline': 'Fast. Handy. Keyboard-driven.',
     'hero.title': 'Download video & audio<br>from YouTube <span class="blue">right in the terminal.</span>',
     'hero.desc': 'Volvid is a fast, handy TUI<br>for downloading video, audio & thumbnails<br>from YouTube and beyond.',
     'hero.dl': 'Download', 'hero.dl2': 'Download',
     'hero.forWin': 'for Windows', 'hero.forLin': 'for Linux',
-    'hero.github': '◉ View on GitHub ⧉',
+    'hero.github': 'View on GitHub',
     'hero.release': 'Latest release:',
     'app.paste': 'Paste a YouTube video or playlist URL',
     'app.target': 'Target', 'app.dlLoc': 'Download location', 'app.recent': 'Recent session',
@@ -162,7 +163,9 @@ const I18N = {
     'show.title': 'Clean interface.<br><span class="blue">Maximum control.</span>',
     'show.desc': 'Volvid gives you full power without distractions. No windows, no switching — only what you need, exactly when you need it.',
     'c1': 'Keyboard-driven', 'c2': 'Fast and lightweight', 'c3': 'Beautiful minimalist TUI',
+    'show.fmt': 'Formats:',
     'foot.tag': 'YouTube downloader for the terminal.',
+    'foot.rel': 'Releases', 'foot.src': 'Source code', 'foot.iss': 'Report an issue',
     'foot.right': 'Open source &nbsp;•&nbsp; MIT License'
   }
 };
@@ -188,4 +191,15 @@ function setLang(l) {
 }
 document.querySelectorAll('.langseg button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
 setLang(lang);
+
+// Reveal on scroll (respects prefers-reduced-motion via CSS)
+(function reveal() {
+  const els = document.querySelectorAll('.features .f, .show-text, .showcase .app, .hero-right .app, .foot-top > div');
+  if (!('IntersectionObserver' in window) || !els.length) return;
+  els.forEach(el => el.classList.add('rv'));
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('vis'); io.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  els.forEach(el => io.observe(el));
+})();
 
