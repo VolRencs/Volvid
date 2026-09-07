@@ -167,4 +167,4 @@ Production: tui.New(env, ctx) wraps newAppAPI(env). Tests: tui.NewWithDeps(ctx, 
 | [godbus/dbus](https://github.com/godbus/dbus) | BSD-2-Clause |
 
 Licensed under **GPL-3.0** — see [`LICENSE`](LICENSE).
-Copyright (C) 2026 VolRencs.
+Copyright (C) 2026 VolRen.
