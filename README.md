@@ -8,7 +8,7 @@
 
 [![Go](https://img.shields.io/badge/Go-1.27.0%2B-00ADD8?style=flat-square&logo=go)](go.mod)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)](#platforms)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
 
 </div>
 
@@ -166,4 +166,5 @@ Production: tui.New(env, ctx) wraps newAppAPI(env). Tests: tui.NewWithDeps(ctx, 
 | [Lip Gloss v2](https://charm.land/lipgloss/v2) | MIT |
 | [godbus/dbus](https://github.com/godbus/dbus) | BSD-2-Clause |
 
-Project source is **MIT**.
+Licensed under **GPL-3.0** — see [`LICENSE`](LICENSE).
+Copyright (C) 2026 VolRencs.

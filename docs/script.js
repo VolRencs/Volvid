@@ -111,7 +111,7 @@ const I18N = {
     'c1': 'Управление с клавиатуры', 'c2': 'Быстрый и лёгкий', 'c3': 'Красивый и минималистичный TUI',
     'show.fmt': 'Форматы:',
     'foot.rel': 'Релизы', 'foot.src': 'Исходный код', 'foot.iss': 'Сообщить об ошибке',
-    'foot.right': 'Открытый код &nbsp;•&nbsp; Лицензия MIT'
+    'foot.right': 'Открытый код &nbsp;•&nbsp; Лицензия GPL-3.0'
   },
   en: {
     'doc.title': 'Volvid — YouTube Downloader for the Terminal',
@@ -153,7 +153,7 @@ const I18N = {
     'c1': 'Keyboard-driven', 'c2': 'Fast and lightweight', 'c3': 'Beautiful minimalist TUI',
     'show.fmt': 'Formats:',
     'foot.rel': 'Releases', 'foot.src': 'Source code', 'foot.iss': 'Report an issue',
-    'foot.right': 'Open source &nbsp;•&nbsp; MIT License'
+    'foot.right': 'Open source &nbsp;•&nbsp; GPL-3.0 License'
   }
 };
 let lang = 'ru';
