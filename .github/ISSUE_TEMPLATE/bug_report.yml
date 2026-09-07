@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a bug in the Volvid TUI
+title: "[bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you were doing and what went wrong.
+      placeholder: "Pasted a playlist link … download failed with …"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it reproduce?
+      options:
+        - Update check
+        - Target / search
+        - Playlist
+        - Quality / profile selection
+        - Fragment selection
+        - Download progress
+        - Dependency management (Ctrl+U)
+        - Summary
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Step by step, so it can be repeated.
+      placeholder: "1. …\n2. …\n3. …"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error text / screenshots
+      description: Volvid has no log file — paste the error text from the screen or attach a screenshot. Remove cookies and private paths!
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Volvid version (update screen / release tag), OS, yt-dlp / ffmpeg / node versions and system vs managed (Ctrl+U screen), UI language.
+      placeholder: "Volvid x.y.z, Windows 11, yt-dlp 2026.x (managed), ffmpeg 7.x (system), EN"

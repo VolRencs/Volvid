@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest a new feature
+title: "[feat]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve?
+      description: What problem do you have when downloading.
+      placeholder: "Missing … have to do manually …"
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How it should work (TUI screen, profile, option, behavior).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other options you considered.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - TUI flow / navigation
+        - Video profiles
+        - Audio profiles
+        - Playlist
+        - YouTube search
+        - Fragment selection
+        - Dependencies (yt-dlp / ffmpeg / node)
+        - Cookies / JS runtime
+        - Downloads folder
+        - i18n (RU/EN)
+        - Docs site
+        - CI / build
