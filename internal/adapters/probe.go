@@ -18,7 +18,7 @@ type probePayload struct {
 var ErrMediaDurationUnavailable = errors.New("media duration unavailable")
 
 func ProbeMediaDurationContext(env *Env, ctx context.Context, target core.ParsedTarget) (int, error) {
-	probe, err := probeMediaContext(env, ctx, target)
+	probe, err := probeMediaWithDeps(env, ctx, resolveRuntimeDeps(env), target)
 	if err != nil {
 		return 0, err
 	}
@@ -27,9 +27,7 @@ func ProbeMediaDurationContext(env *Env, ctx context.Context, target core.Parsed
 	}
 	return probe.Duration, nil
 }
-func probeMediaContext(env *Env, ctx context.Context, target core.ParsedTarget) (*core.MediaProbe, error) {
-	return probeMediaWithDeps(env, ctx, resolveRuntimeDeps(env), target)
-}
+
 func probeMediaWithDeps(env *Env, ctx context.Context, deps core.CheckDepsResult, target core.ParsedTarget) (*core.MediaProbe, error) {
 	if !target.IsVideo() {
 		return nil, errors.New("probe requires video target")

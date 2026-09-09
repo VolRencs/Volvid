@@ -2,9 +2,12 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 )
+
+var errCacheStale = errors.New("cache generation changed")
 
 type flightEntry[V any] struct {
 	done       chan struct{}
@@ -57,51 +60,72 @@ func (fc *flightCache[K, V]) finishFlight(key K, fe *flightEntry[V], val V, err 
 	}
 }
 
-func (fc *flightCache[K, V]) Load(key K, fetch func() (V, error)) (V, error) {
-	for {
-		fe, follower := fc.acquireFlight(key)
-		if follower {
-			<-fe.done
-			fc.mu.Lock()
-			stale := fe.generation != fc.gen
-			val, err := fe.value, fe.err
-			fc.mu.Unlock()
-			if !stale {
-				return val, err
-			}
-			continue
-		}
-		val, err := fetch()
-		fc.finishFlight(key, fe, val, err)
-		return val, err
-	}
-}
-
-func (fc *flightCache[K, V]) LoadWithTTL(key K, ttl time.Duration, fetch func() (V, error)) (V, error) {
-	fc.mu.Lock()
-	if exp, ok := fc.expiries[key]; ok && time.Now().Before(exp) {
-		if v, ok := fc.values[key]; ok {
-			fc.mu.Unlock()
-			return v, nil
-		}
-	}
-	fc.mu.Unlock()
-	val, err := fc.Load(key, fetch)
-	if err == nil {
-		fc.mu.Lock()
-		if _, ok := fc.values[key]; ok {
-			fc.expiries[key] = time.Now().Add(ttl)
-		}
-		fc.mu.Unlock()
-	}
-	return val, err
-}
-
-func (fc *flightCache[K, V]) Get(key K) (V, bool) {
+func (fc *flightCache[K, V]) fresh(key K) (V, bool) {
 	fc.mu.Lock()
 	defer fc.mu.Unlock()
 	v, ok := fc.values[key]
-	return v, ok
+	if !ok {
+		var zero V
+		return zero, false
+	}
+	if exp, hasExp := fc.expiries[key]; hasExp && !time.Now().Before(exp) {
+		var zero V
+		return zero, false
+	}
+	return v, true
+}
+
+func (fc *flightCache[K, V]) storeExpiry(key K, ttl time.Duration) {
+	if ttl <= 0 {
+		return
+	}
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	if _, ok := fc.values[key]; ok {
+		fc.expiries[key] = time.Now().Add(ttl)
+	}
+}
+
+func (fc *flightCache[K, V]) awaitFlight(ctx context.Context, fe *flightEntry[V]) (V, error) {
+	if ctx == nil {
+		<-fe.done
+		fc.mu.Lock()
+		defer fc.mu.Unlock()
+		if fe.generation != fc.gen {
+			var zero V
+			return zero, errCacheStale
+		}
+		return fe.value, fe.err
+	}
+	select {
+	case <-fe.done:
+		fc.mu.Lock()
+		defer fc.mu.Unlock()
+		if fe.generation != fc.gen {
+			var zero V
+			return zero, errCacheStale
+		}
+		return fe.value, fe.err
+	case <-ctx.Done():
+		var zero V
+		return zero, ctx.Err()
+	}
+}
+
+func (fc *flightCache[K, V]) Load(key K, fetch func() (V, error)) (V, error) {
+	return fc.loadWithTTLAndCtx(key, 0, nil, fetch)
+}
+
+func (fc *flightCache[K, V]) LoadWithTTL(key K, ttl time.Duration, fetch func() (V, error)) (V, error) {
+	return fc.loadWithTTLAndCtx(key, ttl, nil, fetch)
+}
+
+func (fc *flightCache[K, V]) ProbeLoad(key K, ctx context.Context, fetch func() (V, error)) (V, error) {
+	return fc.loadWithTTLAndCtx(key, probeCacheTTL, ctx, fetch)
+}
+
+func (fc *flightCache[K, V]) Get(key K) (V, bool) {
+	return fc.fresh(key)
 }
 
 func (fc *flightCache[K, V]) InvalidateAll() {
@@ -112,50 +136,26 @@ func (fc *flightCache[K, V]) InvalidateAll() {
 	clear(fc.expiries)
 }
 
-func (fc *flightCache[K, V]) ProbeLoad(key K, ctx context.Context, fetch func() (V, error)) (V, error) {
-	if v, ok := fc.Get(key); ok {
-		if exp, hasExp := fc.expiryOf(key); !hasExp || time.Now().Before(exp) {
+func (fc *flightCache[K, V]) loadWithTTLAndCtx(key K, ttl time.Duration, ctx context.Context, fetch func() (V, error)) (V, error) {
+	if ttl > 0 {
+		if v, ok := fc.fresh(key); ok {
 			return v, nil
 		}
 	}
 	for {
 		fe, follower := fc.acquireFlight(key)
 		if follower {
-			select {
-			case <-fe.done:
-				fc.mu.Lock()
-				stale := fe.generation != fc.gen
-				val, err := fe.value, fe.err
-				fc.mu.Unlock()
-				if !stale {
-					return val, err
-				}
+			val, err := fc.awaitFlight(ctx, fe)
+			if err == errCacheStale {
 				continue
-			case <-ctx.Done():
-				var zero V
-				return zero, ctx.Err()
 			}
+			return val, err
 		}
 		val, err := fetch()
 		fc.finishFlight(key, fe, val, err)
-		if err == nil {
-			fc.setExpiry(key, time.Now().Add(probeCacheTTL))
+		if err == nil && ttl > 0 {
+			fc.storeExpiry(key, ttl)
 		}
 		return val, err
-	}
-}
-
-func (fc *flightCache[K, V]) expiryOf(key K) (time.Time, bool) {
-	fc.mu.Lock()
-	defer fc.mu.Unlock()
-	exp, ok := fc.expiries[key]
-	return exp, ok
-}
-
-func (fc *flightCache[K, V]) setExpiry(key K, exp time.Time) {
-	fc.mu.Lock()
-	defer fc.mu.Unlock()
-	if _, ok := fc.values[key]; ok {
-		fc.expiries[key] = exp
 	}
 }

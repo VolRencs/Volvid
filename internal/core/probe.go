@@ -19,7 +19,7 @@ type MediaFormat struct {
 // UnmarshalJSON tolerates null in yt-dlp string/number fields.
 func (f *MediaFormat) UnmarshalJSON(data []byte) error {
 	var aux struct {
-		Height         int `json:"height"`
+		Height         any `json:"height"`
 		VCodec         any `json:"vcodec"`
 		ACodec         any `json:"acodec"`
 		Filesize       any `json:"filesize"`
@@ -29,7 +29,7 @@ func (f *MediaFormat) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*f = MediaFormat{
-		Height:         aux.Height,
+		Height:         int(decodeInt(aux.Height)),
 		VCodec:         decodeString(aux.VCodec),
 		ACodec:         decodeString(aux.ACodec),
 		Filesize:       decodeInt(aux.Filesize),

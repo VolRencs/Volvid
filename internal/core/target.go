@@ -3,7 +3,6 @@ package core
 import (
 	"fmt"
 	"net/url"
-	"path"
 	"strings"
 )
 
@@ -105,7 +104,7 @@ func parseTargetIDs(target *ParsedTarget, host string, u *url.URL) error {
 		case "playlist":
 			target.PlaylistID = strings.TrimSpace(query.Get("list"))
 		default:
-			parts := splitPath(u.Path)
+			parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 			if len(parts) >= 2 && (parts[0] == "shorts" || parts[0] == "live") {
 				target.VideoID = parts[1]
 				target.PlaylistID = strings.TrimSpace(query.Get("list"))
@@ -140,18 +139,63 @@ func canonicalTargetURL(target ParsedTarget) string {
 	}
 }
 
-func splitPath(raw string) []string {
-	raw = strings.Trim(raw, "/")
-	if raw == "" {
-		return nil
-	}
-	return strings.Split(raw, "/")
-}
-
 func cleanTargetID(raw string) string {
-	value := strings.Trim(path.Clean(raw), "/")
-	if value == "." {
+	value := strings.Trim(raw, "/")
+	if value == "" || value == "." {
 		return ""
 	}
+	if i := strings.IndexByte(value, '/'); i >= 0 {
+		return value[:i]
+	}
 	return value
+}
+
+func parseURLStartAt(rawURL string) (int, bool) {
+	normalized := strings.TrimSpace(rawURL)
+	if normalized == "" {
+		return 0, false
+	}
+	if !strings.Contains(normalized, "://") {
+		normalized = "https://" + normalized
+	}
+
+	u, err := url.Parse(normalized)
+	if err != nil {
+		return 0, false
+	}
+
+	if secs, ok := parseStartFromQuery(u.Query()); ok {
+		return secs, true
+	}
+	return parseStartFromFragment(u.Fragment)
+}
+
+func parseStartFromQuery(values url.Values) (int, bool) {
+	for _, key := range []string{"t", "start", "time_continue"} {
+		if value := strings.TrimSpace(values.Get(key)); value != "" {
+			if secs, ok := parseFlexibleTimestamp(value); ok && secs > 0 {
+				return secs, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func parseStartFromFragment(fragment string) (int, bool) {
+	fragment = strings.TrimSpace(fragment)
+	if fragment == "" {
+		return 0, false
+	}
+
+	if values, err := url.ParseQuery(fragment); err == nil {
+		if secs, ok := parseStartFromQuery(values); ok {
+			return secs, true
+		}
+	}
+
+	secs, ok := parseFlexibleTimestamp(fragment)
+	if !ok || secs <= 0 {
+		return 0, false
+	}
+	return secs, true
 }

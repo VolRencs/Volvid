@@ -13,15 +13,29 @@ import (
 	"time"
 )
 
-type limitedBuffer struct {
+type cmdBuffer struct {
 	buf       []byte
+	limit     int
 	truncated bool
+	failOnCap bool
 }
 
-func (b *limitedBuffer) Write(p []byte) (int, error) {
+func (b *cmdBuffer) Write(p []byte) (int, error) {
+	limit := b.limit
+	if limit <= 0 {
+		limit = commandStdoutMaxBytes
+	}
+	if b.failOnCap {
+		if len(b.buf)+len(p) > limit {
+			return 0, fmt.Errorf("command output exceeds %d bytes", limit)
+		}
+		b.buf = append(b.buf, p...)
+		return len(p), nil
+	}
+	// Truncating mode (stderr capture): keep up to limit, report truncation.
 	want := len(p)
-	if len(b.buf) < commandStderrCaptureSize {
-		room := commandStderrCaptureSize - len(b.buf)
+	if len(b.buf) < limit {
+		room := limit - len(b.buf)
 		if len(p) > room {
 			p = p[:room]
 			b.truncated = true
@@ -33,28 +47,15 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	return want, nil
 }
 
-func (b *limitedBuffer) String() string {
+func (b *cmdBuffer) String() string {
 	return strings.TrimSpace(string(b.buf))
 }
 
-type cappedBuffer struct {
-	buf   []byte
-	limit int
-}
+func (b *cmdBuffer) Bytes() []byte { return b.buf }
 
-func (b *cappedBuffer) Write(p []byte) (int, error) {
-	limit := b.limit
-	if limit <= 0 {
-		limit = commandStdoutMaxBytes
-	}
-	if len(b.buf)+len(p) > limit {
-		return 0, fmt.Errorf("command output exceeds %d bytes", limit)
-	}
-	b.buf = append(b.buf, p...)
-	return len(p), nil
-}
-
-func (b *cappedBuffer) Bytes() []byte { return b.buf }
+// Back-compat aliases: stderr uses truncating mode, stdout uses fail mode.
+type limitedBuffer = cmdBuffer
+type cappedBuffer = cmdBuffer
 
 func commandErrorWithStderr(err error, stderr limitedBuffer) error {
 	if err == nil {
@@ -84,7 +85,9 @@ func runCommandOutput(ctx context.Context, timeout time.Duration, merge bool, na
 	cmd := newProcessTreeCommand(runCtx, name, args...)
 	var stdout cappedBuffer
 	stdout.limit = commandStdoutMaxBytes
+	stdout.failOnCap = true
 	var stderr limitedBuffer
+	stderr.limit = commandStderrCaptureSize
 	if merge {
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stdout

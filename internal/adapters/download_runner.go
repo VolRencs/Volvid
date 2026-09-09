@@ -62,11 +62,6 @@ func runDownloadRequest(env *Env, ctx context.Context, slot int, req core.Downlo
 	return result
 }
 
-const (
-	defaultHardwareCRF = "23"
-	nvencPreset        = "p5"
-)
-
 func downloadFormats(req core.DownloadRequest) ([]string, []string) {
 	if req.Profile.Mode != core.ModeVideo {
 		return []string{""}, []string{""}
@@ -125,18 +120,12 @@ func StartDownloadRequestContext(env *Env, ctx context.Context, req core.Downloa
 }
 func runSingleDownload(env *Env, ctx context.Context, req core.DownloadRequest, deps core.CheckDepsResult, ch chan<- core.DlUpdate, cleanup *downloadCleanup) downloadResult {
 	sendUpdate(ctx, ch, core.DlUpdate{Type: core.EvStart, Slot: 0, Text: i18n.StringsFor(req.Locale).Downloading})
-	return runDownloadRequest(
-		env,
-		ctx,
-		0,
-		req,
-		deps,
-		req.Target.DownloadURL(req.ForceSingle),
-		filepath.Join(req.OutputDir, "%(title)s.%(ext)s"),
-		[]string{"--no-playlist"},
-		ch,
-		cleanup,
-	)
+	return runOneDownload(env, ctx, 0, req, deps, req.Target.DownloadURL(req.ForceSingle),
+		filepath.Join(req.OutputDir, "%(title)s.%(ext)s"), ch, cleanup)
+}
+
+func runOneDownload(env *Env, ctx context.Context, slot int, req core.DownloadRequest, deps core.CheckDepsResult, url, outputTemplate string, ch chan<- core.DlUpdate, cleanup *downloadCleanup) downloadResult {
+	return runDownloadRequest(env, ctx, slot, req, deps, url, outputTemplate, []string{"--no-playlist"}, ch, cleanup)
 }
 func runPlaylistDownloads(env *Env, ctx context.Context, req core.DownloadRequest, deps core.CheckDepsResult, entries []core.PlaylistEntry, ch chan<- core.DlUpdate, wg *sync.WaitGroup, cleanup *downloadCleanup) {
 	if len(entries) == 0 {
@@ -190,7 +179,7 @@ func runPlaylistEntry(env *Env, ctx context.Context, slot int, req core.Download
 	if !sendUpdate(ctx, ch, core.DlUpdate{Type: core.EvStart, Slot: slot, Text: entry.Title}) {
 		return
 	}
-	result := runDownloadRequest(env, ctx, slot, req, deps, entry.URL, playlistOutputTemplate(outputDir, entry), []string{"--no-playlist"}, ch, cleanup)
+	result := runOneDownload(env, ctx, slot, req, deps, entry.URL, playlistOutputTemplate(outputDir, entry), ch, cleanup)
 	sendUpdate(ctx, ch, core.DlUpdate{Type: core.EvDone, Slot: slot, OK: result.Err == nil, ErrText: result.ErrText})
 }
 func resetDownloadSlot(ctx context.Context, slot int, ch chan<- core.DlUpdate) {
@@ -212,14 +201,13 @@ func playlistOutputDir(req core.DownloadRequest) string {
 	if req.PlaylistInfo != nil {
 		title = req.PlaylistInfo.Title
 	}
-	dir := filepath.Join(req.OutputDir, core.SanitizeDirname(title))
-	if err := os.MkdirAll(dir, 0o755); err == nil {
-		return dir
+	for _, name := range []string{core.SanitizeDirname(title), "playlist"} {
+		dir := filepath.Join(req.OutputDir, name)
+		if err := os.MkdirAll(dir, 0o755); err == nil {
+			return dir
+		}
 	}
-
-	dir = filepath.Join(req.OutputDir, "playlist")
-	_ = os.MkdirAll(dir, 0o755)
-	return dir
+	return req.OutputDir
 }
 func playlistOutputTemplate(outputDir string, entry core.PlaylistEntry) string {
 	return filepath.Join(outputDir, fmt.Sprintf("%03d - %%(title)s.%%(ext)s", entry.Index))

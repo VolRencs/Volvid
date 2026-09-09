@@ -14,7 +14,7 @@ func resolveDownloadsDir(env *Env) string {
 	if path := envPath(envDownloadsDir); path != "" {
 		return path
 	}
-	if path := loadSavedDownloadsDir(env); path != "" {
+	if path := loadValidDirDotFile(env, downloadsDirFileName); path != "" {
 		return path
 	}
 	return systemDownloadsDir(env)
@@ -41,31 +41,12 @@ func SetDownloadsDir(env *Env, path string) error {
 	return nil
 }
 
-func downloadsDirPath(env *Env) string {
-	return filepath.Join(env.ConfigDir, downloadsDirFileName)
-}
-
-func loadSavedDownloadsDir(env *Env) string {
-	path := downloadsDirPath(env)
-
-	// Ограничиваем размер, чтобы битый/огромный файл не съедал память.
-	b, err := os.ReadFile(path)
-	if err != nil || len(b) > 8<<10 {
-		return ""
-	}
-	dir := cleanAbsPath(string(b))
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		return ""
-	}
-	return dir
-}
-
 func saveDownloadsDir(env *Env, path string) error {
 	path = cleanAbsPath(path)
 	if path == "" {
 		return errors.New("download location is empty")
 	}
-	return writeAppConfig(downloadsDirPath(env), path+"\n")
+	return saveDotFile(env, downloadsDirFileName, path)
 }
 
 func systemDownloadsDir(env *Env) string {

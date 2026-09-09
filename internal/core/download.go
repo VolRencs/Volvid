@@ -1,6 +1,8 @@
 package core
 
-import "strings"
+import (
+	"strings"
+)
 
 type DlEventType uint8
 
@@ -15,6 +17,7 @@ const (
 	EvClosed
 )
 
+// DlUpdate is a download engine event (single file or playlist slot).
 type DlUpdate struct {
 	Type    DlEventType
 	Slot    int
@@ -37,11 +40,28 @@ type FileProgress struct {
 	Err    error
 }
 
+// FFmpegLocation returns the ffmpeg binary path from deps.
+func FFmpegLocation(deps CheckDepsResult) string {
+	return strings.TrimSpace(deps.FFmpeg.Path)
+}
+
 // FFmpegArgs renders the shared --ffmpeg-location prefix for yt-dlp.
 func FFmpegArgs(deps CheckDepsResult) []string {
-	bin := strings.TrimSpace(deps.FFmpeg.Path)
-	if bin == "" {
-		return nil
+	if bin := FFmpegLocation(deps); bin != "" {
+		return []string{"--ffmpeg-location", bin}
 	}
-	return []string{"--ffmpeg-location", bin}
+	return nil
+}
+
+// FFmpegArgsForPath renders the prefix from a bare binary path.
+func FFmpegArgsForPath(bin string) []string {
+	if bin = strings.TrimSpace(bin); bin != "" {
+		return []string{"--ffmpeg-location", bin}
+	}
+	return nil
+}
+
+// ProgressPercent clamps a percent value into [0,100].
+func ProgressPercent(p float64) float64 {
+	return min(100, max(0, p))
 }

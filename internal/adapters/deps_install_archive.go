@@ -29,41 +29,14 @@ func extractZipEntry(zf *zip.File, dest string) error {
 	}
 	defer rc.Close()
 
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return fmt.Errorf("create directory for zip entry: %w", err)
+	perm := zf.FileInfo().Mode().Perm() & 0o755
+	if perm == 0 {
+		perm = 0o755
 	}
-
-	tmp, err := os.CreateTemp(filepath.Dir(dest), ".extract-*")
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-	tmpName := tmp.Name()
-
-	n, err := io.Copy(tmp, io.LimitReader(rc, maxExtractedFileSize+1))
-	if err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
+	if err := writeStagedFile(rc, dest, perm, maxExtractedFileSize); err != nil {
 		return fmt.Errorf("extract zip data: %w", err)
 	}
-	if n > maxExtractedFileSize {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("extract zip data: entry exceeds %d bytes", maxExtractedFileSize)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("sync temp file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("close temp file: %w", err)
-	}
-	if err := os.Chmod(tmpName, mode.Perm()&0o755); err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("chmod extracted file: %w", err)
-	}
-	return os.Rename(tmpName, dest)
+	return nil
 }
 func extractZipBinaries(archive string, targets map[string]string) error {
 	zr, err := zip.OpenReader(archive)
@@ -288,7 +261,4 @@ func copyExtractedFile(src, dest string) error {
 		return fmt.Errorf("chmod destination file: %w", err)
 	}
 	return nil
-}
-func binaryBaseName(path string) string {
-	return filepath.Base(strings.TrimSpace(path))
 }

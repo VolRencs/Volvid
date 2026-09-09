@@ -12,6 +12,11 @@ import (
 	"volvid/internal/i18n"
 )
 
+const (
+	defaultHardwareCRF = "23"
+	nvencPreset        = "p5"
+)
+
 func transcodeDownloadedVideo(
 	env *Env,
 	ctx context.Context,

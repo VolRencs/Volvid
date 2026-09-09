@@ -9,6 +9,17 @@ import (
 	"volvid/internal/core"
 )
 
+// Download artifact suffixes: yt-dlp --part fragments, our transcode
+// tmp files and replacement backups. Only exact artifacts are removed,
+// never stem heuristics (so user video.particular.mp4 files survive).
+const (
+	artifactPartSuffix      = ".part"
+	artifactYtdlSuffix      = ".ytdl"
+	artifactPartFragPrefix  = ".part-"
+	artifactTranscodePrefix = ".transcode-"
+	artifactBackupPrefix    = ".bak-"
+)
+
 func sendUpdate(ctx context.Context, ch chan<- core.DlUpdate, u core.DlUpdate) bool {
 	if ch == nil {
 		return false
@@ -50,42 +61,45 @@ func (c *downloadCleanup) setRoot(root string) {
 	c.root = root
 	c.mu.Unlock()
 }
-func (c *downloadCleanup) add(path string) {
+func normalizeCleanupPath(c *downloadCleanup, path string) (string, bool) {
 	if c == nil {
-		return
+		return "", false
 	}
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return
+		return "", false
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return
+		return "", false
 	}
 	abs = filepath.Clean(abs)
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.root != "" {
-		rel, err := filepath.Rel(c.root, abs)
+	root := c.root
+	c.mu.Unlock()
+	if root != "" {
+		rel, err := filepath.Rel(root, abs)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-			return
+			return "", false
 		}
 	}
+	return abs, true
+}
+
+func (c *downloadCleanup) add(path string) {
+	abs, ok := normalizeCleanupPath(c, path)
+	if !ok {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.paths[abs] = struct{}{}
 }
 func (c *downloadCleanup) forget(path string) {
-	if c == nil {
+	abs, ok := normalizeCleanupPath(c, path)
+	if !ok {
 		return
 	}
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return
-	}
-	abs = filepath.Clean(abs)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.paths, abs)
@@ -122,8 +136,8 @@ func deleteDownloadArtifacts(path string) {
 		return
 	}
 	_ = os.Remove(path)
-	_ = os.Remove(path + ".part")
-	_ = os.Remove(path + ".ytdl")
+	_ = os.Remove(path + artifactPartSuffix)
+	_ = os.Remove(path + artifactYtdlSuffix)
 }
 func removeMatchingArtifacts(dir string, paths []string) {
 	bases := make([]string, 0, len(paths))
@@ -142,12 +156,9 @@ func removeMatchingArtifacts(dir string, paths []string) {
 		}
 		name := entry.Name()
 		for _, base := range bases {
-			// Только точные артефакты: yt-dlp --part фрагменты,
-			// наши tmp транскода и backup замены. Без stem-эвристик,
-			// чтобы не сносить пользовательские video.particular.mp4.
-			if strings.HasPrefix(name, base+".part-") ||
-				strings.HasPrefix(name, "."+base+".transcode-") ||
-				strings.HasPrefix(name, "."+base+".bak-") {
+			if strings.HasPrefix(name, base+artifactPartFragPrefix) ||
+				strings.HasPrefix(name, "."+base+artifactTranscodePrefix) ||
+				strings.HasPrefix(name, "."+base+artifactBackupPrefix) {
 				_ = os.Remove(filepath.Join(dir, name))
 				break
 			}

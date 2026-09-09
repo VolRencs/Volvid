@@ -1,15 +1,13 @@
 package core
 
 import (
+	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 )
 
 // Unified tolerant decoders for yt-dlp JSON payloads.
-//
-// yt-dlp emits numbers as float64, int or numeric strings (sometimes with
-// a "%" suffix in progress lines, sometimes null). Single source of truth
-// for all adapters.
 func decodeString(v any) string {
 	s, _ := v.(string)
 	return s
@@ -40,8 +38,17 @@ func decodeFloat(v any) float64 {
 		return float64(n)
 	case int:
 		return float64(n)
+	case int32:
+		return float64(n)
 	case int64:
 		return float64(n)
+	case uint, uint32, uint64:
+		return float64(decodeInt(v))
+	case json.Number:
+		if f, err := n.Float64(); err == nil {
+			return f
+		}
+		return 0
 	case string:
 		if f, err := strconv.ParseFloat(strings.TrimSpace(n), 64); err == nil {
 			return f
@@ -62,8 +69,27 @@ func decodeInt(v any) int64 {
 		return int64(n)
 	case int:
 		return int64(n)
+	case int32:
+		return int64(n)
 	case int64:
 		return n
+	case uint:
+		return int64(n)
+	case uint32:
+		return int64(n)
+	case uint64:
+		if n > 1<<63-1 {
+			return 0
+		}
+		return int64(n)
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return i
+		}
+		if f, err := n.Float64(); err == nil {
+			return int64(f)
+		}
+		return 0
 	case string:
 		if f, err := strconv.ParseFloat(strings.TrimSpace(n), 64); err == nil {
 			return int64(f)
@@ -80,6 +106,19 @@ func MapFloat(m map[string]any, key string) float64 {
 		return 0
 	}
 	return decodeFloat(m[key])
+}
+
+// MapInt reads m[key] tolerantly.
+func MapInt(m map[string]any, key string) int64 {
+	if m == nil {
+		return 0
+	}
+	return decodeInt(m[key])
+}
+
+// FilterStrings keeps items matching keep (nil-safe).
+func FilterStrings(items []string, keep func(string) bool) []string {
+	return slices.DeleteFunc(slices.Clone(items), func(s string) bool { return !keep(s) })
 }
 
 // parseIntOrZero parses CLI/progress integers ("12", " 7 ") -> 0 on error.

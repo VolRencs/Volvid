@@ -27,11 +27,11 @@ func FetchPlaylistInfoFor(env *Env, ctx context.Context, url string, l core.Loca
 		}
 
 		n := len(entries) + 1
-		entry, ok := playlistEntryFromMap(e, n, strs.VideoTitleFmt)
+		title, entryURL, duration, ok := mediaEntryFromMap(e, n, strs.VideoTitleFmt)
 		if !ok {
 			return
 		}
-		entries = append(entries, entry)
+		entries = append(entries, core.PlaylistEntry{Index: n, Title: title, URL: entryURL, Duration: duration})
 	})
 
 	if scanErr := flatScanError(err, len(entries), errors.New(strs.PlTimeout)); scanErr != nil {
@@ -93,30 +93,19 @@ func cleanMediaEntryID(raw string) string {
 	return raw
 }
 func playlistEntryFromMap(entry map[string]any, index int, titleFmt string) (core.PlaylistEntry, bool) {
-	url := mediaEntryURL(entry)
-	if url == "" {
+	title, entryURL, duration, ok := mediaEntryFromMap(entry, index, titleFmt)
+	if !ok {
 		return core.PlaylistEntry{}, false
 	}
-
-	defaultTitle := fmt.Sprintf(titleFmt, index)
-	return core.PlaylistEntry{
-		Index:    index,
-		Title:    core.MapString(entry, "title", core.MapString(entry, "id", defaultTitle)),
-		URL:      url,
-		Duration: int(core.MapFloat(entry, "duration")),
-	}, true
+	return core.PlaylistEntry{Index: index, Title: title, URL: entryURL, Duration: duration}, true
 }
+
 func searchResultFromMap(entry map[string]any, index int) (core.SearchResult, bool) {
-	url := mediaEntryURL(entry)
-	if url == "" {
+	title, entryURL, duration, ok := mediaEntryFromMap(entry, index, "Video %d")
+	if !ok {
 		return core.SearchResult{}, false
 	}
-
-	return core.SearchResult{
-		Title:    strings.TrimSpace(core.MapString(entry, "title", fmt.Sprintf("Video %d", index))),
-		URL:      url,
-		Duration: int(core.MapFloat(entry, "duration")),
-	}, true
+	return core.SearchResult{Title: title, URL: entryURL, Duration: duration}, true
 }
 
 var (

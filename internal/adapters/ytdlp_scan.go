@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+	"volvid/internal/core"
 )
 
 func flatPlaylistScanArgs(target string) []string {
@@ -87,4 +88,19 @@ func ytdlpErrorLine(line string) string {
 		}
 	}
 	return line
+}
+
+// mediaEntryFromMap parses a flat yt-dlp JSON entry into title/URL/duration.
+// Single source of truth for playlist and search results.
+func mediaEntryFromMap(entry map[string]any, index int, titleFmt string) (title, url string, duration int, ok bool) {
+	url = mediaEntryURL(entry)
+	if url == "" {
+		return "", "", 0, false
+	}
+	defaultTitle := fmt.Sprintf(titleFmt, index)
+	title = strings.TrimSpace(core.MapString(entry, "title", core.MapString(entry, "id", defaultTitle)))
+	if title == "" {
+		title = defaultTitle
+	}
+	return title, url, int(core.MapFloat(entry, "duration")), true
 }

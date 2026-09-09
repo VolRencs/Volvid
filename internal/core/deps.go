@@ -1,5 +1,7 @@
 package core
 
+import "slices"
+
 type DependencySource string
 
 const (
@@ -54,23 +56,13 @@ func (r CheckDepsResult) Dependencies() []DependencyInfo {
 }
 
 func (r CheckDepsResult) MissingRequired() bool {
-	return len(filterDependencies(r.Dependencies(), func(dep DependencyInfo) bool {
+	return slices.ContainsFunc(r.Dependencies(), func(dep DependencyInfo) bool {
 		return dep.Required && !dep.Available
-	})) > 0
-}
-
-func (r CheckDepsResult) ActionableDependencies() []DependencyInfo {
-	return filterDependencies(r.Dependencies(), func(dep DependencyInfo) bool {
-		return dep.Downloadable && (!dep.Available || dep.Source == DepManaged)
 	})
 }
 
-func filterDependencies(deps []DependencyInfo, keep func(DependencyInfo) bool) []DependencyInfo {
-	out := make([]DependencyInfo, 0, len(deps))
-	for _, dep := range deps {
-		if keep(dep) {
-			out = append(out, dep)
-		}
-	}
-	return out
+func (r CheckDepsResult) ActionableDependencies() []DependencyInfo {
+	return slices.DeleteFunc(r.Dependencies(), func(dep DependencyInfo) bool {
+		return !(dep.Downloadable && (!dep.Available || dep.Source == DepManaged))
+	})
 }
