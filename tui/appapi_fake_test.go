@@ -91,6 +91,10 @@ func (s *stubAPI) ResolveSubtitles(_ context.Context, _ string) ([]core.Subtitle
 	return []core.SubtitleTrack{{Lang: "en"}, {Lang: "ru", Auto: true}}, nil
 }
 
+func (s *stubAPI) ResolveAudioTracks(_ context.Context, _ string) ([]core.AudioTrack, error) {
+	return []core.AudioTrack{{Lang: "en"}, {Lang: "ru"}}, nil
+}
+
 func newStubModel(stub *stubAPI) Model {
 	return newModelWithAPI(context.Background(), stub)
 }

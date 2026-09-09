@@ -140,7 +140,7 @@ func (m Model) screenView() screenView {
 	u := m.u()
 
 	switch m.screen {
-	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch, scrSearchFetch, scrFragmentProbe, scrSubsFetch:
+	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch, scrSearchFetch, scrFragmentProbe, scrAudioTrackFetch, scrSubsFetch:
 		return m.loadingScreen(m.stageTitle())
 
 	case scrUpdateReady:
@@ -252,6 +252,15 @@ func (m Model) screenView() screenView {
 		return m.menuScreen(u.QualityTitle, "", m.flowErr)
 	case scrVideoOutput:
 		return m.menuScreen(u.VideoOutputTitle, m.profile.Label, m.flowErr)
+	case scrAudioTrack:
+		return screenView{
+			title:      strings.TrimSpace(u.AudioTrackTitle),
+			subtitle:   m.audioTrackSubtitle(),
+			body:       m.viewAudioTracks(),
+			notice:     m.flowErr,
+			noticeKind: noticeWarn,
+			bindings:   []binding{m.kbMove(), m.kbSpace(), m.kbEnter(), m.kbAll(), m.kbEsc()},
+		}
 	case scrSubtitles:
 		return screenView{
 			title:      strings.TrimSpace(u.SubtitleTitle),
@@ -380,7 +389,7 @@ func (m Model) stageTitle() string {
 		return strings.TrimSpace(u.AppUpdating)
 	case scrPlaylistFetch:
 		return strings.TrimSpace(u.SpinnerPlaylist)
-	case scrQualityFetch, scrSubsFetch:
+	case scrQualityFetch, scrAudioTrackFetch, scrSubsFetch:
 		return strings.TrimSpace(u.SpinnerQuality)
 	case scrSearchFetch:
 		return strings.TrimSpace(u.SpinnerSearch)

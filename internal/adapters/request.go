@@ -35,6 +35,7 @@ func normalizeDownloadRequest(env *Env, req core.DownloadRequest) core.DownloadR
 	req.Profile.VideoFmtChain = slices.Clone(req.Profile.VideoFmtChain)
 	req.Profile.VideoFmtLabels = slices.Clone(req.Profile.VideoFmtLabels)
 	req.Profile.SubLangs = slices.Clone(req.Profile.SubLangs)
+	req.Profile.AudioLangs = slices.Clone(req.Profile.AudioLangs)
 	req.Entries = slices.Clone(req.Entries)
 	if req.PlaylistInfo != nil {
 		info := *req.PlaylistInfo

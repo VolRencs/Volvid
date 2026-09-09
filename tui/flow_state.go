@@ -88,6 +88,11 @@ func (m *Model) resetProfileState() {
 	m.audioProfiles = nil
 	m.subTracks = nil
 	m.subsOffered = false
+	m.audioTracks = nil
+	m.audioOffered = false
+	m.audioCursor = 0
+	m.audioTop = 0
+	m.audioSelected = nil
 	m.subCursor = 0
 	m.subTop = 0
 	m.subSelected = nil
@@ -144,7 +149,7 @@ func (m Model) resetForNext() (tea.Model, tea.Cmd) {
 }
 func (m Model) restoreActiveScreen() (tea.Model, tea.Cmd) {
 	switch m.screen {
-	case scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrVideoOutput, scrSearchResults, scrFragmentChoice, scrPlaylistAsk:
+	case scrMode, scrAudio, scrSummary, scrWorkers, scrQuality, scrVideoOutput, scrAudioTrack, scrSearchResults, scrFragmentChoice, scrPlaylistAsk:
 		m = m.syncMenu()
 		return m, nil
 	case scrURL:

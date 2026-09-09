@@ -82,6 +82,7 @@ type OutputProfile struct {
 	RemuxOnly      bool
 	AudioFormat    string
 	AudioQuality   string
+	AudioLangs     []string
 	SubMode        SubtitleMode
 	SubLangs       []string
 }
@@ -95,6 +96,11 @@ const (
 	// SubEmbed downloads subtitles and muxes them into the container.
 	SubEmbed
 )
+
+// WantsAudioTrack reports whether specific audio languages are requested.
+func (p OutputProfile) WantsAudioTrack() bool {
+	return len(p.AudioLangs) > 0
+}
 
 // WantsSubtitles reports whether the profile embeds subtitle tracks.
 func (p OutputProfile) WantsSubtitles() bool {

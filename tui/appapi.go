@@ -23,6 +23,7 @@ type AppAPI interface {
 	SearchYouTube(ctx context.Context, query string) ([]core.SearchResult, error)
 	ResolveQuality(ctx context.Context, urls []string) ([]core.QualityChoice, error)
 	ResolveSubtitles(ctx context.Context, url string) ([]core.SubtitleTrack, error)
+	ResolveAudioTracks(ctx context.Context, url string) ([]core.AudioTrack, error)
 	ProbeDuration(ctx context.Context, target core.ParsedTarget) (int, error)
 
 	// Download pipeline (use-case extracted from flow.go:startDownload).
@@ -92,6 +93,10 @@ func (a appAPIAdapter) ResolveQuality(ctx context.Context, urls []string) ([]cor
 
 func (a appAPIAdapter) ResolveSubtitles(ctx context.Context, url string) ([]core.SubtitleTrack, error) {
 	return adapters.ResolveSubtitlesContext(a.env, ctx, url)
+}
+
+func (a appAPIAdapter) ResolveAudioTracks(ctx context.Context, url string) ([]core.AudioTrack, error) {
+	return adapters.ResolveAudioTracksContext(a.env, ctx, url)
 }
 
 func (a appAPIAdapter) ProbeDuration(ctx context.Context, target core.ParsedTarget) (int, error) {

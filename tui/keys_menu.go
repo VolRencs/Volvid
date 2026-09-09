@@ -121,7 +121,7 @@ var menuActions = map[screen]func(Model, int) (tea.Model, tea.Cmd){
 		}
 		m.profile = m.videoProfiles[idx]
 		m.flowErr = ""
-		return m.startSubsStep()
+		return m.startAudioTrackStep()
 	},
 	scrWorkers: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		m.numWorkers = idx + 1
@@ -166,6 +166,11 @@ func (m Model) activateModeChoice(idx int) (tea.Model, tea.Cmd) {
 	m.audioProfiles = nil
 	m.subTracks = nil
 	m.subsOffered = false
+	m.audioTracks = nil
+	m.audioOffered = false
+	m.audioCursor = 0
+	m.audioTop = 0
+	m.audioSelected = nil
 	m.subCursor = 0
 	m.subTop = 0
 	m.subSelected = nil

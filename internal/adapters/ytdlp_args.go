@@ -105,7 +105,11 @@ func downloadModeArgs(profile core.OutputProfile, format string) ([]string, erro
 	case core.ModeThumbnail:
 		return []string{"--skip-download", "--write-thumbnail"}, nil
 	case core.ModeAudio:
-		args := []string{"-f", "bestaudio/best", "--extract-audio"}
+		format := "bestaudio/best"
+		if langs := audioTrackLangs(profile); len(langs) > 0 {
+			format = "bestaudio[language=" + langs[0] + "]/bestaudio/best"
+		}
+		args := []string{"-f", format, "--extract-audio"}
 		if profile.AudioFormat != "" {
 			args = append(args, "--audio-format", profile.AudioFormat)
 		}
@@ -125,12 +129,46 @@ func videoModeArgs(profile core.OutputProfile, format string) []string {
 	if container == "" {
 		container = "mp4"
 	}
+	format = applyAudioTrackSelector(format, profile)
 
+	args := []string{"-f", format}
 	if profile.RemuxOnly {
-		return append([]string{"-f", format, "--remux-video", container}, subtitleDownloadArgs(profile)...)
+		args = append(args, "--remux-video", container)
+	} else {
+		args = append(args, "--merge-output-format", container)
 	}
+	// yt-dlp keeps a single audio stream by default; multiple requested
+	// languages would otherwise be silently dropped to one.
+	if len(audioTrackLangs(profile)) > 1 {
+		args = append(args, "--audio-multistreams")
+	}
+	return append(args, subtitleDownloadArgs(profile)...)
+}
 
-	return append([]string{"-f", format, "--merge-output-format", container}, subtitleDownloadArgs(profile)...)
+// applyAudioTrackSelector prefers the chosen dubbed languages for the audio
+// leg of a format chain (original + dubs are merged), keeping the original
+// as fallback.
+func applyAudioTrackSelector(format string, profile core.OutputProfile) string {
+	langs := audioTrackLangs(profile)
+	if len(langs) == 0 {
+		return format
+	}
+	legs := make([]string, 0, len(langs))
+	for _, lang := range langs {
+		legs = append(legs, "bestaudio[language="+lang+"]")
+	}
+	return strings.ReplaceAll(format, "bestaudio", strings.Join(legs, "+"))
+}
+
+// audioTrackLangs returns cleaned requested audio languages in order.
+func audioTrackLangs(profile core.OutputProfile) []string {
+	langs := make([]string, 0, len(profile.AudioLangs))
+	for _, lang := range profile.AudioLangs {
+		if lang = strings.TrimSpace(lang); lang != "" {
+			langs = append(langs, lang)
+		}
+	}
+	return langs
 }
 
 // subtitleDownloadArgs renders yt-dlp subtitle flags for embedded tracks.

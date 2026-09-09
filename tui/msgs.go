@@ -40,6 +40,11 @@ type (
 		err    error
 		gen    int
 	}
+	msgAudioTracksLoaded struct {
+		tracks []core.AudioTrack
+		err    error
+		gen    int
+	}
 	msgFragmentDuration struct {
 		duration int
 		err      error

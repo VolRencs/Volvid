@@ -55,6 +55,11 @@ func runDownloadRequest(env *Env, ctx context.Context, slot int, req core.Downlo
 				// Субтитры встроены: сайдкары рядом с видео больше не нужны.
 				cleanupSubtitleSidecars(result.OutputPath, req.Profile.SubLangs)
 			}
+			if langs := audioTrackLangs(req.Profile); len(langs) > 0 {
+				// Мерж yt-dlp затирает теги языков: правим отдельным
+				// stream-copy проходом. Ошибка ретега не валит загрузку.
+				_ = retagAudioLanguages(ctx, ffmpegBinFor(env, deps), result.OutputPath, langs)
+			}
 			if cleanup != nil && result.OutputPath != "" {
 				// Успешный файл нельзя удалять в deferred cleanup.
 				cleanup.forget(result.OutputPath)

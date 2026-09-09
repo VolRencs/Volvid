@@ -210,3 +210,40 @@ func (m Model) routeFocusedInputMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+func (m Model) handleAudioTrackKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if len(m.audioTracks) == 0 {
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "up":
+		m = m.stepAudioCursor(-1)
+	case "down":
+		m = m.stepAudioCursor(1)
+	case "space":
+		m.toggleCurrentAudioTrack()
+		m.flowErr = ""
+	case "a", "а":
+		m.toggleAllAudioTracks()
+		m.flowErr = ""
+	case "enter":
+		return m.confirmAudioTrackSelection()
+	default:
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// confirmAudioTrackSelection applies the checked languages: cursor on the
+// "original" row or an empty checklist means no override, otherwise the
+// checked tracks (in listed order) are embedded alongside the default audio.
+func (m Model) confirmAudioTrackSelection() (tea.Model, tea.Cmd) {
+	m.profile.AudioLangs = nil
+	if m.audioCursor != 0 {
+		m.profile.AudioLangs = m.selectedAudioLangs()
+	}
+	m.flowErr = ""
+	return m.startSubsStep()
+}

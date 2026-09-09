@@ -68,6 +68,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleSubtitlesKey(msg)
 	}
 
+	if m.screen == scrAudioTrack {
+		return m.handleAudioTrackKey(msg)
+	}
+
 	switch m.screen {
 	case scrUpdateDone:
 		return m, tea.Quit
@@ -127,11 +131,25 @@ var escHandlers = map[screen]func(Model) (tea.Model, tea.Cmd){
 		m = m.syncMenu()
 		return m, nil
 	},
+	scrAudioTrackFetch: func(m Model) (tea.Model, tea.Cmd) {
+		m = m.cancelOps()
+		m.screen = scrVideoOutput
+		m = m.syncMenu()
+		return m, nil
+	},
 	scrAudio:       func(m Model) (tea.Model, tea.Cmd) { return m.startModeSelectionWithNotice("") },
 	scrQuality:     func(m Model) (tea.Model, tea.Cmd) { return m.startModeSelectionWithNotice("") },
 	scrVideoOutput: func(m Model) (tea.Model, tea.Cmd) { return m.gotoQualitySelection() },
+	scrAudioTrack: func(m Model) (tea.Model, tea.Cmd) {
+		m.screen = scrVideoOutput
+		m = m.syncMenu()
+		return m, nil
+	},
 	scrSubtitles: func(m Model) (tea.Model, tea.Cmd) {
 		m.screen = scrVideoOutput
+		if m.audioOffered {
+			m.screen = scrAudioTrack
+		}
 		m = m.syncMenu()
 		return m, nil
 	},

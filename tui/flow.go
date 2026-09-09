@@ -24,12 +24,30 @@ func (m Model) gotoWorkersBack() (tea.Model, tea.Cmd) {
 		m.screen = scrMode
 	default:
 		m.screen = scrVideoOutput
+		if m.audioOffered {
+			m.screen = scrAudioTrack
+		}
 		if m.subsOffered {
 			m.screen = scrSubtitles
 		}
 	}
 	m = m.syncMenu()
 	return m, nil
+}
+
+// startAudioTrackStep resolves dubbed audio tracks after the video output
+// profile is picked. With fewer than 2 tracks (or on error) it continues
+// silently to subtitles; otherwise it opens the audio track picker.
+func (m Model) startAudioTrackStep() (tea.Model, tea.Cmd) {
+	m.audioTracks = nil
+	m.audioOffered = false
+	urls := m.qualityScanURLs()
+	if len(urls) == 0 {
+		return m.startSubsStep()
+	}
+	return m.startOpScreen(scrAudioTrackFetch, func(ctx context.Context, gen int) tea.Cmd {
+		return loadAudioTracksCmd(m.api, ctx, urls[0], gen)
+	})
 }
 
 // startSubsStep resolves available subtitle tracks after the video output
@@ -53,6 +71,10 @@ func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) 
 	m.qualityChoices = nil
 	m.videoProfiles = nil
 	m.audioProfiles = nil
+	m.audioTracks = nil
+	m.audioOffered = false
+	m.subTracks = nil
+	m.subsOffered = false
 	m = m.gotoScreen(scrMode)
 	return m, nil
 }

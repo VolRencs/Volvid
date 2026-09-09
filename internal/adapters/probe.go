@@ -69,9 +69,10 @@ func probeMediaUncached(env *Env, ctx context.Context, deps core.CheckDepsResult
 	}
 
 	probe := &core.MediaProbe{
-		Duration:  decodeProbeDuration(payload.Duration),
-		Formats:   append([]core.MediaFormat(nil), payload.Formats...),
-		Subtitles: subtitleTracksFromPayload(payload.Subtitles, payload.AutomaticCaps),
+		Duration:    decodeProbeDuration(payload.Duration),
+		Formats:     append([]core.MediaFormat(nil), payload.Formats...),
+		Subtitles:   subtitleTracksFromPayload(payload.Subtitles, payload.AutomaticCaps),
+		AudioTracks: audioTracksFromFormats(payload.Formats),
 	}
 
 	for _, format := range probe.Formats {
@@ -110,12 +111,37 @@ func cloneMediaProbe(probe *core.MediaProbe) *core.MediaProbe {
 		return nil
 	}
 	cloned := &core.MediaProbe{
-		Duration:  probe.Duration,
-		HasVideo:  probe.HasVideo,
-		Formats:   append([]core.MediaFormat(nil), probe.Formats...),
-		Subtitles: append([]core.SubtitleTrack(nil), probe.Subtitles...),
+		Duration:    probe.Duration,
+		HasVideo:    probe.HasVideo,
+		Formats:     append([]core.MediaFormat(nil), probe.Formats...),
+		Subtitles:   append([]core.SubtitleTrack(nil), probe.Subtitles...),
+		AudioTracks: append([]core.AudioTrack(nil), probe.AudioTracks...),
 	}
 	return cloned
+}
+
+// audioTracksFromFormats collects distinct languages of audio-only formats
+// (dubbed/translated tracks). Formats without a language tag don't form a
+// separate track.
+func audioTracksFromFormats(formats []core.MediaFormat) []core.AudioTrack {
+	seen := map[string]bool{}
+	tracks := []core.AudioTrack{}
+	for _, format := range formats {
+		if format.VCodec != "" && format.VCodec != "none" {
+			continue
+		}
+		if format.ACodec == "" || format.ACodec == "none" {
+			continue
+		}
+		lang := strings.TrimSpace(format.Language)
+		if lang == "" || seen[lang] {
+			continue
+		}
+		seen[lang] = true
+		tracks = append(tracks, core.AudioTrack{Lang: lang})
+	}
+	slices.SortFunc(tracks, func(a, b core.AudioTrack) int { return strings.Compare(a.Lang, b.Lang) })
+	return tracks
 }
 
 // subtitleTracksFromPayload merges manual subtitles and automatic captions

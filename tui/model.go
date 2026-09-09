@@ -64,6 +64,11 @@ type Model struct {
 	audioProfiles  []core.OutputProfile
 	subTracks      []core.SubtitleTrack
 	subsOffered    bool
+	audioTracks    []core.AudioTrack
+	audioOffered   bool
+	audioCursor    int
+	audioTop       int
+	audioSelected  map[string]bool
 	subCursor      int
 	subTop         int
 	subSelected    map[string]bool
@@ -127,19 +132,20 @@ func newModelWithAPI(ctx context.Context, api AppAPI) Model {
 	loc := api.LoadLocale()
 
 	m := Model{
-		api:         api,
-		baseCtx:     ctx,
-		screen:      scrUpdateCheck,
-		locale:      loc,
-		urlInput:    newInput(inputURL, "https://youtu.be/...", inputW, 300),
-		searchInput: newInput(inputSearch, api.Strings(loc).SearchPlaceholder, inputW, 120),
-		plInput:     newInput(inputPlaylist, api.Strings(loc).PlInputPlaceholder, 38, 100),
-		fragmentIn:  newInput(inputFragment, "1:00-2:30", 28, 32),
-		mode:        core.ModeVideo,
-		profile:     api.DefaultVideoProfile(loc),
-		numWorkers:  1,
-		plSelected:  map[int]bool{},
-		subSelected: map[string]bool{},
+		api:           api,
+		baseCtx:       ctx,
+		screen:        scrUpdateCheck,
+		locale:        loc,
+		urlInput:      newInput(inputURL, "https://youtu.be/...", inputW, 300),
+		searchInput:   newInput(inputSearch, api.Strings(loc).SearchPlaceholder, inputW, 120),
+		plInput:       newInput(inputPlaylist, api.Strings(loc).PlInputPlaceholder, 38, 100),
+		fragmentIn:    newInput(inputFragment, "1:00-2:30", 28, 32),
+		mode:          core.ModeVideo,
+		profile:       api.DefaultVideoProfile(loc),
+		numWorkers:    1,
+		plSelected:    map[int]bool{},
+		subSelected:   map[string]bool{},
+		audioSelected: map[string]bool{},
 	}
 	m.syncLayout()
 	return m

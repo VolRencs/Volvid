@@ -106,3 +106,69 @@ func TestSubtitleCursorStaysInViewport(t *testing.T) {
 		t.Fatal("expected non-empty subtitles view")
 	}
 }
+
+func audioTrackTestModel() Model {
+	stub := newStubAPI()
+	m := newStubModel(stub)
+	m.locale = core.LocaleEN
+	m.audioTracks = []core.AudioTrack{{Lang: "en"}, {Lang: "ru"}}
+	m.audioOffered = true
+	m.audioSelected = map[string]bool{}
+	m.screen = scrAudioTrack
+	m = m.syncMenu()
+	return m
+}
+
+func confirmAudioViaEnter(m Model) Model {
+	model, _ := m.handleAudioTrackKey(subKey("enter"))
+	return model.(Model)
+}
+
+func TestAudioTrackRowZeroSkipsImmediately(t *testing.T) {
+	m := audioTrackTestModel()
+	m.target = core.ParsedTarget{Kind: core.TargetVideo, CanonicalURL: "https://www.youtube.com/watch?v=x"}
+	m.audioSelected = map[string]bool{"en": true}
+	m.audioCursor = 0
+	got := confirmAudioViaEnter(m)
+	if len(got.profile.AudioLangs) != 0 {
+		t.Fatalf("expected no override, got %v", got.profile.AudioLangs)
+	}
+	if got.screen != scrSubsFetch {
+		t.Fatalf("expected subs step fetch, got %v", got.screen)
+	}
+}
+
+func TestAudioTrackMultiSelect(t *testing.T) {
+	m := audioTrackTestModel()
+	m.audioCursor = 1
+	model, _ := m.handleAudioTrackKey(subKey("space")) // en
+	m = model.(Model)
+	m.audioCursor = 2
+	model, _ = m.handleAudioTrackKey(subKey("space")) // ru
+	m = model.(Model)
+
+	got := confirmAudioViaEnter(m)
+	if len(got.profile.AudioLangs) != 2 || got.profile.AudioLangs[0] != "en" || got.profile.AudioLangs[1] != "ru" {
+		t.Fatalf("expected [en ru] in order, got %v", got.profile.AudioLangs)
+	}
+}
+
+func TestAudioTracksLoadedSkipsWhenSingle(t *testing.T) {
+	stub := newStubAPI()
+	m := newStubModel(stub)
+	m.locale = core.LocaleEN
+	model, _ := m.handleAudioTracksLoaded(msgAudioTracksLoaded{tracks: []core.AudioTrack{{Lang: "en"}}, gen: m.opGen})
+	got := model.(Model)
+	if got.audioOffered {
+		t.Fatal("expected no picker for a single track")
+	}
+}
+
+func TestAudioTrackToggleAll(t *testing.T) {
+	m := audioTrackTestModel()
+	model, _ := m.handleAudioTrackKey(subKey("a"))
+	m = model.(Model)
+	if len(m.audioSelected) != 2 {
+		t.Fatalf("expected all selected, got %v", m.audioSelected)
+	}
+}
