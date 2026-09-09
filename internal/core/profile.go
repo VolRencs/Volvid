@@ -25,16 +25,6 @@ func (c FormatChain) Chain() []string {
 	return slices.Clone(c.Formats)
 }
 
-func (c FormatChain) LabelAt(i int, fallback string) string {
-	if i >= 0 && i < len(c.Labels) && c.Labels[i] != "" {
-		return c.Labels[i]
-	}
-	if i >= 0 && i < len(c.Formats) {
-		return c.Formats[i]
-	}
-	return fallback
-}
-
 const (
 	YtdlpBestFormat     = "bestvideo+bestaudio/best"
 	ytdlpWorst360Format = "bestvideo[height<=360]+bestaudio/best[height<=360]"
@@ -65,11 +55,6 @@ type QualityChoice struct {
 	FmtLabels []string
 }
 
-// Chain returns the choice formats as a FormatChain.
-func (q QualityChoice) Chain() FormatChain {
-	return FormatChain{Formats: slices.Clone(q.FmtChain), Labels: slices.Clone(q.FmtLabels)}
-}
-
 // DefaultQualityChoices is the fallback when a live scan is impossible.
 func DefaultQualityChoices() []QualityChoice {
 	return []QualityChoice{
@@ -97,14 +82,6 @@ type OutputProfile struct {
 	RemuxOnly      bool
 	AudioFormat    string
 	AudioQuality   string
-}
-
-// Chain returns the video format chain of the profile.
-func (p OutputProfile) Chain() FormatChain {
-	return FormatChain{
-		Formats: slices.Clone(p.VideoFmtChain),
-		Labels:  slices.Clone(p.VideoFmtLabels),
-	}
 }
 
 type DownloadRequest struct {

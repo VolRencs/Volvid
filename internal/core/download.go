@@ -52,16 +52,3 @@ func FFmpegArgs(deps CheckDepsResult) []string {
 	}
 	return nil
 }
-
-// FFmpegArgsForPath renders the prefix from a bare binary path.
-func FFmpegArgsForPath(bin string) []string {
-	if bin = strings.TrimSpace(bin); bin != "" {
-		return []string{"--ffmpeg-location", bin}
-	}
-	return nil
-}
-
-// ProgressPercent clamps a percent value into [0,100].
-func ProgressPercent(p float64) float64 {
-	return min(100, max(0, p))
-}

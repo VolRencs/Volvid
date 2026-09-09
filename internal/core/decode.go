@@ -2,7 +2,6 @@ package core
 
 import (
 	"encoding/json"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -106,19 +105,6 @@ func MapFloat(m map[string]any, key string) float64 {
 		return 0
 	}
 	return decodeFloat(m[key])
-}
-
-// MapInt reads m[key] tolerantly.
-func MapInt(m map[string]any, key string) int64 {
-	if m == nil {
-		return 0
-	}
-	return decodeInt(m[key])
-}
-
-// FilterStrings keeps items matching keep (nil-safe).
-func FilterStrings(items []string, keep func(string) bool) []string {
-	return slices.DeleteFunc(slices.Clone(items), func(s string) bool { return !keep(s) })
 }
 
 // parseIntOrZero parses CLI/progress integers ("12", " 7 ") -> 0 on error.

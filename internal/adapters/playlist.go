@@ -92,14 +92,6 @@ func cleanMediaEntryID(raw string) string {
 	}
 	return raw
 }
-func playlistEntryFromMap(entry map[string]any, index int, titleFmt string) (core.PlaylistEntry, bool) {
-	title, entryURL, duration, ok := mediaEntryFromMap(entry, index, titleFmt)
-	if !ok {
-		return core.PlaylistEntry{}, false
-	}
-	return core.PlaylistEntry{Index: index, Title: title, URL: entryURL, Duration: duration}, true
-}
-
 func searchResultFromMap(entry map[string]any, index int) (core.SearchResult, bool) {
 	title, entryURL, duration, ok := mediaEntryFromMap(entry, index, "Video %d")
 	if !ok {

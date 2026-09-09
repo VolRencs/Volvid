@@ -32,11 +32,6 @@ type SearchResult struct {
 	Duration int
 }
 
-// ToPlaylistEntry converts a search hit into a playlist entry.
-func (s SearchResult) ToPlaylistEntry(index int) PlaylistEntry {
-	return PlaylistEntry{Index: index, Title: s.Title, URL: s.URL, Duration: s.Duration}
-}
-
 type SessionItem struct {
 	Label string
 	URL   string
