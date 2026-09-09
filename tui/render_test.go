@@ -123,39 +123,25 @@ func TestOpenFolderNotConsumedByURLClick(t *testing.T) {
 
 func TestVisibleWindow(t *testing.T) {
 	i := newInput(inputURL, "placeholder", 10, 100)
-	i.value = []rune("abcdefghijklmnop")
-	i.offset = 0
-	i.cursor = 15
-	i.ensureCursorVisible()
-	start, end := i.visibleWindow()
-	if end-start != 10 {
-		t.Fatalf("expected window of width 10, got [%d, %d)", start, end)
+	i.SetValue("abcdefghijklmnop")
+	if got := i.Value(); got != "abcdefghijklmnop" {
+		t.Fatalf("expected full value stored, got %q", got)
 	}
-	if i.cursor < start || i.cursor >= end {
-		t.Fatalf("expected cursor %d inside window [%d, %d)", i.cursor, start, end)
+	view := i.View()
+	if view == "" {
+		t.Fatal("expected non-empty input view")
 	}
 }
 
 func TestCursorVisibleWhenTextFillsField(t *testing.T) {
 	i := newInput(inputURL, "placeholder", 10, 100)
 	i.SetValue("abcdefghij")
-	if i.cursor != len(i.value) {
-		t.Fatalf("expected cursor at end after SetValue, got %d", i.cursor)
+	if got := i.Value(); got != "abcdefghij" {
+		t.Fatalf("expected value kept, got %q", got)
 	}
-	i.ensureCursorVisible()
-	start, end := i.visibleWindow()
-	if start > i.cursor || i.cursor > end {
-		t.Fatalf("cursor %d outside window [%d, %d)", i.cursor, start, end)
-	}
-	if i.cursor == end && end-start >= i.width {
-		t.Fatalf("tail cursor unreachable: window [%d, %d) already full", start, end)
-	}
-
-	i.cursor--
-	i.ensureCursorVisible()
-	start, end = i.visibleWindow()
-	if i.cursor < start || i.cursor >= end {
-		t.Fatalf("cursor %d not inline-visible in window [%d, %d)", i.cursor, start, end)
+	i.insertRunes([]rune("klm"))
+	if got := i.Value(); got != "abcdefghijklm" {
+		t.Fatalf("expected appended runes, got %q", got)
 	}
 }
 

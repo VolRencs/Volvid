@@ -17,14 +17,14 @@ func (m Model) cardWidth() int {
 	if m.width <= 0 {
 		return cardW
 	}
-	return fitWidth(m.width-4, cardW, 38)
+	return fitWidth(m.width-4, cardW, minCardWidth)
 }
 
 func (m Model) cardPadding() (int, int) {
 	switch {
-	case m.height > 0 && m.height < 28:
+	case m.height > 0 && m.height < breakShortHeight:
 		return 0, 1
-	case m.height > 0 && m.height < 34:
+	case m.height > 0 && m.height < breakMediumHeight:
 		return 0, 2
 	default:
 		return 1, 2
@@ -40,31 +40,31 @@ func (m Model) cardBodyWidth() int {
 }
 
 func (m Model) menuWidth() int {
-	return fitWidth(m.cardBodyWidth(), menuW, 24)
+	return fitWidth(m.cardBodyWidth(), menuW, minMenuWidth)
 }
 
 func (m Model) primaryInputWidth() int {
-	return fitWidth(m.cardBodyWidth()-4, inputW, 18)
+	return fitWidth(m.cardBodyWidth()-4, inputW, minInputWidth)
 }
 
 func (m Model) playlistInputWidth() int {
-	return fitWidth(m.cardBodyWidth()-12, 38, 14)
+	return fitWidth(m.cardBodyWidth()-12, 38, minPlaylistInWidth)
 }
 
 func (m Model) fragmentInputWidth() int {
-	return fitWidth(m.cardBodyWidth()-20, 28, 12)
+	return fitWidth(m.cardBodyWidth()-20, 28, minFragmentInWidth)
 }
 
 func (m Model) progressBarWidth() int {
-	return fitWidth(m.cardBodyWidth()-18, barW, 12)
+	return fitWidth(m.cardBodyWidth()-18, barW, minBarWidth)
 }
 
 func (m Model) playlistTitleWidth() int {
-	return fitWidth(m.cardBodyWidth()-18, 40, 16)
+	return fitWidth(m.cardBodyWidth()-18, 40, minTitleWidth)
 }
 
 func (m Model) slotTitleWidth() int {
-	return fitWidth(m.cardBodyWidth()-14, 46, 18)
+	return fitWidth(m.cardBodyWidth()-14, 46, minSlotTitleWidth)
 }
 
 func (m *Model) syncLayout() {
@@ -75,14 +75,14 @@ func (m *Model) syncLayout() {
 }
 
 func (m Model) sectionGap() string {
-	if m.height > 0 && m.height < 31 {
+	if m.height > 0 && m.height < breakCompactHeight {
 		return "\n"
 	}
 	return "\n\n"
 }
 
 func (m Model) compactHomeLayout() bool {
-	return (m.height > 0 && m.height < 31) || (m.width > 0 && m.width < 78)
+	return (m.height > 0 && m.height < breakCompactHeight) || (m.width > 0 && m.width < breakNarrowWidth)
 }
 
 func (m Model) sectionBodyWidth() int {

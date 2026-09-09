@@ -47,10 +47,21 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 	if len(m.menu.items) == 0 {
 		return m, nil
 	}
-	idx := m.menu.Index()
+	if handler, ok := menuActions[m.screen]; ok {
+		return handler(m, m.menu.Index())
+	}
+	return m, nil
+}
 
-	switch m.screen {
-	case scrUpdateReady:
+// unifyProfileChoice applies a profile chosen from audio/video-output menus.
+func (m Model) unifyProfileChoice(profile core.OutputProfile) (tea.Model, tea.Cmd) {
+	m.profile = profile
+	m.flowErr = ""
+	return m.continueAfterProfileSelection()
+}
+
+var menuActions = map[screen]func(Model, int) (tea.Model, tea.Cmd){
+	scrUpdateReady: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		if idx == 0 {
 			info := m.updateInfo
 			return m.startDependencyDownload(scrUpdateDl, "", true, func(ctx context.Context, ch chan<- core.FileProgress) error {
@@ -58,11 +69,11 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 			})
 		}
 		return m.gotoChecks()
-
-	case scrDepUpdate:
+	},
+	scrDepUpdate: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		return m.activateDependencyAction(idx)
-
-	case scrPlaylistAsk:
+	},
+	scrPlaylistAsk: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		if idx == 0 {
 			m.forceSingle = true
 			return m.startFragmentFlow()
@@ -71,31 +82,29 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		m, ctx = m.nextOpCtx()
 		m.screen = scrPlaylistFetch
 		return m, tea.Batch(fetchPlaylistCmd(m.api, ctx, m.url, m.locale, m.opGen), spinnerTickCmd())
-
-	case scrSummary:
+	},
+	scrSummary: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		if idx == 0 {
 			return m.resetForNext()
 		}
 		return m, tea.Quit
-
-	case scrSearchResults:
+	},
+	scrSearchResults: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		return m.activateSearchResult(idx)
-
-	case scrFragmentChoice:
+	},
+	scrFragmentChoice: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		return m.activateFragmentChoice(idx)
-
-	case scrMode:
+	},
+	scrMode: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		return m.activateModeChoice(idx)
-
-	case scrAudio:
+	},
+	scrAudio: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		if idx < 0 || idx >= len(m.audioProfiles) {
 			return m, nil
 		}
-		m.profile = m.audioProfiles[idx]
-		m.flowErr = ""
-		return m.continueAfterProfileSelection()
-
-	case scrQuality:
+		return m.unifyProfileChoice(m.audioProfiles[idx])
+	},
+	scrQuality: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		if idx < 0 || idx >= len(m.qualityChoices) {
 			return m, nil
 		}
@@ -105,22 +114,19 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 		m.screen = scrVideoOutput
 		m = m.syncMenu()
 		return m, nil
-
-	case scrVideoOutput:
+	},
+	scrVideoOutput: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		if idx < 0 || idx >= len(m.videoProfiles) {
 			return m, nil
 		}
-		m.profile = m.videoProfiles[idx]
-		m.flowErr = ""
-		return m.continueAfterProfileSelection()
-
-	case scrWorkers:
+		return m.unifyProfileChoice(m.videoProfiles[idx])
+	},
+	scrWorkers: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		m.numWorkers = idx + 1
 		return m.startDownload()
-	}
-
-	return m, nil
+	},
 }
+
 func (m Model) activateDependencyAction(idx int) (tea.Model, tea.Cmd) {
 	actions := m.depActions()
 	if idx < 0 || idx >= len(actions) {

@@ -34,10 +34,10 @@ func openDownloadsDirCmd(api AppAPI, path string) tea.Cmd {
 	}
 }
 
-func pickDownloadsDirCmd(ctx context.Context, api AppAPI, path string, locale core.Locale) tea.Cmd {
+func pickDownloadsDirCmd(ctx context.Context, api AppAPI, path string, locale core.Locale, gen int) tea.Cmd {
 	return func() tea.Msg {
 		dir, err := api.PickDir(ctx, path, locale)
-		return msgPickDownloadsDirDone{path: dir, err: err}
+		return msgPickDownloadsDirDone{path: dir, err: err, gen: gen}
 	}
 }
 

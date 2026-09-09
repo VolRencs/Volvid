@@ -11,6 +11,26 @@ const (
 	cardW  = 84
 	inputW = 56
 	menuW  = 72
+
+	// Layout breakpoints and minima (were scattered across layout.go/view.go).
+	breakCompactHeight   = 31
+	breakShortHeight     = 28
+	breakMediumHeight    = 34
+	breakNarrowWidth     = 78
+	breakDepsWideWidth   = 72
+	minCardWidth         = 38
+	minMenuWidth         = 24
+	minInputWidth        = 18
+	minPlaylistInWidth   = 14
+	minFragmentInWidth   = 12
+	minBarWidth          = 12
+	minTitleWidth        = 16
+	minSlotTitleWidth    = 18
+	listIndexWidth       = 3
+	playlistViewportMax  = 14
+	playlistViewportPad  = 18
+	playlistViewportMin  = 4
+	topBarReservedHeight = 3
 )
 
 var (
@@ -28,6 +48,11 @@ var (
 	cBorder      = lipgloss.Color("#3A5480")
 	cBorderSoft  = lipgloss.Color("#26395A")
 	cAccentDim   = lipgloss.Color("#8FB4E3")
+	// Outcome tints for the card border (were hardcoded in widgets.go).
+	cOutcomeFail    = lipgloss.Color("#7A4A55")
+	cOutcomePartial = lipgloss.Color("#7A6A3E")
+	cOutcomeOK      = lipgloss.Color("#2F6B54")
+	cOutcomeActive  = lipgloss.Color("#31518A")
 )
 
 // Semantic styles.
@@ -84,18 +109,17 @@ var (
 	sLink        = lipgloss.NewStyle().Foreground(cPrimarySoft)
 )
 
-// Table styles.
+// Table styles (alias: tables share the label style).
 var (
-	sTableLabel = lipgloss.NewStyle().Foreground(cGray)
+	sTableLabel = sLabel
 	sTableMeta  = lipgloss.NewStyle().Foreground(cDim)
 )
 
 // List styles: shared by option menus and playlist rows.
 var (
-	sListLead        = lipgloss.NewStyle()
-	sListLeadAct     = sListLead.Bold(true).Foreground(cPrimary)
-	sListIndex       = lipgloss.NewStyle().Width(3).Align(lipgloss.Right).Foreground(cDim)
-	sListIndexAct    = lipgloss.NewStyle().Width(3).Align(lipgloss.Right).Bold(true).Foreground(cPrimary)
+	sListLeadAct     = lipgloss.NewStyle().Bold(true).Foreground(cPrimary)
+	sListIndex       = lipgloss.NewStyle().Width(listIndexWidth).Align(lipgloss.Right).Foreground(cDim)
+	sListIndexAct    = lipgloss.NewStyle().Width(listIndexWidth).Align(lipgloss.Right).Bold(true).Foreground(cPrimary)
 	sListItemText    = lipgloss.NewStyle().Foreground(cGray)
 	sListItemTextAct = lipgloss.NewStyle()
 
@@ -128,13 +152,10 @@ var (
 			BorderForeground(cPrimary)
 )
 
-// Download slot styles.
+// Download slot / playlist titles share the inline value style.
 var (
-	sSlotTitle = lipgloss.NewStyle().Inline(true)
-)
-
-var (
-	sPlTitle = lipgloss.NewStyle().Inline(true)
+	sSlotTitle = sValue.Inline(true)
+	sPlTitle   = sValue.Inline(true)
 )
 
 var (

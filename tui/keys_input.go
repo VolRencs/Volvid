@@ -6,6 +6,15 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+type inputTarget uint8
+
+const (
+	inputURL inputTarget = iota
+	inputSearch
+	inputPlaylist
+	inputFragment
+)
+
 func (m Model) handleURLKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+g":

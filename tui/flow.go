@@ -46,9 +46,13 @@ func (m Model) startOpenDownloadsDir() (tea.Model, tea.Cmd) {
 }
 func (m Model) startPickDownloadsDir() (tea.Model, tea.Cmd) {
 	m.urlErr = ""
-	var ctx context.Context
-	m, ctx = m.nextOpCtx()
-	return m, pickDownloadsDirCmd(ctx, m.api, m.api.DownloadsDir(), m.locale)
+	if m.pickCancel != nil {
+		m.pickCancel()
+	}
+	m.pickGen++
+	ctx, cancel := context.WithCancel(m.baseCtx)
+	m.pickCancel = cancel
+	return m, pickDownloadsDirCmd(ctx, m.api, m.api.DownloadsDir(), m.locale, m.pickGen)
 }
 func (m Model) submitURLInput() (tea.Model, tea.Cmd) {
 	rawURL := strings.TrimSpace(m.urlInput.Value())

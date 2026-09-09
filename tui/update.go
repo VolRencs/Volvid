@@ -114,6 +114,10 @@ func (m *Model) updateElapsed() {
 }
 
 func (m Model) handlePickDownloadsDirDone(msg msgPickDownloadsDirDone) (tea.Model, tea.Cmd) {
+	if msg.gen != m.pickGen {
+		return m, nil
+	}
+	m.pickCancel = nil
 	switch {
 	case msg.err == nil && msg.path == "":
 		return m, nil

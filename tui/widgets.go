@@ -20,7 +20,7 @@ type listRowData struct {
 }
 
 func listLabelWidth(width int, data listRowData) int {
-	rowWidth := fitWidth(width, menuW, 24)
+	rowWidth := fitWidth(width, menuW, minMenuWidth)
 	indexWidth := max(2, lipgloss.Width(data.index))
 	labelWidth := rowWidth - 2 - indexWidth - 2
 	if data.active {
@@ -39,7 +39,7 @@ func renderListRow(width int, data listRowData) string {
 	indexStyle := sListIndex.Width(indexWidth)
 	style := sListRow
 	indent := ""
-	marker := sListLead.Render("  ")
+	marker := "  "
 	gap := "  "
 
 	if data.active {
@@ -110,7 +110,7 @@ func renderProgressBar(width int, pct float64) string {
 }
 
 func renderBadge(label, value string) string {
-	return sBadge.Render(sBadgeLabel.Render(label+":") + " " + sBadgeValue.Render(value))
+	return badge(label+":", value, sBadgeValue)
 }
 
 func renderStatusChip(label, value string, ok bool) string {
@@ -130,6 +130,10 @@ func renderActionBadge(key, label string) string {
 		sHelpBracket.Render("[") + sBadgeHotkey.Render(key) + sHelpBracket.Render("]") +
 			" " + sMeta.Render(label),
 	)
+}
+
+func badge(label, value string, valueStyle lipgloss.Style) string {
+	return sBadge.Render(sBadgeLabel.Render(label) + " " + valueStyle.Render(value))
 }
 
 func renderFileLink(path string) string {
@@ -187,13 +191,13 @@ func (m Model) screenCardStyle() lipgloss.Style {
 	border := cBorder
 	switch {
 	case m.screen == scrSummary && m.allDownloadFailed():
-		border = lipgloss.Color("#7A4A55")
+		border = cOutcomeFail
 	case m.screen == scrSummary && m.partiallyDownloadFailed():
-		border = lipgloss.Color("#7A6A3E")
+		border = cOutcomePartial
 	case m.screen == scrSummary:
-		border = lipgloss.Color("#2F6B54")
+		border = cOutcomeOK
 	case m.screen == scrDownload:
-		border = lipgloss.Color("#31518A")
+		border = cOutcomeActive
 	case m.screen == scrUpdateDone:
 		border = cSuccess
 	}

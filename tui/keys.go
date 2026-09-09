@@ -78,64 +78,54 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 func (m Model) handleEscape(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
-	switch m.screen {
-	case scrSearchInput, scrSearchResults, scrSearchFetch:
-		model, cmd := m.exitSearch()
-		return model, cmd, true
-	case scrPlaylistAsk, scrPlaylist:
-		model, cmd := m.exitToURL()
-		return model, cmd, true
-	case scrPlaylistFetch:
-		m = m.cancelOps()
-		model, cmd := m.exitToURL()
-		return model, cmd, true
-	case scrFragmentChoice:
-		model, cmd := m.exitToURL()
-		return model, cmd, true
-	case scrFragmentProbe:
-		m = m.cancelOps()
-		model, cmd := m.exitToURL()
-		return model, cmd, true
-	case scrQualityFetch:
-		m = m.cancelOps()
-		model, cmd := m.startModeSelectionWithNotice("")
-		return model, cmd, true
-	case scrMode:
-		model, cmd := m.exitToURL()
-		return model, cmd, true
-	case scrFragmentInput:
+	// FragmentInput delegates to its input handler (clears error, blurs).
+	if m.screen == scrFragmentInput {
 		model, cmd := m.handleFragmentInputKey(msg)
 		return model, cmd, true
-	case scrAudio:
-		model, cmd := m.startModeSelectionWithNotice("")
-		return model, cmd, true
-	case scrQuality:
-		model, cmd := m.startModeSelectionWithNotice("")
-		return model, cmd, true
-	case scrVideoOutput:
-		model, cmd := m.gotoQualitySelection()
-		return model, cmd, true
-	case scrWorkers:
-		model, cmd := m.gotoWorkersBack()
-		return model, cmd, true
-	case scrDownload:
-		model, cmd := m.cancelDownload()
-		return model, cmd, true
-	case scrSummary:
-		model, cmd := m.resetForNext()
-		return model, cmd, true
-	case scrDepUpdate:
-		model, cmd := m.returnFromDependencyScreen()
-		return model, cmd, true
-	case scrUpdateDl, scrDepDl:
+	}
+	// UpdateDl/DepDl: cancel in-flight progress download.
+	if m.screen == scrUpdateDl || m.screen == scrDepDl {
 		if m.depCancel != nil {
 			m.depCancel()
 		}
 		return m, nil, true
-	default:
-		return m, nil, false
 	}
+	if handler, ok := escHandlers[m.screen]; ok {
+		model, cmd := handler(m)
+		return model, cmd, true
+	}
+	return m, nil, false
 }
+
+var escHandlers = map[screen]func(Model) (tea.Model, tea.Cmd){
+	scrSearchInput:    func(m Model) (tea.Model, tea.Cmd) { return m.exitSearch() },
+	scrSearchResults:  func(m Model) (tea.Model, tea.Cmd) { return m.exitSearch() },
+	scrSearchFetch:    func(m Model) (tea.Model, tea.Cmd) { return m.exitSearch() },
+	scrPlaylistAsk:    func(m Model) (tea.Model, tea.Cmd) { return m.exitToURL() },
+	scrPlaylist:       func(m Model) (tea.Model, tea.Cmd) { return m.exitToURL() },
+	scrFragmentChoice: func(m Model) (tea.Model, tea.Cmd) { return m.exitToURL() },
+	scrMode:           func(m Model) (tea.Model, tea.Cmd) { return m.exitToURL() },
+	scrPlaylistFetch: func(m Model) (tea.Model, tea.Cmd) {
+		m = m.cancelOps()
+		return m.exitToURL()
+	},
+	scrFragmentProbe: func(m Model) (tea.Model, tea.Cmd) {
+		m = m.cancelOps()
+		return m.exitToURL()
+	},
+	scrQualityFetch: func(m Model) (tea.Model, tea.Cmd) {
+		m = m.cancelOps()
+		return m.startModeSelectionWithNotice("")
+	},
+	scrAudio:       func(m Model) (tea.Model, tea.Cmd) { return m.startModeSelectionWithNotice("") },
+	scrQuality:     func(m Model) (tea.Model, tea.Cmd) { return m.startModeSelectionWithNotice("") },
+	scrVideoOutput: func(m Model) (tea.Model, tea.Cmd) { return m.gotoQualitySelection() },
+	scrWorkers:     func(m Model) (tea.Model, tea.Cmd) { return m.gotoWorkersBack() },
+	scrDownload:    func(m Model) (tea.Model, tea.Cmd) { return m.cancelDownload() },
+	scrSummary:     func(m Model) (tea.Model, tea.Cmd) { return m.resetForNext() },
+	scrDepUpdate:   func(m Model) (tea.Model, tea.Cmd) { return m.returnFromDependencyScreen() },
+}
+
 func isOpenFolderKey(msg tea.KeyPressMsg) bool {
 	switch msg.String() {
 	case "o", "O", "щ", "Щ":

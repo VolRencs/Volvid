@@ -34,7 +34,11 @@ func (m Model) viewHomeSession() string {
 	if m.compactHomeLayout() && len(m.session.Items) == 0 {
 		return ""
 	}
+	return m.sessionBlock(3)
+}
 
+// sessionBlock renders the shared session history section (limit<=0 = all).
+func (m Model) sessionBlock(limit int) string {
 	stats := renderStatusChip(m.u().HomeStatSuccess, strconv.Itoa(m.session.Success), true) + "  " +
 		renderStatusChip(m.u().HomeStatFailed, strconv.Itoa(m.session.Failed), false)
 	if len(m.session.Items) == 0 {
@@ -42,8 +46,8 @@ func (m Model) viewHomeSession() string {
 	}
 
 	items := m.session.Items
-	if len(items) > 3 {
-		items = items[len(items)-3:]
+	if limit > 0 && len(items) > limit {
+		items = items[len(items)-limit:]
 	}
 
 	width := max(18, m.cardBodyWidth()/2)
@@ -80,7 +84,7 @@ func (m Model) renderPlaylistItems() string {
 	end := min(len(entries), start+m.playlistViewportHeight())
 	indexWidth := max(2, len(strconv.Itoa(len(entries))))
 	rowWidth := m.cardBodyWidth()
-	staticWidth := lipgloss.Width(sListLead.Render("  ")) + lipgloss.Width(iconDotOn) + indexWidth + 14
+	staticWidth := lipgloss.Width("  ") + lipgloss.Width(iconDotOn) + indexWidth + 14
 	titleWidth := max(1, min(m.playlistTitleWidth(), rowWidth-staticWidth))
 
 	lines := make([]string, 0, end-start)

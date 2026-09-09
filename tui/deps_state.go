@@ -6,6 +6,29 @@ import (
 	"volvid/internal/i18n"
 )
 
+type depScreenMode uint8
+
+const (
+	depModeStartup depScreenMode = iota + 1
+	depModeManage
+)
+
+type depActionKind uint8
+
+const (
+	depActionInstall depActionKind = iota + 1
+	depActionContinue
+	depActionRefresh
+	depActionBack
+	depActionExit
+)
+
+type depAction struct {
+	Kind  depActionKind
+	Key   string
+	Label string
+}
+
 func (m Model) depActions() []depAction {
 	actions := make([]depAction, 0, 5)
 	for _, dep := range m.deps.ActionableDependencies() {

@@ -88,6 +88,11 @@ type Model struct {
 	opCancel context.CancelFunc
 	opGen    int
 
+	// pickGen/pickCancel isolate the folder-picker modal from opGen so
+	// opening the picker never cancels in-flight network requests.
+	pickCancel context.CancelFunc
+	pickGen    int
+
 	dlCancel    context.CancelFunc
 	depCancel   context.CancelFunc
 	dlCancelled bool

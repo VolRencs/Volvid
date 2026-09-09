@@ -43,7 +43,7 @@ func (m Model) buildScreen(body string) string {
 		return topBar + "\n\n" + body + "\n\n" + footer
 	}
 
-	mainH := max(1, m.height-3)
+	mainH := max(1, m.height-topBarReservedHeight)
 	vertical := lipgloss.Center
 	if lipgloss.Height(body) >= mainH {
 		vertical = lipgloss.Top
@@ -100,13 +100,16 @@ func (m Model) depBadge() string {
 		renderStatusChip("yt-dlp", versionBadgeValue(m.deps.YTDLP.Version), m.deps.YTDLP.Available),
 		renderStatusChip("ffmpeg", versionBadgeValue(m.deps.FFmpeg.Version), m.deps.FFmpeg.Available),
 	}
+	if m.depRefreshing {
+		chips = append(chips, renderActionBadge("…", m.u().DepsRefreshing))
+	}
 	var action string
 	if m.canOpenDependencyScreen() {
 		action = renderActionBadge("Ctrl+U", m.u().HelpDeps)
 	}
 
 	parts := chips
-	if action != "" && m.width >= 72 {
+	if action != "" && m.width >= breakDepsWideWidth {
 		parts = append(parts, action)
 	}
 	joined := strings.Join(parts, "  ")
@@ -117,7 +120,7 @@ func (m Model) depBadge() string {
 		}
 		return joined
 	}
-	if m.width < 72 {
+	if m.width < breakDepsWideWidth {
 		if action != "" {
 			return action
 		}
@@ -138,10 +141,7 @@ func (m Model) screenView() screenView {
 
 	switch m.screen {
 	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch, scrSearchFetch, scrFragmentProbe:
-		return screenView{
-			title: m.stageTitle(),
-			body:  m.renderSpinnerScreen(m.stageTitle()),
-		}
+		return m.loadingScreen(m.stageTitle())
 
 	case scrUpdateReady:
 		subtitle := strings.TrimSpace(fmt.Sprintf(u.CurrentVerShort, m.api.AppVersion()))
@@ -210,20 +210,18 @@ func (m Model) screenView() screenView {
 		}
 
 	case scrSearchInput:
-		return screenView{
-			title:      strings.TrimSpace(u.SearchTitle),
-			subtitle:   strings.TrimSpace(u.SearchPrompt),
-			body:       renderInputField(m.searchInput),
-			notice:     m.searchErr,
-			noticeKind: noticeError,
-			bindings:   []binding{m.kbEnter(), m.kbEsc()},
-		}
+		return m.inputScreen(
+			strings.TrimSpace(u.SearchTitle),
+			strings.TrimSpace(u.SearchPrompt),
+			renderInputField(m.searchInput),
+			m.searchErr,
+		)
 
 	case scrSearchResults:
-		return m.choiceScreen(u.SearchTitle, m.searchQuery, "")
+		return m.menuScreen(u.SearchTitle, m.searchQuery, "")
 
 	case scrPlaylistAsk:
-		return m.choiceScreen(u.ModeTitle, m.url, u.PlaylistMixWarn)
+		return m.menuScreen(u.ModeTitle, m.url, u.PlaylistMixWarn)
 
 	case scrPlaylist:
 		return screenView{
@@ -236,28 +234,26 @@ func (m Model) screenView() screenView {
 		}
 
 	case scrFragmentChoice:
-		return m.choiceScreen(u.FragmentTitle, m.fragmentChoiceSubtitle(), m.flowErr)
+		return m.menuScreen(u.FragmentTitle, m.fragmentChoiceSubtitle(), m.flowErr)
 
 	case scrFragmentInput:
-		return screenView{
-			title:      strings.TrimSpace(u.FragmentInputTitle),
-			subtitle:   strings.TrimSpace(u.FragmentInputPrompt),
-			body:       m.renderInputWithHint(m.fragmentIn, i18n.FragmentInputHintFor(m.locale, m.mediaDuration)),
-			notice:     m.fragmentErr,
-			noticeKind: noticeError,
-			bindings:   []binding{m.kbEnter(), m.kbEsc()},
-		}
+		return m.inputScreen(
+			strings.TrimSpace(u.FragmentInputTitle),
+			strings.TrimSpace(u.FragmentInputPrompt),
+			m.renderInputWithHint(m.fragmentIn, i18n.FragmentInputHintFor(m.locale, m.mediaDuration)),
+			m.fragmentErr,
+		)
 
 	case scrMode:
-		return m.choiceScreen(u.ModeTitle, "", m.flowErr)
+		return m.menuScreen(u.ModeTitle, "", m.flowErr)
 	case scrAudio:
-		return m.choiceScreen(u.AudioTitle, "", m.flowErr)
+		return m.menuScreen(u.AudioTitle, "", m.flowErr)
 	case scrQuality:
-		return m.choiceScreen(u.QualityTitle, "", m.flowErr)
+		return m.menuScreen(u.QualityTitle, "", m.flowErr)
 	case scrVideoOutput:
-		return m.choiceScreen(u.VideoOutputTitle, m.profile.Label, m.flowErr)
+		return m.menuScreen(u.VideoOutputTitle, m.profile.Label, m.flowErr)
 	case scrWorkers:
-		return m.choiceScreen(u.ParallelFmt, fmt.Sprintf(u.WorkersQueuedFmt, len(m.dlEntries)), "")
+		return m.menuScreen(u.ParallelFmt, fmt.Sprintf(u.WorkersQueuedFmt, len(m.dlEntries)), "")
 
 	case scrDownload:
 		return screenView{
@@ -292,7 +288,16 @@ func (m Model) screenView() screenView {
 		body:  m.renderSpinnerScreen(m.stageTitle()),
 	}
 }
-func (m Model) choiceScreen(title, subtitle, notice string) screenView {
+
+// loadingScreen is the single shared spinner screen for all fetch states.
+func (m Model) loadingScreen(title string) screenView {
+	return screenView{
+		title: title,
+		body:  m.renderSpinnerScreen(title),
+	}
+}
+
+func (m Model) menuScreen(title, subtitle, notice string) screenView {
 	kind := noticeWarn
 	if notice == "" {
 		kind = noticeNone
@@ -305,6 +310,38 @@ func (m Model) choiceScreen(title, subtitle, notice string) screenView {
 		noticeKind: kind,
 		bindings:   m.menuBindings(m.kbEsc()),
 	}
+}
+
+// inputScreen is the single shared text-input screen.
+func (m Model) inputScreen(title, subtitle, body, notice string) screenView {
+	return screenView{
+		title:      strings.TrimSpace(title),
+		subtitle:   strings.TrimSpace(subtitle),
+		body:       body,
+		notice:     notice,
+		noticeKind: noticeError,
+		bindings:   []binding{m.kbEnter(), m.kbEsc()},
+	}
+}
+
+// progressMeta renders the shared "pct · bytes · speed" meta line used by
+// dependency progress and download slots.
+func progressMeta(locale core.Locale, pct float64, doneB, totalB int64, speed string) string {
+	if doneB <= 0 && totalB <= 0 && strings.TrimSpace(speed) == "" {
+		return sOk.Render(fmt.Sprintf("%.1f%%", pct))
+	}
+	return sOk.Render(fmt.Sprintf("%.1f%%", pct)) + "  " + fmtStats(locale, doneB, totalB, speed)
+}
+
+// counterLine renders the shared "selected/total · queue · elapsed" line.
+func (m Model) counterLine(done, failed, total int) string {
+	queued := max(0, total-(done+failed))
+	return fmt.Sprintf(m.u().QueueFmt, queued) + "  ·  " + formatElapsed(m.dlElapsed)
+}
+
+// locationBlock renders the shared downloads-folder section.
+func (m Model) locationBlock(title string) string {
+	return m.renderSectionBlock(title, renderFileLink(m.api.DownloadsDir()))
 }
 
 // ---------- key binding labels ----------
@@ -391,8 +428,7 @@ func (m Model) downloadTitle() string {
 }
 func (m Model) downloadSubtitle() string {
 	if m.dlTotal > 0 {
-		queued := max(0, m.dlTotal-(m.dlDone+m.dlFailed))
-		return fmt.Sprintf(m.u().QueueFmt, queued) + "  ·  " + formatElapsed(m.dlElapsed)
+		return m.counterLine(m.dlDone, m.dlFailed, m.dlTotal)
 	}
 	return formatElapsed(m.dlElapsed)
 }

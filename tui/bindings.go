@@ -31,24 +31,40 @@ func (m Model) menuBindings(extra ...binding) []binding {
 	bindings := []binding{m.kbMove(), m.kbDigits(), m.kbEnter()}
 	return append(bindings, extra...)
 }
-func (m Model) playlistBindings() []binding {
-	if m.plInputMode {
-		return []binding{m.kbEnter(), m.kbEsc()}
-	}
-	return []binding{m.kbMove(), m.kbSpace(), m.kbEnter(), m.kbAll(), m.kbSlash(), m.kbEsc()}
-}
-func (m Model) summaryBindings() []binding {
-	bindings := []binding{m.kbMove(), m.kbEnter()}
-	if m.singleOK || m.dlDone > 0 {
-		bindings = append(bindings, m.kbOpenFolder())
-	}
-	return bindings
-}
-func (m Model) depBindings() []binding {
-	if m.depMode == depModeManage {
+
+// hintsFor is the single binding source per screen; the older
+// playlist/summary/dep helpers below delegate to it.
+func (m Model) hintsFor() []binding {
+	switch m.screen {
+	case scrPlaylist:
+		if m.plInputMode {
+			return []binding{m.kbEnter(), m.kbEsc()}
+		}
+		return []binding{m.kbMove(), m.kbSpace(), m.kbEnter(), m.kbAll(), m.kbSlash(), m.kbEsc()}
+	case scrSummary:
+		bindings := []binding{m.kbMove(), m.kbEnter()}
+		if m.singleOK || m.dlDone > 0 {
+			bindings = append(bindings, m.kbOpenFolder())
+		}
+		return bindings
+	case scrDepUpdate:
+		if m.depMode == depModeManage {
+			return m.menuBindings(m.kbEsc())
+		}
+		return m.menuBindings()
+	default:
 		return m.menuBindings(m.kbEsc())
 	}
-	return m.menuBindings()
+}
+
+func (m Model) playlistBindings() []binding {
+	return m.hintsFor()
+}
+func (m Model) summaryBindings() []binding {
+	return m.hintsFor()
+}
+func (m Model) depBindings() []binding {
+	return m.hintsFor()
 }
 
 // ---------- chrome pieces ----------

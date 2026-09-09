@@ -7,6 +7,18 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+type slotState struct {
+	title  string
+	pct    float64
+	doneB  int64
+	totalB int64
+	speed  string
+	label  string
+	proc   bool
+	done   bool
+	failed bool
+}
+
 func (m Model) viewDownload() string {
 	u := m.u()
 	var parts []string
@@ -77,8 +89,7 @@ func (m Model) viewSlot(index int, slot slotState, withBadge bool) string {
 	default:
 		lines = append(lines,
 			renderProgressBar(m.progressBarWidth(), slot.pct)+"  "+
-				sOk.Render(fmt.Sprintf("%.1f%%", slot.pct))+"  "+
-				fmtStats(m.locale, slot.doneB, slot.totalB, slot.speed),
+				progressMeta(m.locale, slot.pct, slot.doneB, slot.totalB, slot.speed),
 		)
 	}
 	return strings.Join(lines, "\n")
@@ -88,7 +99,7 @@ func (m Model) viewSummary() string {
 	var parts []string
 
 	if m.singleOK || m.dlDone > 0 {
-		parts = append(parts, m.renderSectionBlock(m.u().SummaryLocation, renderFileLink(m.api.DownloadsDir())))
+		parts = append(parts, m.locationBlock(m.u().SummaryLocation))
 	}
 	if m.dlTotal > 0 {
 		counts := renderStatusChip(m.u().SummaryPlaylistTitle,
