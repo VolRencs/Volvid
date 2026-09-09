@@ -69,8 +69,9 @@ func buildFirefoxUserAgent() string {
 }
 
 func buildDownloadCommandArgs(req core.DownloadRequest, deps core.CheckDepsResult, sourceURL, outputTemplate, format string, extra []string) ([]string, error) {
+	// No --ffmpeg-location here: streamYtdlp wraps these args with
+	// ytdlpBaseArgs, which already carries the single shared prefix.
 	args := make([]string, 0, 20+len(extra))
-	args = append(args, core.FFmpegArgs(deps)...)
 
 	modeArgs, err := downloadModeArgs(req.Profile, format)
 	if err != nil {

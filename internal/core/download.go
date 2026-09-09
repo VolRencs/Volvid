@@ -40,14 +40,9 @@ type FileProgress struct {
 	Err    error
 }
 
-// FFmpegLocation returns the ffmpeg binary path from deps.
-func FFmpegLocation(deps CheckDepsResult) string {
-	return strings.TrimSpace(deps.FFmpeg.Path)
-}
-
 // FFmpegArgs renders the shared --ffmpeg-location prefix for yt-dlp.
 func FFmpegArgs(deps CheckDepsResult) []string {
-	if bin := FFmpegLocation(deps); bin != "" {
+	if bin := strings.TrimSpace(deps.FFmpeg.Path); bin != "" {
 		return []string{"--ffmpeg-location", bin}
 	}
 	return nil

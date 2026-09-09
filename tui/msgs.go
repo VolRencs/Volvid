@@ -35,15 +35,12 @@ type (
 		err     error
 		gen     int
 	}
-	msgSubtitlesLoaded struct {
-		tracks []core.SubtitleTrack
-		err    error
-		gen    int
-	}
-	msgAudioTracksLoaded struct {
-		tracks []core.AudioTrack
-		err    error
-		gen    int
+	msgTracksLoaded struct {
+		audioTracks []core.AudioTrack
+		audioErr    error
+		subTracks   []core.SubtitleTrack
+		subErr      error
+		gen         int
 	}
 	msgFragmentDuration struct {
 		duration int

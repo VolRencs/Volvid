@@ -97,11 +97,6 @@ const (
 	SubEmbed
 )
 
-// WantsAudioTrack reports whether specific audio languages are requested.
-func (p OutputProfile) WantsAudioTrack() bool {
-	return len(p.AudioLangs) > 0
-}
-
 // WantsSubtitles reports whether the profile embeds subtitle tracks.
 func (p OutputProfile) WantsSubtitles() bool {
 	return p.Mode == ModeVideo && p.SubMode == SubEmbed && len(p.SubLangs) > 0
@@ -157,12 +152,6 @@ func (p OutputProfile) NeedsVideoTranscode() bool {
 // NeedsFFmpeg reports whether the profile/fragment combination needs ffmpeg.
 func (p OutputProfile) NeedsFFmpeg(fragment *DownloadFragment) bool {
 	return p.Mode == ModeAudio || fragment != nil || p.WantsSubtitles() || p.RequiresVideoPostprocessing()
-}
-
-// ProfileRequiresFFmpeg reports whether the profile/fragment combination
-// needs ffmpeg (audio extraction, section cuts, transcoding).
-func ProfileRequiresFFmpeg(profile OutputProfile, fragment *DownloadFragment) bool {
-	return profile.NeedsFFmpeg(fragment)
 }
 
 // OutputProfileLabels extracts menu labels from profiles.

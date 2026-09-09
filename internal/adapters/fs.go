@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -70,35 +71,7 @@ func writeStagedFile(src io.Reader, dest string, perm os.FileMode, maxBytes int6
 }
 
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".cfg-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := os.Chmod(tmpName, perm); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	return nil
+	return writeStagedFile(bytes.NewReader(data), path, perm, -1)
 }
 
 func prepareDir(path string) (string, error) {

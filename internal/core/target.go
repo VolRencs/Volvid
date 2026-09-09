@@ -71,7 +71,7 @@ func ParseTarget(raw string) (ParsedTarget, error) {
 	if err := parseTargetIDs(&target, host, u); err != nil {
 		return ParsedTarget{}, err
 	}
-	target.URLStartAt, target.HasURLStart = parseURLStartAt(raw)
+	target.URLStartAt, target.HasURLStart = parseURLStartAtURL(u)
 	target.CanonicalURL = canonicalTargetURL(target)
 	return target, nil
 }
@@ -150,20 +150,10 @@ func cleanTargetID(raw string) string {
 	return value
 }
 
-func parseURLStartAt(rawURL string) (int, bool) {
-	normalized := strings.TrimSpace(rawURL)
-	if normalized == "" {
+func parseURLStartAtURL(u *url.URL) (int, bool) {
+	if u == nil {
 		return 0, false
 	}
-	if !strings.Contains(normalized, "://") {
-		normalized = "https://" + normalized
-	}
-
-	u, err := url.Parse(normalized)
-	if err != nil {
-		return 0, false
-	}
-
 	if secs, ok := parseStartFromQuery(u.Query()); ok {
 		return secs, true
 	}

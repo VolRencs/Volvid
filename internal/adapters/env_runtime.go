@@ -86,8 +86,11 @@ const (
 	playlistFetchTimeout    = 15 * time.Minute
 	maxDetailedQualityURLs  = 5
 	maxParallelQualityScans = 6
-	runtimeDepsTTL          = 15 * time.Second
-	probeCacheTTL           = 10 * time.Minute
+	// Runtime deps (cookies/js-runtime) change rarely mid-session and every
+	// refresh stats browser profiles; installs invalidate the cache
+	// explicitly, so a long TTL is safe.
+	runtimeDepsTTL = 5 * time.Minute
+	probeCacheTTL  = 10 * time.Minute
 )
 
 const (
@@ -145,8 +148,15 @@ type depCaches struct {
 	firefoxUserAgentOnce  sync.Once
 	firefoxUserAgentCache string
 
-	ffmpegEncodersMu    sync.Mutex
-	ffmpegEncodersValue map[string]map[string]bool
+	ffmpegEncodersMu     sync.Mutex
+	ffmpegEncodersValue  map[string]map[string]bool
+	ffmpegEncodersFlight map[string]*encoderFlight
+}
+
+// encoderFlight dedupes concurrent `ffmpeg -encoders` probes for one binary.
+type encoderFlight struct {
+	done     chan struct{}
+	encoders map[string]bool
 }
 
 type Env struct {
@@ -241,6 +251,7 @@ func (env *Env) invalidateFFmpegEncoders() {
 	env.ffmpegEncodersMu.Lock()
 	defer env.ffmpegEncodersMu.Unlock()
 	clear(env.ffmpegEncodersValue)
+	clear(env.ffmpegEncodersFlight)
 }
 
 const (

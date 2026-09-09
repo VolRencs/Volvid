@@ -125,13 +125,7 @@ var escHandlers = map[screen]func(Model) (tea.Model, tea.Cmd){
 		m = m.cancelOps()
 		return m.startModeSelectionWithNotice("")
 	},
-	scrSubsFetch: func(m Model) (tea.Model, tea.Cmd) {
-		m = m.cancelOps()
-		m.screen = scrVideoOutput
-		m = m.syncMenu()
-		return m, nil
-	},
-	scrAudioTrackFetch: func(m Model) (tea.Model, tea.Cmd) {
+	scrTracksFetch: func(m Model) (tea.Model, tea.Cmd) {
 		m = m.cancelOps()
 		m.screen = scrVideoOutput
 		m = m.syncMenu()

@@ -35,33 +35,18 @@ func (m Model) gotoWorkersBack() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// startAudioTrackStep resolves dubbed audio tracks after the video output
-// profile is picked. With fewer than 2 tracks (or on error) it continues
-// silently to subtitles; otherwise it opens the audio track picker.
-func (m Model) startAudioTrackStep() (tea.Model, tea.Cmd) {
-	m.audioTracks = nil
-	m.audioOffered = false
-	urls := m.qualityScanURLs()
-	if len(urls) == 0 {
-		return m.startSubsStep()
-	}
-	return m.startOpScreen(scrAudioTrackFetch, func(ctx context.Context, gen int) tea.Cmd {
-		return loadAudioTracksCmd(m.api, ctx, urls[0], gen)
-	})
-}
-
-// startSubsStep resolves available subtitle tracks after the video output
-// profile is picked. Without tracks (or on error) it continues silently;
-// otherwise it opens the subtitle picker.
-func (m Model) startSubsStep() (tea.Model, tea.Cmd) {
-	m.subTracks = nil
-	m.subsOffered = false
+// startTracksStep resolves dubbed audio tracks and subtitles in one fetch
+// after the video output profile is picked. Both hit the probe cache, so
+// this is a single spinner; each picker opens only if it has tracks.
+func (m Model) startTracksStep() (tea.Model, tea.Cmd) {
+	m.audioTracks, m.audioOffered = nil, false
+	m.subTracks, m.subsOffered = nil, false
 	urls := m.qualityScanURLs()
 	if len(urls) == 0 {
 		return m.continueAfterProfileSelection()
 	}
-	return m.startOpScreen(scrSubsFetch, func(ctx context.Context, gen int) tea.Cmd {
-		return loadSubtitlesCmd(m.api, ctx, urls[0], gen)
+	return m.startOpScreen(scrTracksFetch, func(ctx context.Context, gen int) tea.Cmd {
+		return loadTracksCmd(m.api, ctx, urls[0], gen)
 	})
 }
 func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) {

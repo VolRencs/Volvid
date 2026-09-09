@@ -83,11 +83,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case msgQualityScanned:
 		return m.handleQualityScanned(msg)
 
-	case msgSubtitlesLoaded:
-		return m.handleSubtitlesLoaded(msg)
-
-	case msgAudioTracksLoaded:
-		return m.handleAudioTracksLoaded(msg)
+	case msgTracksLoaded:
+		return m.handleTracksLoaded(msg)
 
 	case msgFragmentDuration:
 		return m.handleFragmentDurationMsg(msg)
@@ -207,42 +204,35 @@ func (m Model) handleQualityScanned(msg msgQualityScanned) (tea.Model, tea.Cmd) 
 	return m, nil
 }
 
-func (m Model) handleSubtitlesLoaded(msg msgSubtitlesLoaded) (tea.Model, tea.Cmd) {
+func (m Model) handleTracksLoaded(msg msgTracksLoaded) (tea.Model, tea.Cmd) {
 	if msg.gen != m.opGen {
 		return m, nil
 	}
 	m = m.clearOpCancel()
-	if msg.err != nil || len(msg.tracks) == 0 {
-		m.subTracks = nil
-		m.subsOffered = false
+
+	m.audioTracks, m.audioOffered = nil, false
+	if msg.audioErr == nil && len(msg.audioTracks) >= 2 {
+		m.audioTracks = msg.audioTracks
+		m.audioOffered = true
+		m.audioCursor, m.audioTop = 0, 0
+		m.audioSelected = map[string]bool{}
+	}
+	m.subTracks, m.subsOffered = nil, false
+	if msg.subErr == nil && len(msg.subTracks) > 0 {
+		m.subTracks = msg.subTracks
+		m.subsOffered = true
+		m.subCursor, m.subTop = 0, 0
+		m.subSelected = map[string]bool{}
+	}
+
+	switch {
+	case m.audioOffered:
+		m.screen = scrAudioTrack
+	case m.subsOffered:
+		m.screen = scrSubtitles
+	default:
 		return m.continueAfterProfileSelection()
 	}
-	m.subTracks = msg.tracks
-	m.subsOffered = true
-	m.subCursor = 0
-	m.subTop = 0
-	m.subSelected = map[string]bool{}
-	m.screen = scrSubtitles
-	m = m.syncMenu()
-	return m, nil
-}
-
-func (m Model) handleAudioTracksLoaded(msg msgAudioTracksLoaded) (tea.Model, tea.Cmd) {
-	if msg.gen != m.opGen {
-		return m, nil
-	}
-	m = m.clearOpCancel()
-	if msg.err != nil || len(msg.tracks) < 2 {
-		m.audioTracks = nil
-		m.audioOffered = false
-		return m.startSubsStep()
-	}
-	m.audioTracks = msg.tracks
-	m.audioOffered = true
-	m.audioCursor = 0
-	m.audioTop = 0
-	m.audioSelected = map[string]bool{}
-	m.screen = scrAudioTrack
 	m = m.syncMenu()
 	return m, nil
 }

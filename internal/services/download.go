@@ -47,7 +47,7 @@ func PlanDownload(
 	if !deps.YTDLP.Available {
 		return DownloadPlan{}, &MissingDependencyError{Name: deps.YTDLP.Name}
 	}
-	if core.ProfileRequiresFFmpeg(profile, fragment) && !deps.FFmpeg.Available {
+	if profile.NeedsFFmpeg(fragment) && !deps.FFmpeg.Available {
 		return DownloadPlan{}, &MissingDependencyError{Name: deps.FFmpeg.Name}
 	}
 

@@ -279,20 +279,41 @@ func detectFFmpegVideoEncoders(env *Env, ctx context.Context, ffmpeg string) map
 	if env.ffmpegEncodersValue == nil {
 		env.ffmpegEncodersValue = map[string]map[string]bool{}
 	}
+	if env.ffmpegEncodersFlight == nil {
+		env.ffmpegEncodersFlight = map[string]*encoderFlight{}
+	}
 	if encoders, ok := env.ffmpegEncodersValue[ffmpeg]; ok {
 		env.ffmpegEncodersMu.Unlock()
 		return maps.Clone(encoders)
 	}
+	if flight, ok := env.ffmpegEncodersFlight[ffmpeg]; ok {
+		env.ffmpegEncodersMu.Unlock()
+		if ctx == nil {
+			<-flight.done
+			return maps.Clone(flight.encoders)
+		}
+		select {
+		case <-flight.done:
+			return maps.Clone(flight.encoders)
+		case <-ctx.Done():
+			return map[string]bool{}
+		}
+	}
+	flight := &encoderFlight{done: make(chan struct{})}
+	env.ffmpegEncodersFlight[ffmpeg] = flight
 	env.ffmpegEncodersMu.Unlock()
 
 	out, err := commandOutput(ctx, ffmpegEncodersTimeout, ffmpeg, "-hide_banner", "-encoders")
-	if err != nil {
-		return map[string]bool{}
+	encoders := map[string]bool{}
+	if err == nil {
+		encoders = parseFFmpegVideoEncoders(string(out))
 	}
-	encoders := parseFFmpegVideoEncoders(string(out))
 
 	env.ffmpegEncodersMu.Lock()
 	env.ffmpegEncodersValue[ffmpeg] = encoders
+	flight.encoders = encoders
+	close(flight.done)
+	delete(env.ffmpegEncodersFlight, ffmpeg)
 	env.ffmpegEncodersMu.Unlock()
 	return maps.Clone(encoders)
 }

@@ -2,10 +2,10 @@ package adapters
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"volvid/internal/core"
 	"volvid/internal/i18n"
@@ -123,18 +123,15 @@ func streamProtocolArgs() []string {
 	}
 }
 func parseMovedOutputPath(line string, result *downloadResult) bool {
-	if result == nil || !strings.HasPrefix(line, ytdlpLineMoved) {
+	if result == nil {
 		return false
 	}
-	result.OutputPath = parseJSONStringWithPrefix(line, ytdlpLineMoved)
-	return strings.TrimSpace(result.OutputPath) != ""
-}
-func parseJSONStringWithPrefix(line, prefix string) string {
-	rest, ok := strings.CutPrefix(line, prefix)
+	rest, ok := strings.CutPrefix(line, ytdlpLineMoved)
 	if !ok {
-		return ""
+		return false
 	}
-	return parseJSONStringField(rest)
+	result.OutputPath = parseJSONStringField(rest)
+	return strings.TrimSpace(result.OutputPath) != ""
 }
 func parseBeforeDownload(line string) (string, string) {
 	payload := strings.TrimPrefix(line, ytdlpLineStart)
@@ -179,11 +176,12 @@ func parseJSONStringField(raw string) string {
 	if raw == "" {
 		return ""
 	}
-	var value string
-	if err := json.Unmarshal([]byte(raw), &value); err != nil {
-		return ""
+	// yt-dlp %(..)j emits a JSON-quoted string: Unquote avoids a full
+	// json.Unmarshal per progress line.
+	if value, err := strconv.Unquote(raw); err == nil {
+		return strings.TrimSpace(value)
 	}
-	return strings.TrimSpace(value)
+	return raw
 }
 func formatProgressSpeed(raw string, l core.Locale) string {
 	value := int64(core.ParsePercentOrZero(raw))

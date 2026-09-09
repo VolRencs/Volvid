@@ -66,15 +66,10 @@ func normalizeCleanupPath(c *downloadCleanup, path string) (string, bool) {
 	if c == nil {
 		return "", false
 	}
-	path = strings.TrimSpace(path)
-	if path == "" {
+	abs := cleanAbsPath(path)
+	if abs == "" || !filepath.IsAbs(abs) {
 		return "", false
 	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", false
-	}
-	abs = filepath.Clean(abs)
 	c.mu.Lock()
 	root := c.root
 	c.mu.Unlock()

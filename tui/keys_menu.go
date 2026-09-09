@@ -121,7 +121,7 @@ var menuActions = map[screen]func(Model, int) (tea.Model, tea.Cmd){
 		}
 		m.profile = m.videoProfiles[idx]
 		m.flowErr = ""
-		return m.startAudioTrackStep()
+		return m.startTracksStep()
 	},
 	scrWorkers: func(m Model, idx int) (tea.Model, tea.Cmd) {
 		m.numWorkers = idx + 1

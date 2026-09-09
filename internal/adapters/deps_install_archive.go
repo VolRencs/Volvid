@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"os/exec"
@@ -230,35 +229,15 @@ func copyExtractedFile(src, dest string) error {
 		return fmt.Errorf("refusing non-regular file from archive: %s", src)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return fmt.Errorf("create parent directory: %w", err)
-	}
-
 	in, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("open source file: %w", err)
 	}
 	defer in.Close()
 
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-	if err != nil {
-		return fmt.Errorf("create destination file: %w", err)
-	}
-
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
-		return fmt.Errorf("copy file data: %w", err)
-	}
-	if err := out.Sync(); err != nil {
-		_ = out.Close()
-		return fmt.Errorf("sync destination file: %w", err)
-	}
-	if err := out.Close(); err != nil {
-		return fmt.Errorf("close destination file: %w", err)
-	}
-	// OpenFile учитывает umask, поэтому выставляем 0755 явно.
-	if err := os.Chmod(dest, 0o755); err != nil {
-		return fmt.Errorf("chmod destination file: %w", err)
+	// Atomic staged write (was: direct O_TRUNC write exposed to umask races).
+	if err := writeStagedFile(in, dest, 0o755, -1); err != nil {
+		return fmt.Errorf("copy extracted file: %w", err)
 	}
 	return nil
 }

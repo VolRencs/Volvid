@@ -129,12 +129,14 @@ func TestAudioTrackRowZeroSkipsImmediately(t *testing.T) {
 	m.target = core.ParsedTarget{Kind: core.TargetVideo, CanonicalURL: "https://www.youtube.com/watch?v=x"}
 	m.audioSelected = map[string]bool{"en": true}
 	m.audioCursor = 0
+	m.subTracks = []core.SubtitleTrack{{Lang: "en"}}
+	m.subsOffered = true
 	got := confirmAudioViaEnter(m)
 	if len(got.profile.AudioLangs) != 0 {
 		t.Fatalf("expected no override, got %v", got.profile.AudioLangs)
 	}
-	if got.screen != scrSubsFetch {
-		t.Fatalf("expected subs step fetch, got %v", got.screen)
+	if got.screen != scrSubtitles {
+		t.Fatalf("expected subs picker (resolved in batch), got %v", got.screen)
 	}
 }
 
@@ -157,10 +159,29 @@ func TestAudioTracksLoadedSkipsWhenSingle(t *testing.T) {
 	stub := newStubAPI()
 	m := newStubModel(stub)
 	m.locale = core.LocaleEN
-	model, _ := m.handleAudioTracksLoaded(msgAudioTracksLoaded{tracks: []core.AudioTrack{{Lang: "en"}}, gen: m.opGen})
+	model, _ := m.handleTracksLoaded(msgTracksLoaded{
+		audioTracks: []core.AudioTrack{{Lang: "en"}},
+		subTracks:   []core.SubtitleTrack{{Lang: "en"}},
+		gen:         m.opGen,
+	})
 	got := model.(Model)
 	if got.audioOffered {
 		t.Fatal("expected no picker for a single track")
+	}
+	if !got.subsOffered || got.screen != scrSubtitles {
+		t.Fatalf("expected subs picker, got screen %v", got.screen)
+	}
+}
+
+func TestTracksLoadedSkipsBothWhenEmpty(t *testing.T) {
+	stub := newStubAPI()
+	m := newStubModel(stub)
+	m.locale = core.LocaleEN
+	m.target = core.ParsedTarget{Kind: core.TargetVideo, CanonicalURL: "https://www.youtube.com/watch?v=x"}
+	model, _ := m.handleTracksLoaded(msgTracksLoaded{gen: m.opGen})
+	got := model.(Model)
+	if got.audioOffered || got.subsOffered {
+		t.Fatal("expected no pickers without tracks")
 	}
 }
 

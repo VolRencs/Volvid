@@ -140,7 +140,7 @@ func (m Model) screenView() screenView {
 	u := m.u()
 
 	switch m.screen {
-	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch, scrSearchFetch, scrFragmentProbe, scrAudioTrackFetch, scrSubsFetch:
+	case scrUpdateCheck, scrPlaylistFetch, scrQualityFetch, scrSearchFetch, scrFragmentProbe, scrTracksFetch:
 		return m.loadingScreen(m.stageTitle())
 
 	case scrUpdateReady:
@@ -389,7 +389,7 @@ func (m Model) stageTitle() string {
 		return strings.TrimSpace(u.AppUpdating)
 	case scrPlaylistFetch:
 		return strings.TrimSpace(u.SpinnerPlaylist)
-	case scrQualityFetch, scrAudioTrackFetch, scrSubsFetch:
+	case scrQualityFetch, scrTracksFetch:
 		return strings.TrimSpace(u.SpinnerQuality)
 	case scrSearchFetch:
 		return strings.TrimSpace(u.SpinnerSearch)

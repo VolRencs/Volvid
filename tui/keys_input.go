@@ -239,11 +239,17 @@ func (m Model) handleAudioTrackKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // confirmAudioTrackSelection applies the checked languages: cursor on the
 // "original" row or an empty checklist means no override, otherwise the
 // checked tracks (in listed order) are embedded alongside the default audio.
+// Subtitles were resolved in the same batch, so this routes directly.
 func (m Model) confirmAudioTrackSelection() (tea.Model, tea.Cmd) {
 	m.profile.AudioLangs = nil
 	if m.audioCursor != 0 {
 		m.profile.AudioLangs = m.selectedAudioLangs()
 	}
 	m.flowErr = ""
-	return m.startSubsStep()
+	if m.subsOffered {
+		m.screen = scrSubtitles
+		m = m.syncMenu()
+		return m, nil
+	}
+	return m.continueAfterProfileSelection()
 }

@@ -95,17 +95,17 @@ func loadQualityChoicesCmd(api AppAPI, ctx context.Context, urls []string, gen i
 	}
 }
 
-func loadSubtitlesCmd(api AppAPI, ctx context.Context, url string, gen int) tea.Cmd {
+func loadTracksCmd(api AppAPI, ctx context.Context, url string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		tracks, err := api.ResolveSubtitles(ctx, url)
-		return msgSubtitlesLoaded{tracks: tracks, err: err, gen: gen}
-	}
-}
-
-func loadAudioTracksCmd(api AppAPI, ctx context.Context, url string, gen int) tea.Cmd {
-	return func() tea.Msg {
-		tracks, err := api.ResolveAudioTracks(ctx, url)
-		return msgAudioTracksLoaded{tracks: tracks, err: err, gen: gen}
+		audioTracks, audioErr := api.ResolveAudioTracks(ctx, url)
+		subTracks, subErr := api.ResolveSubtitles(ctx, url)
+		return msgTracksLoaded{
+			audioTracks: audioTracks,
+			audioErr:    audioErr,
+			subTracks:   subTracks,
+			subErr:      subErr,
+			gen:         gen,
+		}
 	}
 }
 

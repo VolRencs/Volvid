@@ -13,13 +13,26 @@ import (
 )
 
 type probePayload struct {
-	Duration      json.RawMessage            `json:"duration"`
+	Duration      any                        `json:"duration"`
 	Formats       []core.MediaFormat         `json:"formats"`
 	Subtitles     map[string]json.RawMessage `json:"subtitles"`
 	AutomaticCaps map[string]json.RawMessage `json:"automatic_captions"`
 }
 
 var ErrMediaDurationUnavailable = errors.New("media duration unavailable")
+
+// probeMediaForURL parses the target and returns a fresh cached probe.
+// probeMediaWithDeps already clones, so callers own the returned slices.
+func probeMediaForURL(env *Env, ctx context.Context, url string) (*core.MediaProbe, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	target, err := core.ParseTarget(url)
+	if err != nil {
+		return nil, err
+	}
+	return probeMediaWithDeps(env, ctx, resolveRuntimeDeps(env), target)
+}
 
 func ProbeMediaDurationContext(env *Env, ctx context.Context, target core.ParsedTarget) (int, error) {
 	probe, err := probeMediaWithDeps(env, ctx, resolveRuntimeDeps(env), target)
@@ -87,20 +100,23 @@ func probeMediaUncached(env *Env, ctx context.Context, deps core.CheckDepsResult
 	return probe, nil
 }
 func probeCacheKey(target core.ParsedTarget) string {
+	// Key by video ID when known: the fragment probe uses CanonicalURL
+	// (with ?list= for mixed targets) while the quality scan uses
+	// DownloadURL(forceSingle) — same video, different strings.
+	// Without this, one video costs two --dump-single-json probes.
+	if strings.TrimSpace(target.VideoID) != "" {
+		return target.VideoURL()
+	}
 	key := strings.TrimSpace(target.CanonicalURL)
 	if key != "" {
 		return key
 	}
 	return strings.TrimSpace(target.DownloadURL(false))
 }
-func decodeProbeDuration(raw json.RawMessage) int {
-	if len(raw) == 0 {
-		return 0
-	}
-	var seconds float64
-	if err := json.Unmarshal(raw, &seconds); err != nil {
-		return 0
-	}
+func decodeProbeDuration(raw any) int {
+	// Duration arrives as number/null; reuse the tolerant core decoder
+	// instead of a second json.Unmarshal of the same payload.
+	seconds := core.MapFloat(map[string]any{"duration": raw}, "duration")
 	if seconds <= 0 || seconds > math.MaxInt32 {
 		return 0
 	}
@@ -120,12 +136,22 @@ func cloneMediaProbe(probe *core.MediaProbe) *core.MediaProbe {
 	return cloned
 }
 
+// sortedUniqueLangs returns trimmed non-empty map keys, sorted and deduped.
+func sortedUniqueLangs(m map[string]json.RawMessage) []string {
+	langs := make([]string, 0, len(m))
+	for _, lang := range slices.Sorted(maps.Keys(m)) {
+		if lang = strings.TrimSpace(lang); lang != "" {
+			langs = append(langs, lang)
+		}
+	}
+	return slices.Compact(langs)
+}
+
 // audioTracksFromFormats collects distinct languages of audio-only formats
 // (dubbed/translated tracks). Formats without a language tag don't form a
 // separate track.
 func audioTracksFromFormats(formats []core.MediaFormat) []core.AudioTrack {
-	seen := map[string]bool{}
-	tracks := []core.AudioTrack{}
+	langs := make([]string, 0)
 	for _, format := range formats {
 		if format.VCodec != "" && format.VCodec != "none" {
 			continue
@@ -133,36 +159,30 @@ func audioTracksFromFormats(formats []core.MediaFormat) []core.AudioTrack {
 		if format.ACodec == "" || format.ACodec == "none" {
 			continue
 		}
-		lang := strings.TrimSpace(format.Language)
-		if lang == "" || seen[lang] {
-			continue
+		if lang := strings.TrimSpace(format.Language); lang != "" {
+			langs = append(langs, lang)
 		}
-		seen[lang] = true
+	}
+	slices.Sort(langs)
+	tracks := make([]core.AudioTrack, 0, len(langs))
+	for _, lang := range slices.Compact(langs) {
 		tracks = append(tracks, core.AudioTrack{Lang: lang})
 	}
-	slices.SortFunc(tracks, func(a, b core.AudioTrack) int { return strings.Compare(a.Lang, b.Lang) })
 	return tracks
 }
 
 // subtitleTracksFromPayload merges manual subtitles and automatic captions
 // into a sorted track list (manual first, then auto, both by language).
 func subtitleTracksFromPayload(manual, auto map[string]json.RawMessage) []core.SubtitleTrack {
-	seen := map[string]bool{}
-	tracks := make([]core.SubtitleTrack, 0, len(manual)+len(auto))
-	for _, lang := range slices.Sorted(maps.Keys(manual)) {
-		lang = strings.TrimSpace(lang)
-		if lang == "" || seen[lang] {
-			continue
-		}
-		seen[lang] = true
+	manualLangs := sortedUniqueLangs(manual)
+	tracks := make([]core.SubtitleTrack, 0, len(manualLangs)+len(auto))
+	for _, lang := range manualLangs {
 		tracks = append(tracks, core.SubtitleTrack{Lang: lang})
 	}
-	for _, lang := range slices.Sorted(maps.Keys(auto)) {
-		lang = strings.TrimSpace(lang)
-		if lang == "" || seen[lang] {
+	for _, lang := range sortedUniqueLangs(auto) {
+		if slices.Contains(manualLangs, lang) {
 			continue
 		}
-		seen[lang] = true
 		tracks = append(tracks, core.SubtitleTrack{Lang: lang, Auto: true})
 	}
 	return tracks

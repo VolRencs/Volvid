@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -198,5 +199,32 @@ func TestQualityChainAtClones(t *testing.T) {
 	}
 	if core.QualityChainAt(-1) != nil || core.QualityChainAt(99) != nil {
 		t.Fatal("expected nil for out-of-range index")
+	}
+}
+
+func TestDetectFFmpegVideoEncodersConcurrent(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg not available")
+	}
+	env := NewEnv()
+	const callers = 8
+	results := make([]map[string]bool, callers)
+	var wg sync.WaitGroup
+	for i := range callers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i] = detectFFmpegVideoEncoders(env, context.Background(), ffmpeg)
+		}(i)
+	}
+	wg.Wait()
+	for i := 1; i < callers; i++ {
+		if len(results[i]) != len(results[0]) {
+			t.Fatalf("inconsistent encoder sets: %d vs %d entries", len(results[i]), len(results[0]))
+		}
+	}
+	if len(results[0]) == 0 {
+		t.Fatal("expected non-empty encoder set")
 	}
 }
