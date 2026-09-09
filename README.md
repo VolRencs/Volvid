@@ -31,7 +31,7 @@
 
 ![youtube downloader screenshot](assets/tui.png)
 
-Volvid guides you through update check → dependencies → URL or search → playlist → fragment → profile → download → summary. System binaries are preferred; missing ones can be installed as managed copies under the app data dir. `node` is optional (JS runtime). Browser cookies are auto-detected on Windows and Linux. UI language is English/Russian, toggle with `Tab`.
+Volvid guides you through update check → dependencies → URL or search → playlist → fragment → profile → audio tracks → subtitles → download → summary. System binaries are preferred; missing ones can be installed as managed copies under the app data dir. `node` is optional (JS runtime). Browser cookies are auto-detected on Windows and Linux. UI language is English/Russian, toggle with `Tab`.
 
 ## Quick Start
 
@@ -76,6 +76,7 @@ go install github.com/akavel/rsrc@v0.10.2
 3. For playlists pick entries with `Space`, `a`, or `/` (manual ranges).
 4. Choose Video / Audio / Thumbnail.
 5. Video: quality scan (`Best`/`Economy`/height) → output (`Original`, `H264`, `H265`, `VP9`, `AV1`, `MKV-copy`). Audio: `MP3 320k`, `MP3 192k`, `M4A Best`, `Opus Best`, `FLAC`.
+6. Video with dubs: pick audio tracks checklist (`Space`, `A` for all) — shown only when 2+ languages exist; then pick subtitles to embed (`Space` multi-select, first row skips). Sidecar `.srt` files are removed, tracks stay inside the container with language tags.
 6. Optional fragment for single video/audio (video/audio only): `1:00-2:30`, open-ended `start-` / `start+`, or URL timestamp (`t`/`start`).
 7. Playlist downloads ask for worker count; watch progress (`Esc` cancels). Summary keeps session success/failure history.
 
@@ -86,8 +87,8 @@ go install github.com/akavel/rsrc@v0.10.2
 | `↑` / `↓` | menus, playlist | Move |
 | `0-9` (multi-digit, e.g. `12`) | menus | Jump to item, `Enter` confirms |
 | `Enter` | menus, inputs | Continue / confirm |
-| `Space` | playlist (not in `/`-input) | Toggle entry |
-| `a` / `а` | playlist | Select all / clear all |
+| `Space` | playlist, subtitles, audio tracks (not in `/`-input) | Toggle entry |
+| `a` / `а` | playlist, subtitles, audio tracks | Select all / clear all |
 | `/` then `Enter` / `Esc` | playlist | Manual indices / cancel |
 | `Ctrl+G` | target screen | YouTube search |
 | `Ctrl+U` | when not busy/updating | Dependency management |
