@@ -51,6 +51,10 @@ func runDownloadRequest(env *Env, ctx context.Context, slot int, req core.Downlo
 					result.OutputPath = finalPath
 				}
 			}
+			if req.Profile.WantsSubtitles() {
+				// Субтитры встроены: сайдкары рядом с видео больше не нужны.
+				cleanupSubtitleSidecars(result.OutputPath, req.Profile.SubLangs)
+			}
 			if cleanup != nil && result.OutputPath != "" {
 				// Успешный файл нельзя удалять в deferred cleanup.
 				cleanup.forget(result.OutputPath)

@@ -3,9 +3,17 @@ package core
 import "encoding/json"
 
 type MediaProbe struct {
-	Duration int
-	Formats  []MediaFormat
-	HasVideo bool
+	Duration  int
+	Formats   []MediaFormat
+	HasVideo  bool
+	Subtitles []SubtitleTrack
+}
+
+// SubtitleTrack is one subtitle language from the probe.
+// Auto marks YouTube automatic captions as opposed to manual tracks.
+type SubtitleTrack struct {
+	Lang string
+	Auto bool
 }
 
 type MediaFormat struct {

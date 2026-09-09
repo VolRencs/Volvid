@@ -30,6 +30,8 @@ const (
 	scrQualityFetch
 	scrQuality
 	scrVideoOutput
+	scrSubsFetch
+	scrSubtitles
 	scrWorkers
 	scrDownload
 	scrSummary
@@ -56,7 +58,7 @@ func (s screen) props() screenProps {
 		return screenProps{busy: true}
 	case scrDepUpdate:
 		return screenProps{menu: true, busy: true}
-	case scrSearchFetch, scrPlaylistFetch, scrFragmentProbe, scrQualityFetch:
+	case scrSearchFetch, scrPlaylistFetch, scrFragmentProbe, scrQualityFetch, scrSubsFetch:
 		return screenProps{spinner: true, busy: true}
 	case scrPlaylistAsk, scrSearchResults, scrFragmentChoice, scrMode, scrAudio, scrQuality, scrVideoOutput, scrWorkers, scrSummary:
 		return screenProps{menu: true}

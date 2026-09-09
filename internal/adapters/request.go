@@ -34,6 +34,7 @@ func normalizeDownloadRequest(env *Env, req core.DownloadRequest) core.DownloadR
 
 	req.Profile.VideoFmtChain = slices.Clone(req.Profile.VideoFmtChain)
 	req.Profile.VideoFmtLabels = slices.Clone(req.Profile.VideoFmtLabels)
+	req.Profile.SubLangs = slices.Clone(req.Profile.SubLangs)
 	req.Entries = slices.Clone(req.Entries)
 	if req.PlaylistInfo != nil {
 		info := *req.PlaylistInfo
@@ -84,6 +85,8 @@ func downloadRequestFFmpegError(req core.DownloadRequest) error {
 		return errors.New("ffmpeg is required for fragment downloads")
 	case req.Profile.Mode == core.ModeAudio:
 		return errors.New("ffmpeg is required for audio conversion")
+	case req.Profile.WantsSubtitles():
+		return errors.New("ffmpeg is required for subtitles")
 	default:
 		return errors.New("ffmpeg is required")
 	}

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"volvid/internal/core"
 	"volvid/internal/i18n"
 
 	tea "charm.land/bubbletea/v2"
@@ -87,6 +88,46 @@ func (m Model) handlePlaylistKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+func (m Model) handleSubtitlesKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if len(m.subTracks) == 0 {
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "up":
+		m = m.stepSubtitleCursor(-1)
+	case "down":
+		m = m.stepSubtitleCursor(1)
+	case "space":
+		m.toggleCurrentSubtitle()
+		m.flowErr = ""
+	case "a", "а":
+		m.toggleAllSubtitles()
+		m.flowErr = ""
+	case "enter":
+		return m.confirmSubtitleSelection()
+	default:
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// confirmSubtitleSelection applies the checked languages: cursor on the
+// "no subtitles" row or an empty checklist means off, otherwise the checked
+// tracks (in listed order) are embedded.
+func (m Model) confirmSubtitleSelection() (tea.Model, tea.Cmd) {
+	m.profile.SubMode = core.SubOff
+	m.profile.SubLangs = nil
+	if m.subCursor != 0 {
+		if langs := m.selectedSubtitleLangs(); len(langs) > 0 {
+			m.profile.SubMode = core.SubEmbed
+			m.profile.SubLangs = langs
+		}
+	}
+	m.flowErr = ""
+	return m.continueAfterProfileSelection()
 }
 func (m Model) handlePlaylistInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {

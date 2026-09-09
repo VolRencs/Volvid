@@ -95,6 +95,13 @@ func loadQualityChoicesCmd(api AppAPI, ctx context.Context, urls []string, gen i
 	}
 }
 
+func loadSubtitlesCmd(api AppAPI, ctx context.Context, url string, gen int) tea.Cmd {
+	return func() tea.Msg {
+		tracks, err := api.ResolveSubtitles(ctx, url)
+		return msgSubtitlesLoaded{tracks: tracks, err: err, gen: gen}
+	}
+}
+
 func probeFragmentDurationCmd(api AppAPI, ctx context.Context, target core.ParsedTarget, gen int) tea.Cmd {
 	return func() tea.Msg {
 		duration, err := api.ProbeDuration(ctx, target)

@@ -5,14 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"strings"
 	"volvid/internal/core"
 )
 
 type probePayload struct {
-	Duration json.RawMessage    `json:"duration"`
-	Formats  []core.MediaFormat `json:"formats"`
+	Duration      json.RawMessage            `json:"duration"`
+	Formats       []core.MediaFormat         `json:"formats"`
+	Subtitles     map[string]json.RawMessage `json:"subtitles"`
+	AutomaticCaps map[string]json.RawMessage `json:"automatic_captions"`
 }
 
 var ErrMediaDurationUnavailable = errors.New("media duration unavailable")
@@ -65,8 +69,9 @@ func probeMediaUncached(env *Env, ctx context.Context, deps core.CheckDepsResult
 	}
 
 	probe := &core.MediaProbe{
-		Duration: decodeProbeDuration(payload.Duration),
-		Formats:  append([]core.MediaFormat(nil), payload.Formats...),
+		Duration:  decodeProbeDuration(payload.Duration),
+		Formats:   append([]core.MediaFormat(nil), payload.Formats...),
+		Subtitles: subtitleTracksFromPayload(payload.Subtitles, payload.AutomaticCaps),
 	}
 
 	for _, format := range probe.Formats {
@@ -105,9 +110,34 @@ func cloneMediaProbe(probe *core.MediaProbe) *core.MediaProbe {
 		return nil
 	}
 	cloned := &core.MediaProbe{
-		Duration: probe.Duration,
-		HasVideo: probe.HasVideo,
-		Formats:  append([]core.MediaFormat(nil), probe.Formats...),
+		Duration:  probe.Duration,
+		HasVideo:  probe.HasVideo,
+		Formats:   append([]core.MediaFormat(nil), probe.Formats...),
+		Subtitles: append([]core.SubtitleTrack(nil), probe.Subtitles...),
 	}
 	return cloned
+}
+
+// subtitleTracksFromPayload merges manual subtitles and automatic captions
+// into a sorted track list (manual first, then auto, both by language).
+func subtitleTracksFromPayload(manual, auto map[string]json.RawMessage) []core.SubtitleTrack {
+	seen := map[string]bool{}
+	tracks := make([]core.SubtitleTrack, 0, len(manual)+len(auto))
+	for _, lang := range slices.Sorted(maps.Keys(manual)) {
+		lang = strings.TrimSpace(lang)
+		if lang == "" || seen[lang] {
+			continue
+		}
+		seen[lang] = true
+		tracks = append(tracks, core.SubtitleTrack{Lang: lang})
+	}
+	for _, lang := range slices.Sorted(maps.Keys(auto)) {
+		lang = strings.TrimSpace(lang)
+		if lang == "" || seen[lang] {
+			continue
+		}
+		seen[lang] = true
+		tracks = append(tracks, core.SubtitleTrack{Lang: lang, Auto: true})
+	}
+	return tracks
 }

@@ -82,6 +82,23 @@ type OutputProfile struct {
 	RemuxOnly      bool
 	AudioFormat    string
 	AudioQuality   string
+	SubMode        SubtitleMode
+	SubLangs       []string
+}
+
+// SubtitleMode selects how subtitles are added to a video download.
+type SubtitleMode uint8
+
+const (
+	// SubOff leaves subtitles untouched.
+	SubOff SubtitleMode = iota
+	// SubEmbed downloads subtitles and muxes them into the container.
+	SubEmbed
+)
+
+// WantsSubtitles reports whether the profile embeds subtitle tracks.
+func (p OutputProfile) WantsSubtitles() bool {
+	return p.Mode == ModeVideo && p.SubMode == SubEmbed && len(p.SubLangs) > 0
 }
 
 type DownloadRequest struct {
@@ -133,7 +150,7 @@ func (p OutputProfile) NeedsVideoTranscode() bool {
 
 // NeedsFFmpeg reports whether the profile/fragment combination needs ffmpeg.
 func (p OutputProfile) NeedsFFmpeg(fragment *DownloadFragment) bool {
-	return p.Mode == ModeAudio || fragment != nil || p.RequiresVideoPostprocessing()
+	return p.Mode == ModeAudio || fragment != nil || p.WantsSubtitles() || p.RequiresVideoPostprocessing()
 }
 
 // ProfileRequiresFFmpeg reports whether the profile/fragment combination

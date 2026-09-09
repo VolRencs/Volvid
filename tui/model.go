@@ -62,6 +62,11 @@ type Model struct {
 	qualityChoices []core.QualityChoice
 	videoProfiles  []core.OutputProfile
 	audioProfiles  []core.OutputProfile
+	subTracks      []core.SubtitleTrack
+	subsOffered    bool
+	subCursor      int
+	subTop         int
+	subSelected    map[string]bool
 	flowErr        string
 	url            string
 	dlEntries      []core.PlaylistEntry
@@ -134,6 +139,7 @@ func newModelWithAPI(ctx context.Context, api AppAPI) Model {
 		profile:     api.DefaultVideoProfile(loc),
 		numWorkers:  1,
 		plSelected:  map[int]bool{},
+		subSelected: map[string]bool{},
 	}
 	m.syncLayout()
 	return m

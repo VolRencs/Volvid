@@ -87,6 +87,10 @@ func (s *stubAPI) ParseSelection(raw string, maxIdx int, l core.Locale) ([]int, 
 	return adapters.ParseSelectionFor(raw, maxIdx, l)
 }
 
+func (s *stubAPI) ResolveSubtitles(_ context.Context, _ string) ([]core.SubtitleTrack, error) {
+	return []core.SubtitleTrack{{Lang: "en"}, {Lang: "ru", Auto: true}}, nil
+}
+
 func newStubModel(stub *stubAPI) Model {
 	return newModelWithAPI(context.Background(), stub)
 }

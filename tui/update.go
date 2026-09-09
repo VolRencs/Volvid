@@ -83,6 +83,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case msgQualityScanned:
 		return m.handleQualityScanned(msg)
 
+	case msgSubtitlesLoaded:
+		return m.handleSubtitlesLoaded(msg)
+
 	case msgFragmentDuration:
 		return m.handleFragmentDurationMsg(msg)
 
@@ -197,6 +200,26 @@ func (m Model) handleQualityScanned(msg msgQualityScanned) (tea.Model, tea.Cmd) 
 		return m, nil
 	}
 	m.screen = scrQuality
+	m = m.syncMenu()
+	return m, nil
+}
+
+func (m Model) handleSubtitlesLoaded(msg msgSubtitlesLoaded) (tea.Model, tea.Cmd) {
+	if msg.gen != m.opGen {
+		return m, nil
+	}
+	m = m.clearOpCancel()
+	if msg.err != nil || len(msg.tracks) == 0 {
+		m.subTracks = nil
+		m.subsOffered = false
+		return m.continueAfterProfileSelection()
+	}
+	m.subTracks = msg.tracks
+	m.subsOffered = true
+	m.subCursor = 0
+	m.subTop = 0
+	m.subSelected = map[string]bool{}
+	m.screen = scrSubtitles
 	m = m.syncMenu()
 	return m, nil
 }

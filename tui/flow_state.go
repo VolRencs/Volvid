@@ -86,6 +86,11 @@ func (m *Model) resetProfileState() {
 	m.qualityChoices = nil
 	m.videoProfiles = nil
 	m.audioProfiles = nil
+	m.subTracks = nil
+	m.subsOffered = false
+	m.subCursor = 0
+	m.subTop = 0
+	m.subSelected = nil
 }
 func (m *Model) defaultVideoProfile() core.OutputProfile {
 	return m.api.DefaultVideoProfile(m.locale)

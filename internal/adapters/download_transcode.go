@@ -155,8 +155,8 @@ func ffmpegVideoTranscodeArgs(inputPath string, profile core.OutputProfile, hard
 		"-map", "0:v:0",
 		"-map", "0:a?",
 		"-dn",
-		"-sn",
 	}
+	args = append(args, subtitleTranscodeArgs(profile)...)
 
 	videoCodec := strings.TrimSpace(profile.VideoCodec)
 	if videoCodec == "" {
@@ -186,6 +186,19 @@ func ffmpegVideoTranscodeArgs(inputPath string, profile core.OutputProfile, hard
 		args = append(args, "-movflags", "+faststart")
 	}
 	return args
+}
+
+// subtitleTranscodeArgs keeps embedded subtitle tracks when the profile
+// wants them (mp4 needs mov_text, mkv accepts srt copy).
+func subtitleTranscodeArgs(profile core.OutputProfile) []string {
+	if !profile.WantsSubtitles() {
+		return []string{"-sn"}
+	}
+	codec := "mov_text"
+	if strings.EqualFold(strings.TrimSpace(profile.VideoContainer), "mkv") {
+		codec = "srt"
+	}
+	return []string{"-map", "0:s?", "-c:s", codec}
 }
 func hardwareVideoQualityArgs(family, crf string) []string {
 	crf = strings.TrimSpace(crf)

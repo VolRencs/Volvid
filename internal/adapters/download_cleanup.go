@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"volvid/internal/core"
@@ -138,6 +139,61 @@ func deleteDownloadArtifacts(path string) {
 	_ = os.Remove(path)
 	_ = os.Remove(path + artifactPartSuffix)
 	_ = os.Remove(path + artifactYtdlSuffix)
+}
+
+// Subtitle sidecar extensions yt-dlp may leave next to an embedded video.
+var embeddedSubtitleExts = []string{".srt", ".vtt"}
+
+// cleanupSubtitleSidecars removes "<video base>.<lang>.srt/vtt" files left
+// by yt-dlp after embedding. Only exact "<base>.<lang><ext>" matches are
+// removed, so unrelated user files are never touched.
+func cleanupSubtitleSidecars(videoPath string, langs []string) {
+	videoPath = strings.TrimSpace(videoPath)
+	if videoPath == "" || len(langs) == 0 {
+		return
+	}
+	dir := filepath.Dir(videoPath)
+	base := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
+	if base == "" || base == "." {
+		return
+	}
+	names := make([]string, 0, len(langs)*len(embeddedSubtitleExts))
+	if slices.Contains(langs, "all") {
+		matches, _ := filepath.Glob(filepath.Join(dir, base+".*.srt"))
+		for _, match := range matches {
+			names = append(names, filepath.Base(match))
+		}
+		matches, _ = filepath.Glob(filepath.Join(dir, base+".*.vtt"))
+		for _, match := range matches {
+			names = append(names, filepath.Base(match))
+		}
+	} else {
+		for _, lang := range langs {
+			lang = strings.TrimSpace(lang)
+			if lang == "" {
+				continue
+			}
+			for _, ext := range embeddedSubtitleExts {
+				names = append(names, base+"."+lang+ext)
+			}
+		}
+	}
+	seen := map[string]bool{}
+	for _, name := range names {
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		// Never delete the video itself or anything outside plain files.
+		if name == filepath.Base(videoPath) {
+			continue
+		}
+		full := filepath.Join(dir, name)
+		if info, err := os.Lstat(full); err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		_ = os.Remove(full)
+	}
 }
 func removeMatchingArtifacts(dir string, paths []string) {
 	bases := make([]string, 0, len(paths))

@@ -127,10 +127,25 @@ func videoModeArgs(profile core.OutputProfile, format string) []string {
 	}
 
 	if profile.RemuxOnly {
-		return []string{"-f", format, "--remux-video", container}
+		return append([]string{"-f", format, "--remux-video", container}, subtitleDownloadArgs(profile)...)
 	}
 
-	return []string{"-f", format, "--merge-output-format", container}
+	return append([]string{"-f", format, "--merge-output-format", container}, subtitleDownloadArgs(profile)...)
+}
+
+// subtitleDownloadArgs renders yt-dlp subtitle flags for embedded tracks.
+func subtitleDownloadArgs(profile core.OutputProfile) []string {
+	if !profile.WantsSubtitles() {
+		return nil
+	}
+	return []string{
+		"--write-subs",
+		"--write-auto-subs",
+		"--sub-langs", strings.Join(profile.SubLangs, ","),
+		"--sub-format", "srt",
+		"--convert-subs", "srt",
+		"--embed-subs",
+	}
 }
 
 func appendFragmentDownloadArgs(args []string, req core.DownloadRequest) []string {

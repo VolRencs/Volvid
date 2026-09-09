@@ -22,6 +22,7 @@ type AppAPI interface {
 	FetchPlaylist(ctx context.Context, url string, l core.Locale) (*core.PlaylistInfo, error)
 	SearchYouTube(ctx context.Context, query string) ([]core.SearchResult, error)
 	ResolveQuality(ctx context.Context, urls []string) ([]core.QualityChoice, error)
+	ResolveSubtitles(ctx context.Context, url string) ([]core.SubtitleTrack, error)
 	ProbeDuration(ctx context.Context, target core.ParsedTarget) (int, error)
 
 	// Download pipeline (use-case extracted from flow.go:startDownload).
@@ -87,6 +88,10 @@ func (a appAPIAdapter) SearchYouTube(ctx context.Context, query string) ([]core.
 
 func (a appAPIAdapter) ResolveQuality(ctx context.Context, urls []string) ([]core.QualityChoice, error) {
 	return adapters.ResolveQualityChoicesContext(a.env, ctx, urls)
+}
+
+func (a appAPIAdapter) ResolveSubtitles(ctx context.Context, url string) ([]core.SubtitleTrack, error) {
+	return adapters.ResolveSubtitlesContext(a.env, ctx, url)
 }
 
 func (a appAPIAdapter) ProbeDuration(ctx context.Context, target core.ParsedTarget) (int, error) {

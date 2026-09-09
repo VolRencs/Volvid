@@ -120,6 +120,14 @@ func (m Model) videoOutputOptions() []string {
 	return core.OutputProfileLabels(m.videoProfiles)
 }
 
+func (m Model) subtitleTrackLabel(track core.SubtitleTrack) string {
+	label := strings.TrimSpace(track.Lang)
+	if track.Auto {
+		label += " (" + m.u().SubtitleAutoTag + ")"
+	}
+	return label
+}
+
 func (m Model) modeOptions() []string {
 	u := m.u()
 	return []string{u.ModeVideo, u.ModeAudio, u.ModeThumbnail}

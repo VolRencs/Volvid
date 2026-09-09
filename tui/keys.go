@@ -64,6 +64,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handlePlaylistKey(msg)
 	}
 
+	if m.screen == scrSubtitles {
+		return m.handleSubtitlesKey(msg)
+	}
+
 	switch m.screen {
 	case scrUpdateDone:
 		return m, tea.Quit
@@ -117,13 +121,24 @@ var escHandlers = map[screen]func(Model) (tea.Model, tea.Cmd){
 		m = m.cancelOps()
 		return m.startModeSelectionWithNotice("")
 	},
+	scrSubsFetch: func(m Model) (tea.Model, tea.Cmd) {
+		m = m.cancelOps()
+		m.screen = scrVideoOutput
+		m = m.syncMenu()
+		return m, nil
+	},
 	scrAudio:       func(m Model) (tea.Model, tea.Cmd) { return m.startModeSelectionWithNotice("") },
 	scrQuality:     func(m Model) (tea.Model, tea.Cmd) { return m.startModeSelectionWithNotice("") },
 	scrVideoOutput: func(m Model) (tea.Model, tea.Cmd) { return m.gotoQualitySelection() },
-	scrWorkers:     func(m Model) (tea.Model, tea.Cmd) { return m.gotoWorkersBack() },
-	scrDownload:    func(m Model) (tea.Model, tea.Cmd) { return m.cancelDownload() },
-	scrSummary:     func(m Model) (tea.Model, tea.Cmd) { return m.resetForNext() },
-	scrDepUpdate:   func(m Model) (tea.Model, tea.Cmd) { return m.returnFromDependencyScreen() },
+	scrSubtitles: func(m Model) (tea.Model, tea.Cmd) {
+		m.screen = scrVideoOutput
+		m = m.syncMenu()
+		return m, nil
+	},
+	scrWorkers:   func(m Model) (tea.Model, tea.Cmd) { return m.gotoWorkersBack() },
+	scrDownload:  func(m Model) (tea.Model, tea.Cmd) { return m.cancelDownload() },
+	scrSummary:   func(m Model) (tea.Model, tea.Cmd) { return m.resetForNext() },
+	scrDepUpdate: func(m Model) (tea.Model, tea.Cmd) { return m.returnFromDependencyScreen() },
 }
 
 func isOpenFolderKey(msg tea.KeyPressMsg) bool {

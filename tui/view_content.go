@@ -105,3 +105,54 @@ func (m Model) renderPlaylistItems() string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+func (m Model) subtitleSubtitle() string {
+	total := len(m.subTracks)
+	subtitle := fmt.Sprintf(m.u().PlSelectedFmt, m.selectedSubtitleCount(), total)
+	rows := total + 1
+	if rows > 0 && rows > m.playlistViewportHeight() {
+		start := m.subTop + 1
+		end := min(rows, m.subTop+m.playlistViewportHeight())
+		subtitle += fmt.Sprintf("  ·  %d-%d/%d", start, end, rows)
+	}
+	return subtitle
+}
+
+func (m Model) viewSubtitles() string {
+	if len(m.subTracks) == 0 {
+		return ""
+	}
+	return m.renderSectionBlock("", m.renderSubtitleItems())
+}
+
+func (m Model) renderSubtitleItems() string {
+	tracks := m.subTracks
+	rows := len(tracks) + 1
+	start := m.subTop
+	end := min(rows, start+m.playlistViewportHeight())
+	indexWidth := max(2, len(strconv.Itoa(rows)))
+	rowWidth := m.cardBodyWidth()
+
+	lines := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		if i == 0 {
+			data := listRowData{
+				index:  "",
+				active: m.subCursor == 0,
+				label:  trunc(m.u().SubtitleOff, listLabelWidth(rowWidth, listRowData{index: ""})),
+			}
+			lines = append(lines, renderListRow(rowWidth, data))
+			continue
+		}
+		track := tracks[i-1]
+		data := listRowData{
+			index:    fmt.Sprintf("%*d", indexWidth, i),
+			hasCheck: true,
+			checked:  m.subSelected[track.Lang],
+			active:   i == m.subCursor,
+		}
+		data.label = trunc(m.subtitleTrackLabel(track), listLabelWidth(rowWidth, data))
+		lines = append(lines, renderListRow(rowWidth, data))
+	}
+	return strings.Join(lines, "\n")
+}

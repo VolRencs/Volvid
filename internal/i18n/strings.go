@@ -41,6 +41,8 @@ type UIStrings struct {
 
 	ParallelFmt, QualityTitle, VideoOutputTitle, AudioTitle, WorkersQueuedFmt string
 
+	SubtitleTitle, SubtitleOff, SubtitleAutoTag string
+
 	ModeTitle, ModeVideo, ModeAudio, ModeThumbnail                                 string
 	AudioMP3320, AudioMP3192, AudioM4ABest, AudioOpusBest, AudioFLAC, OutThumbnail string
 	VideoOriginal, VideoH264, VideoH265, VideoVP9, VideoAV1, VideoMKVCopy          string
@@ -120,6 +122,8 @@ var strEN = UIStrings{
 	VideoTitleFmt: "Video %d",
 
 	ParallelFmt: "Parallel downloads", QualityTitle: "Choose quality", VideoOutputTitle: "Choose video format", AudioTitle: "Choose audio", WorkersQueuedFmt: "%d items queued",
+
+	SubtitleTitle: "Embed subtitles", SubtitleOff: "No subtitles", SubtitleAutoTag: "auto",
 
 	ModeTitle: "Choose mode", ModeVideo: "Video", ModeAudio: "Audio", ModeThumbnail: "Thumbnail",
 	AudioMP3320: "Audio · MP3 320k", AudioMP3192: "Audio · MP3 192k", AudioM4ABest: "Audio · M4A/AAC Best",
@@ -220,6 +224,8 @@ var strRU = UIStrings{
 	VideoTitleFmt: "Видео %d",
 
 	ParallelFmt: "Параллельная загрузка", QualityTitle: "Выбери качество", VideoOutputTitle: "Выбери формат видео", AudioTitle: "Выбери аудио", WorkersQueuedFmt: "%d видео в очереди",
+
+	SubtitleTitle: "Встроить субтитры", SubtitleOff: "Без субтитров", SubtitleAutoTag: "авто",
 
 	ModeTitle: "Выбери режим", ModeVideo: "Видео", ModeAudio: "Аудио", ModeThumbnail: "Превью",
 	AudioMP3320: "Аудио · MP3 320k", AudioMP3192: "Аудио · MP3 192k", AudioM4ABest: "Аудио · M4A/AAC Лучшее",

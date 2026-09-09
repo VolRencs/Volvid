@@ -24,9 +24,27 @@ func (m Model) gotoWorkersBack() (tea.Model, tea.Cmd) {
 		m.screen = scrMode
 	default:
 		m.screen = scrVideoOutput
+		if m.subsOffered {
+			m.screen = scrSubtitles
+		}
 	}
 	m = m.syncMenu()
 	return m, nil
+}
+
+// startSubsStep resolves available subtitle tracks after the video output
+// profile is picked. Without tracks (or on error) it continues silently;
+// otherwise it opens the subtitle picker.
+func (m Model) startSubsStep() (tea.Model, tea.Cmd) {
+	m.subTracks = nil
+	m.subsOffered = false
+	urls := m.qualityScanURLs()
+	if len(urls) == 0 {
+		return m.continueAfterProfileSelection()
+	}
+	return m.startOpScreen(scrSubsFetch, func(ctx context.Context, gen int) tea.Cmd {
+		return loadSubtitlesCmd(m.api, ctx, urls[0], gen)
+	})
 }
 func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) {
 	m.mode = core.ModeVideo
