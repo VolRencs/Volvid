@@ -71,6 +71,8 @@ type UIStrings struct {
 
 	FallbackFmt string
 	PlaylistTag string
+
+	ErrCancelled, ErrTimedOut string
 }
 
 var strEN = UIStrings{
@@ -175,6 +177,9 @@ var strEN = UIStrings{
 
 	FallbackFmt: "Fallback format #%d: %s",
 	PlaylistTag: " [pl/%d]",
+
+	ErrCancelled: "operation cancelled",
+	ErrTimedOut:  "operation timed out",
 }
 
 var strRU = UIStrings{
@@ -279,6 +284,9 @@ var strRU = UIStrings{
 
 	FallbackFmt: "Запасной формат #%d: %s",
 	PlaylistTag: " [плейлист/%d]",
+
+	ErrCancelled: "операция отменена",
+	ErrTimedOut:  "превышено время ожидания",
 }
 
 func StringsFor(l core.Locale) *UIStrings {

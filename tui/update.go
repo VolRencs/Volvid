@@ -41,9 +41,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
-	case menuDigitTickMsg:
-		return m.activatePendingDigits()
-
 	case msgUpdateChecked:
 		if msg.info == nil {
 			return m.gotoChecks()
@@ -52,6 +49,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = scrUpdateReady
 		m = m.syncMenu()
 		return m, nil
+
+	case msgDepsChecked:
+		m.depRefreshing = false
+		m.deps = msg.deps
+		if m.deps.MissingRequired() {
+			return m.openDependencyScreen(depModeStartup)
+		}
+		return m.gotoURLWithDeps(m.deps)
 
 	case msgDepProgress:
 		if msg.gen != m.depGen {
@@ -214,15 +219,13 @@ func (m Model) handleTracksLoaded(msg msgTracksLoaded) (tea.Model, tea.Cmd) {
 	if msg.audioErr == nil && len(msg.audioTracks) >= 2 {
 		m.audioTracks = msg.audioTracks
 		m.audioOffered = true
-		m.audioCursor, m.audioTop = 0, 0
-		m.audioSelected = map[string]bool{}
+		m.audioList.reset()
 	}
 	m.subTracks, m.subsOffered = nil, false
 	if msg.subErr == nil && len(msg.subTracks) > 0 {
 		m.subTracks = msg.subTracks
 		m.subsOffered = true
-		m.subCursor, m.subTop = 0, 0
-		m.subSelected = map[string]bool{}
+		m.subList.reset()
 	}
 
 	switch {

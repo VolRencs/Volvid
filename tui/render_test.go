@@ -94,18 +94,17 @@ func TestDigitHandling(t *testing.T) {
 		t.Fatalf("expected scrAudio after digit 2 on mode screen, got %d", got.screen)
 	}
 
-	// multi-digit on search results: item 12 should be selectable
+	// single digit on search results: item 2 should be selectable
 	m.screen = scrSearchResults
-	results := make([]core.SearchResult, 15)
+	results := make([]core.SearchResult, 5)
 	for i := range results {
 		results[i] = core.SearchResult{Title: fmt.Sprintf("Result %d", i+1), URL: "https://youtu.be/" + fmt.Sprint(i+1)}
 	}
 	m.searchResults = results
 	m = m.syncMenu()
-	got = mustModel(t, mustTeaModel(m.handleKey(tea.KeyPressMsg{Text: "1"})))
-	got = mustModel(t, mustTeaModel(got.handleKey(tea.KeyPressMsg{Text: "2"})))
+	got = mustModel(t, mustTeaModel(m.handleKey(tea.KeyPressMsg{Text: "2"})))
 	if got.screen != scrFragmentProbe {
-		t.Fatalf("expected scrFragmentProbe after typing 12, got %d", got.screen)
+		t.Fatalf("expected scrFragmentProbe after typing 2, got %d", got.screen)
 	}
 }
 

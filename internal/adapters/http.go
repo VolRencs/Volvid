@@ -7,18 +7,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"volvid/internal/core"
 	"volvid/internal/i18n"
 )
 
-type HTTPClientConfig struct {
+type httpClientConfig struct {
 	Timeout               time.Duration
 	DialTimeout           time.Duration
 	KeepAlive             time.Duration
@@ -33,8 +35,8 @@ type HTTPClientConfig struct {
 func newTimeoutHTTPClient(timeout time.Duration) *http.Client {
 	return newHTTPClient(defaultHTTPClientConfig(timeout))
 }
-func defaultHTTPClientConfig(timeout time.Duration) HTTPClientConfig {
-	return HTTPClientConfig{
+func defaultHTTPClientConfig(timeout time.Duration) httpClientConfig {
+	return httpClientConfig{
 		Timeout:               timeout,
 		DialTimeout:           defaultDialTimeout,
 		KeepAlive:             defaultKeepAlive,
@@ -49,13 +51,13 @@ func defaultHTTPClientConfig(timeout time.Duration) HTTPClientConfig {
 func newDownloadHTTPClient() *http.Client {
 	return newHTTPClient(downloadHTTPClientConfig())
 }
-func downloadHTTPClientConfig() HTTPClientConfig {
+func downloadHTTPClientConfig() httpClientConfig {
 	cfg := defaultHTTPClientConfig(0)
 	cfg.MaxIdleConns = 32
 	cfg.MaxIdleConnsPerHost = 16
 	return cfg
 }
-func newHTTPClient(cfg HTTPClientConfig) *http.Client {
+func newHTTPClient(cfg httpClientConfig) *http.Client {
 	cfg = normalizeHTTPClientConfig(cfg)
 	return &http.Client{
 		Timeout:       cfg.Timeout,
@@ -72,7 +74,7 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 	}
 	return validateDownloadURL(req.URL.String())
 }
-func normalizeHTTPClientConfig(cfg HTTPClientConfig) HTTPClientConfig {
+func normalizeHTTPClientConfig(cfg httpClientConfig) httpClientConfig {
 	if cfg.DialTimeout <= 0 {
 		cfg.DialTimeout = defaultDialTimeout
 	}
@@ -99,7 +101,7 @@ func normalizeHTTPClientConfig(cfg HTTPClientConfig) HTTPClientConfig {
 	}
 	return cfg
 }
-func buildHTTPTransport(cfg HTTPClientConfig) *http.Transport {
+func buildHTTPTransport(cfg httpClientConfig) *http.Transport {
 	transport := cloneDefaultTransport()
 	transport.DialContext = (&net.Dialer{
 		Timeout:   cfg.DialTimeout,
@@ -178,8 +180,8 @@ func shouldRetryHTTPError(err error) bool {
 	if errors.As(err, &netErr) {
 		return netErr.Timeout()
 	}
-	// Не ретраим TLS/redirect-policy/url.Error без таймаута:
-	// повтор не поможет, только маскирует ошибку.
+	// Do not retry TLS/redirect-policy/url errors without a timeout:
+	// a retry cannot help and only masks the failure.
 	return false
 }
 func sleepWithContext(ctx context.Context, d time.Duration) error {
@@ -371,43 +373,58 @@ func replaceDownloadedFile(tmp, dest string) error {
 	return nil
 }
 func replaceFilesWithBackup(paths map[string]string) error {
-	type backupEntry struct{ dest, backup string }
-	var backups []backupEntry
+	type fileReplacement struct {
+		dest   string
+		backup string
+		hadOld bool
+	}
+	applied := make([]fileReplacement, 0, len(paths))
+
 	rollback := func() error {
 		var errs []error
-		for _, b := range backups {
-			if err := os.Rename(b.backup, b.dest); err != nil {
-				errs = append(errs, err)
+		// Reverse order mirrors the replacements; entries without an old
+		// destination must be removed, not restored.
+		for i := len(applied) - 1; i >= 0; i-- {
+			entry := applied[i]
+			if !entry.hadOld {
+				if err := os.Remove(entry.dest); err != nil && !errors.Is(err, os.ErrNotExist) {
+					errs = append(errs, fmt.Errorf("rollback remove %s: %w", filepath.Base(entry.dest), err))
+				}
+				continue
+			}
+			if err := os.Rename(entry.backup, entry.dest); err != nil {
+				errs = append(errs, fmt.Errorf("rollback restore %s: %w", filepath.Base(entry.dest), err))
 			}
 		}
 		return errors.Join(errs...)
 	}
 
-	for src, dest := range paths {
+	for _, src := range slices.Sorted(maps.Keys(paths)) {
+		dest := paths[src]
 		backup, err := replacementBackupPath(dest)
 		if err != nil {
 			return errors.Join(err, rollback())
 		}
-		hadDest := true
+		hadOld := true
 		if err := os.Rename(dest, backup); err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
 				return errors.Join(fmt.Errorf("%s: %w", filepath.Base(dest), err), rollback())
 			}
-			hadDest = false
+			hadOld = false
 		}
 		if err := os.Rename(src, dest); err != nil {
-			if hadDest {
+			if hadOld {
 				_ = os.Rename(backup, dest)
 			}
 			return errors.Join(fmt.Errorf("%s: %w", filepath.Base(dest), err), rollback())
 		}
-		if hadDest {
-			backups = append(backups, backupEntry{dest: dest, backup: backup})
-		}
+		applied = append(applied, fileReplacement{dest: dest, backup: backup, hadOld: hadOld})
 	}
 
-	for _, b := range backups {
-		_ = os.Remove(b.backup)
+	for _, entry := range applied {
+		if entry.hadOld {
+			_ = os.Remove(entry.backup)
+		}
 	}
 	return nil
 }

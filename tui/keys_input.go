@@ -90,28 +90,40 @@ func (m Model) handlePlaylistKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 func (m Model) handleSubtitlesKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if len(m.subTracks) == 0 {
-		return m, nil
+	return handleChecklistKey(&m, msg, &m.subList, m.subTracks, m.confirmSubtitleSelection)
+}
+
+// handleChecklistKey drives any language checklist: cursor moves, single
+// toggle, all/none toggle and Enter to confirm.
+func handleChecklistKey[T any](
+	m *Model,
+	msg tea.KeyPressMsg,
+	list *checklist[T],
+	tracks []T,
+	confirm func() (tea.Model, tea.Cmd),
+) (tea.Model, tea.Cmd) {
+	if len(tracks) == 0 {
+		return *m, nil
 	}
 
 	switch msg.String() {
 	case "up":
-		m = m.stepSubtitleCursor(-1)
+		list.move(-1, tracks, m.playlistViewportHeight())
 	case "down":
-		m = m.stepSubtitleCursor(1)
+		list.move(1, tracks, m.playlistViewportHeight())
 	case "space":
-		m.toggleCurrentSubtitle()
+		list.toggle(tracks)
 		m.flowErr = ""
 	case "a", "а":
-		m.toggleAllSubtitles()
+		list.toggleAll(tracks)
 		m.flowErr = ""
 	case "enter":
-		return m.confirmSubtitleSelection()
+		return confirm()
 	default:
-		return m, nil
+		return *m, nil
 	}
 
-	return m, nil
+	return *m, nil
 }
 
 // confirmSubtitleSelection applies the checked languages: cursor on the
@@ -120,8 +132,8 @@ func (m Model) handleSubtitlesKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m Model) confirmSubtitleSelection() (tea.Model, tea.Cmd) {
 	m.profile.SubMode = core.SubOff
 	m.profile.SubLangs = nil
-	if m.subCursor != 0 {
-		if langs := m.selectedSubtitleLangs(); len(langs) > 0 {
+	if m.subList.cursor != 0 {
+		if langs := m.subList.selectedKeys(m.subTracks); len(langs) > 0 {
 			m.profile.SubMode = core.SubEmbed
 			m.profile.SubLangs = langs
 		}
@@ -212,28 +224,7 @@ func (m Model) routeFocusedInputMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleAudioTrackKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if len(m.audioTracks) == 0 {
-		return m, nil
-	}
-
-	switch msg.String() {
-	case "up":
-		m = m.stepAudioCursor(-1)
-	case "down":
-		m = m.stepAudioCursor(1)
-	case "space":
-		m.toggleCurrentAudioTrack()
-		m.flowErr = ""
-	case "a", "а":
-		m.toggleAllAudioTracks()
-		m.flowErr = ""
-	case "enter":
-		return m.confirmAudioTrackSelection()
-	default:
-		return m, nil
-	}
-
-	return m, nil
+	return handleChecklistKey(&m, msg, &m.audioList, m.audioTracks, m.confirmAudioTrackSelection)
 }
 
 // confirmAudioTrackSelection applies the checked languages: cursor on the
@@ -242,8 +233,8 @@ func (m Model) handleAudioTrackKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // Subtitles were resolved in the same batch, so this routes directly.
 func (m Model) confirmAudioTrackSelection() (tea.Model, tea.Cmd) {
 	m.profile.AudioLangs = nil
-	if m.audioCursor != 0 {
-		m.profile.AudioLangs = m.selectedAudioLangs()
+	if m.audioList.cursor != 0 {
+		m.profile.AudioLangs = m.audioList.selectedKeys(m.audioTracks)
 	}
 	m.flowErr = ""
 	if m.subsOffered {

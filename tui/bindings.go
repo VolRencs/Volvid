@@ -32,8 +32,7 @@ func (m Model) menuBindings(extra ...binding) []binding {
 	return append(bindings, extra...)
 }
 
-// hintsFor is the single binding source per screen; the older
-// playlist/summary/dep helpers below delegate to it.
+// hintsFor is the single binding source per screen.
 func (m Model) hintsFor() []binding {
 	switch m.screen {
 	case scrPlaylist:
@@ -55,16 +54,6 @@ func (m Model) hintsFor() []binding {
 	default:
 		return m.menuBindings(m.kbEsc())
 	}
-}
-
-func (m Model) playlistBindings() []binding {
-	return m.hintsFor()
-}
-func (m Model) summaryBindings() []binding {
-	return m.hintsFor()
-}
-func (m Model) depBindings() []binding {
-	return m.hintsFor()
 }
 
 // ---------- chrome pieces ----------

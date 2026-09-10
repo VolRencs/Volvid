@@ -83,4 +83,9 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 
 "$RSRC_TOOL" -ico "$ICON_FILE" -arch amd64 -o "$SYSO_FILE"
 
-GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$OUTPUT_PATH" "$ROOT_DIR/cmd/downloader"
+LD_FLAGS="-s -w"
+if [[ -n "${VOLVID_VERSION:-}" ]]; then
+	LD_FLAGS="$LD_FLAGS -X volvid/internal/adapters.Version=$VOLVID_VERSION"
+fi
+
+GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="$LD_FLAGS" -o "$OUTPUT_PATH" "$ROOT_DIR/cmd/downloader"

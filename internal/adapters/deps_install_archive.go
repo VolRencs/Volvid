@@ -184,10 +184,10 @@ func copyExtractedBinaries(root string, targets map[string]string) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		// Отказ от symlink-атак: любой symlink внутри распаковки удаляем,
-		// наружу ничего не копируем. Внешний tar распаковывает только
-		// allowlist-entries в свежий пустой destDir, поэтому escape возможен
-		// только через symlink-entry — такие файлы отклоняем здесь.
+		// Symlink hardening: remove any symlink inside the extraction
+		// directory and never copy outside it. The external tar extracts
+		// only allowlisted entries into a fresh empty destDir, so an escape
+		// is possible only via a symlink entry; reject those here.
 		if d.Type()&os.ModeSymlink != 0 {
 			_ = os.Remove(path)
 			return nil

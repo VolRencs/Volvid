@@ -92,8 +92,8 @@ func cleanMediaEntryID(raw string) string {
 	}
 	return raw
 }
-func searchResultFromMap(entry map[string]any, index int) (core.SearchResult, bool) {
-	title, entryURL, duration, ok := mediaEntryFromMap(entry, index, "Video %d")
+func searchResultFromMap(entry map[string]any, index int, titleFmt string) (core.SearchResult, bool) {
+	title, entryURL, duration, ok := mediaEntryFromMap(entry, index, titleFmt)
 	if !ok {
 		return core.SearchResult{}, false
 	}
@@ -154,18 +154,19 @@ func ParseSelectionFor(raw string, maxIdx int, l core.Locale) ([]int, error) {
 	return slices.Sorted(maps.Keys(seen)), nil
 }
 
-func SearchYouTubeContext(env *Env, ctx context.Context, query string) ([]core.SearchResult, error) {
+func SearchYouTubeContext(env *Env, ctx context.Context, query string, l core.Locale) ([]core.SearchResult, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, errors.New("search query is empty")
 	}
 
 	results := make([]core.SearchResult, 0, 5)
+	titleFmt := i18n.StringsFor(l).VideoTitleFmt
 	err := scanYTDLPJSONLines(env, ctx, searchTimeout, flatPlaylistScanArgs("ytsearch5:"+query), func(entry map[string]any) {
 		if len(results) == cap(results) {
 			return
 		}
-		result, ok := searchResultFromMap(entry, len(results)+1)
+		result, ok := searchResultFromMap(entry, len(results)+1, titleFmt)
 		if !ok {
 			return
 		}

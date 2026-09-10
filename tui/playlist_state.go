@@ -89,21 +89,7 @@ func (m Model) stepPlaylistCursor(delta int) Model {
 	return m
 }
 func (m *Model) ensurePlaylistCursorVisible() {
-	height := m.playlistViewportHeight()
-	if height <= 0 {
-		m.plTop = 0
-		return
-	}
-
-	if m.plCursor < m.plTop {
-		m.plTop = m.plCursor
-	}
-	if m.plCursor >= m.plTop+height {
-		m.plTop = m.plCursor - height + 1
-	}
-
-	maxTop := max(0, len(m.playlistEntries())-height)
-	m.plTop = max(0, min(m.plTop, maxTop))
+	m.plTop = clampWindowTop(m.plCursor, m.plTop, len(m.playlistEntries()), m.playlistViewportHeight())
 }
 func (m Model) playlistEntries() []core.PlaylistEntry {
 	if m.plInfo == nil {
@@ -112,6 +98,6 @@ func (m Model) playlistEntries() []core.PlaylistEntry {
 	return m.plInfo.Entries
 }
 func (m Model) playlistViewportHeight() int {
-	lines := min(14, m.height-18)
-	return max(4, lines)
+	lines := min(playlistViewportMax, m.height-playlistViewportPad)
+	return max(playlistViewportMin, lines)
 }

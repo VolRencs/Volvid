@@ -106,9 +106,9 @@ func installFFmpegFor(env *Env, ctx context.Context, l core.Locale, ch chan<- co
 	if err := downloadFileContext(env, ctx, archiveURL, archive, l, ch); err != nil {
 		return fmt.Errorf("download ffmpeg archive: %w", err)
 	}
-	// BtbN не публикует машиночитаемый SHA-манифест как yt-dlp/node,
-	// поэтому проверяем checksum только если он задан явно.
-	// Это закрывает supply-chain для тех, кто пинит хеш.
+	// BtbN does not publish a machine-readable SHA manifest like yt-dlp/node,
+	// so the checksum is verified only when set explicitly. This still closes
+	// the supply chain for users who pin a hash.
 	if expected := strings.TrimSpace(os.Getenv("VOLVID_FFMPEG_SHA256")); expected != "" {
 		if err := verifyFileSHA256(archive, expected); err != nil {
 			return fmt.Errorf("verify ffmpeg checksum: %w", err)

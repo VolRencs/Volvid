@@ -10,39 +10,17 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// handleMenuDigit jumps to a 1-based menu item and activates it. Menus never
+// exceed nine entries, so a single digit is enough.
 func (m Model) handleMenuDigit(digit string) (tea.Model, tea.Cmd) {
-	if !m.isMenuScreen() || len(m.menu.items) == 0 {
-		m.menuDigits = ""
-		return m, nil
-	}
-	buf := m.menuDigits + digit
-	n, err := strconv.Atoi(buf)
-	if err != nil || n < 1 || n > len(m.menu.items) {
-		m.menuDigits = ""
-		return m, nil
-	}
-	m.menuDigits = buf
-	m.menuDigitsScreen = m.screen
-	if n*10 > len(m.menu.items) {
-		m.menuDigits = ""
-		m.menu.SetCursor(n - 1)
-		return m.activateMenu()
-	}
-	return m, digitTimeoutCmd()
-}
-func (m Model) activatePendingDigits() (tea.Model, tea.Cmd) {
-	buf := m.menuDigits
-	m.menuDigits = ""
-	if buf == "" || !m.isMenuScreen() || m.screen != m.menuDigitsScreen {
-		return m, nil
-	}
-	n, err := strconv.Atoi(buf)
+	n, err := strconv.Atoi(digit)
 	if err != nil || n < 1 || n > len(m.menu.items) {
 		return m, nil
 	}
 	m.menu.SetCursor(n - 1)
 	return m.activateMenu()
 }
+
 func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 	if len(m.menu.items) == 0 {
 		return m, nil
@@ -144,7 +122,7 @@ func (m Model) activateDependencyAction(idx int) (tea.Model, tea.Cmd) {
 	case depActionRefresh:
 		return m.startDepsRefresh()
 	case depActionContinue:
-		return m.gotoURLWithDeps(m.api.DetectDeps())
+		return m.gotoURLWithDeps(m.deps)
 	case depActionBack:
 		return m.returnFromDependencyScreen()
 	case depActionExit:
@@ -161,20 +139,7 @@ func (m Model) activateModeChoice(idx int) (tea.Model, tea.Cmd) {
 	default:
 		m.mode = core.ModeVideo
 	}
-	m.profile = core.OutputProfile{}
-	m.qualityChoices = nil
-	m.audioProfiles = nil
-	m.subTracks = nil
-	m.subsOffered = false
-	m.audioTracks = nil
-	m.audioOffered = false
-	m.audioCursor = 0
-	m.audioTop = 0
-	m.audioSelected = nil
-	m.subCursor = 0
-	m.subTop = 0
-	m.subSelected = nil
-	m.flowErr = ""
+	m.resetProfileSelection()
 
 	switch m.mode {
 	case core.ModeThumbnail:

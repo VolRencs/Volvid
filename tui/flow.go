@@ -51,15 +51,9 @@ func (m Model) startTracksStep() (tea.Model, tea.Cmd) {
 }
 func (m Model) startModeSelectionWithNotice(notice string) (tea.Model, tea.Cmd) {
 	m.mode = core.ModeVideo
+	m.resetProfileSelection()
 	m.profile = m.defaultVideoProfile()
 	m.flowErr = notice
-	m.qualityChoices = nil
-	m.videoProfiles = nil
-	m.audioProfiles = nil
-	m.audioTracks = nil
-	m.audioOffered = false
-	m.subTracks = nil
-	m.subsOffered = false
 	m = m.gotoScreen(scrMode)
 	return m, nil
 }
@@ -142,7 +136,7 @@ func (m Model) submitSearchInput() (tea.Model, tea.Cmd) {
 	m.searchErr = ""
 	m.searchResults = nil
 	return m.startOpScreen(scrSearchFetch, func(ctx context.Context, gen int) tea.Cmd {
-		return searchYouTubeCmd(m.api, ctx, query, gen)
+		return searchYouTubeCmd(m.api, ctx, query, m.locale, gen)
 	})
 }
 func (m Model) activateSearchResult(idx int) (tea.Model, tea.Cmd) {
@@ -176,12 +170,9 @@ func (m Model) exitSearch() (tea.Model, tea.Cmd) {
 	return m, m.urlInput.Focus()
 }
 func (m Model) gotoChecks() (tea.Model, tea.Cmd) {
-	deps := m.api.DetectDeps()
-	m.deps = deps
-	if deps.MissingRequired() {
-		return m.openDependencyScreen(depModeStartup)
-	}
-	return m.gotoURLWithDeps(deps)
+	m.screen = scrUpdateCheck
+	m.depRefreshing = true
+	return m, depsCheckCmd(m.api)
 }
 func (m Model) gotoURLWithDeps(deps core.CheckDepsResult) (tea.Model, tea.Cmd) {
 	m.deps = deps
@@ -221,7 +212,7 @@ func (m Model) returnFromDependencyScreen() (tea.Model, tea.Cmd) {
 	if m.depMode == depModeStartup {
 		m.depErr = ""
 		if !m.deps.MissingRequired() {
-			return m.gotoURLWithDeps(m.api.DetectDeps())
+			return m.gotoURLWithDeps(m.deps)
 		}
 		return m, tea.Quit
 	}
@@ -276,8 +267,7 @@ func (m Model) continueAfterProfileSelection() (tea.Model, tea.Cmd) {
 // UI only maps the plan onto slots/channels and opens the dep screen on
 // MissingDependencyError.
 func (m Model) startDownload() (tea.Model, tea.Cmd) {
-	deps := m.api.DetectDeps()
-	m.deps = deps
+	deps := m.deps
 
 	plan, err := services.PlanDownload(
 		deps,
@@ -338,17 +328,16 @@ func (m Model) cancelDownload() (tea.Model, tea.Cmd) {
 	m.screen = scrURL
 	return m, m.urlInput.Focus()
 }
+
+// restoreDownloadConfigScreen returns the user to the menu that matches the
+// active profile, so a failed validation can be corrected.
 func (m *Model) restoreDownloadConfigScreen() {
 	switch m.currentProfile().Mode {
 	case core.ModeAudio:
-		if m.profile.Mode == 0 {
-			m.screen = scrAudio
-		}
+		m.screen = scrAudio
 	case core.ModeThumbnail:
 		m.screen = scrMode
 	default:
-		if m.profile.Mode == 0 {
-			m.screen = scrQuality
-		}
+		m.screen = scrQuality
 	}
 }

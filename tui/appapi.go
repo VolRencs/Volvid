@@ -20,7 +20,7 @@ type AppAPI interface {
 	DetectDeps() core.CheckDepsResult
 	RefreshDeps() core.CheckDepsResult
 	FetchPlaylist(ctx context.Context, url string, l core.Locale) (*core.PlaylistInfo, error)
-	SearchYouTube(ctx context.Context, query string) ([]core.SearchResult, error)
+	SearchYouTube(ctx context.Context, query string, l core.Locale) ([]core.SearchResult, error)
 	ResolveQuality(ctx context.Context, urls []string) ([]core.QualityChoice, error)
 	ResolveSubtitles(ctx context.Context, url string) ([]core.SubtitleTrack, error)
 	ResolveAudioTracks(ctx context.Context, url string) ([]core.AudioTrack, error)
@@ -83,8 +83,8 @@ func (a appAPIAdapter) FetchPlaylist(ctx context.Context, url string, l core.Loc
 	return adapters.FetchPlaylistInfoFor(a.env, ctx, url, l)
 }
 
-func (a appAPIAdapter) SearchYouTube(ctx context.Context, query string) ([]core.SearchResult, error) {
-	return adapters.SearchYouTubeContext(a.env, ctx, query)
+func (a appAPIAdapter) SearchYouTube(ctx context.Context, query string, l core.Locale) ([]core.SearchResult, error) {
+	return adapters.SearchYouTubeContext(a.env, ctx, query, l)
 }
 
 func (a appAPIAdapter) ResolveQuality(ctx context.Context, urls []string) ([]core.QualityChoice, error) {

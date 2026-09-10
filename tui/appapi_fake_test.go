@@ -96,7 +96,9 @@ func (s *stubAPI) ResolveAudioTracks(_ context.Context, _ string) ([]core.AudioT
 }
 
 func newStubModel(stub *stubAPI) Model {
-	return newModelWithAPI(context.Background(), stub)
+	m := newModelWithAPI(context.Background(), stub)
+	m.deps = stub.deps
+	return m
 }
 
 func TestStartDownloadMissingYtDlpOpensDepScreen(t *testing.T) {

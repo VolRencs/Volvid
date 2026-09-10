@@ -7,10 +7,6 @@ import (
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 
-	if !m.isMenuScreen() || !isDigitKey(k) {
-		m.menuDigits = ""
-	}
-
 	if k == "tab" {
 		m.locale = m.api.NextLocale(m.locale)
 		_ = m.api.SaveLocale(m.locale)

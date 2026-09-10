@@ -171,6 +171,37 @@ func TestReplaceFilesWithBackupRollbackOnMissingSource(t *testing.T) {
 	}
 }
 
+func TestReplaceFilesWithBackupRollbackRemovesNewDest(t *testing.T) {
+	srcDir := t.TempDir()
+	destDir := t.TempDir()
+
+	appliedSrc := filepath.Join(srcDir, "a-new.bin")
+	appliedDest := filepath.Join(destDir, "a-dest.bin")
+	if err := os.WriteFile(appliedSrc, []byte("new-a"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	missingSrc := filepath.Join(srcDir, "z-missing.bin")
+	keptDest := filepath.Join(destDir, "z-dest.bin")
+	if err := os.WriteFile(keptDest, []byte("old-b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := replaceFilesWithBackup(map[string]string{
+		appliedSrc: appliedDest,
+		missingSrc: keptDest,
+	})
+	if err == nil {
+		t.Fatal("expected error for missing source")
+	}
+	if _, statErr := os.Stat(appliedDest); !os.IsNotExist(statErr) {
+		t.Fatalf("rollback must remove a destination that did not exist before, stat err = %v", statErr)
+	}
+	data, readErr := os.ReadFile(keptDest)
+	if readErr != nil || string(data) != "old-b" {
+		t.Fatalf("rollback failed: dest = %q, %v", data, readErr)
+	}
+}
+
 func TestFmtSpeedForLocaleSuffix(t *testing.T) {
 	if got := i18n.FormatSpeed(2048, core.LocaleEN); !strings.HasSuffix(got, "/s") {
 		t.Fatalf("EN speed %q lacks /s", got)

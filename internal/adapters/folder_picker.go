@@ -7,10 +7,7 @@ import (
 	"volvid/internal/i18n"
 )
 
-var (
-	ErrFolderPickerCancelled   = errors.New("folder selection canceled")
-	errFolderPickerUnsupported = errors.New("folder picker is not supported on this platform")
-)
+var ErrFolderPickerCancelled = errors.New("folder selection canceled")
 
 func PickDownloadsDir(ctx context.Context, env *Env, current string, locale core.Locale) (string, error) {
 	current = cleanAbsPath(current)

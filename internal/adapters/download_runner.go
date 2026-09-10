@@ -15,11 +15,14 @@ import (
 func runDownloadRequest(env *Env, ctx context.Context, slot int, req core.DownloadRequest, deps core.CheckDepsResult, url, outputTemplate string, extra []string, ch chan<- core.DlUpdate, cleanup *downloadCleanup) downloadResult {
 	strs := i18n.StringsFor(req.Locale)
 	formats, labels := downloadFormats(req)
-	result := failedDownload(errors.New("download failed"))
+	if len(formats) == 0 {
+		return failedDownload(errors.New("no download formats configured"), req.Locale)
+	}
+	var result downloadResult
 
 	for i, format := range formats {
 		if ctx != nil && ctx.Err() != nil {
-			return canceledDownload(ctx)
+			return canceledDownload(ctx, req.Locale)
 		}
 		if req.Profile.Mode == core.ModeVideo && i > 0 {
 			if !sendUpdate(ctx, ch, core.DlUpdate{
@@ -27,13 +30,13 @@ func runDownloadRequest(env *Env, ctx context.Context, slot int, req core.Downlo
 				Slot: slot,
 				Text: fmt.Sprintf(strs.FallbackFmt, i, formatLabel(format, labels, i)),
 			}) {
-				return canceledDownload(ctx)
+				return canceledDownload(ctx, req.Locale)
 			}
 		}
 
 		args, err := buildDownloadCommandArgs(req, deps, url, outputTemplate, format, extra)
 		if err != nil {
-			return failedDownload(err)
+			return failedDownload(err, req.Locale)
 		}
 		result = streamYtdlp(env, ctx, slot, req.Locale, deps, args, ch, cleanup)
 		if result.Err == nil {
@@ -42,26 +45,28 @@ func runDownloadRequest(env *Env, ctx context.Context, slot int, req core.Downlo
 				if cleanup != nil && result.OutputPath != "" {
 					cleanup.add(result.OutputPath)
 				}
-				return failedDownload(err)
+				return failedDownload(err, req.Locale)
 			}
 			if finalPath != "" {
-				// Транскодинг мог сменить расширение (контейнер):
-				// result.OutputPath — оригинал, finalPath — готовый файл.
+				// Transcoding may change the extension (container):
+				// result.OutputPath is the original, finalPath the result.
 				if finalPath != result.OutputPath {
 					result.OutputPath = finalPath
 				}
 			}
 			if req.Profile.WantsSubtitles() {
-				// Субтитры встроены: сайдкары рядом с видео больше не нужны.
+				// Subtitles are embedded: sidecars next to the video are
+				// no longer needed.
 				cleanupSubtitleSidecars(result.OutputPath, req.Profile.SubLangs)
 			}
 			if langs := audioTrackLangs(req.Profile); len(langs) > 0 {
-				// Мерж yt-dlp затирает теги языков: правим отдельным
-				// stream-copy проходом. Ошибка ретега не валит загрузку.
+				// The yt-dlp merge drops language tags: fix them with a
+				// separate stream-copy pass. A retag error never fails the
+				// download.
 				_ = retagAudioLanguages(ctx, ffmpegBinFor(env, deps), result.OutputPath, langs)
 			}
 			if cleanup != nil && result.OutputPath != "" {
-				// Успешный файл нельзя удалять в deferred cleanup.
+				// A successful file must not be removed by deferred cleanup.
 				cleanup.forget(result.OutputPath)
 			}
 			return result
@@ -92,6 +97,9 @@ func normalizeWorkerCount(workers, jobs int) int {
 	workers = max(workers, 1)
 	return min(workers, jobs)
 }
+
+// StartDownloadRequestContext runs a request already normalized and
+// validated by PrepareDownloadRequestWithDeps (see services.PlanDownload).
 func StartDownloadRequestContext(env *Env, ctx context.Context, req core.DownloadRequest, deps core.CheckDepsResult, ch chan<- core.DlUpdate) {
 	go func() {
 		var wg sync.WaitGroup
@@ -105,12 +113,7 @@ func StartDownloadRequestContext(env *Env, ctx context.Context, req core.Downloa
 			ctx = context.Background()
 		}
 
-		preparedReq, err := PrepareDownloadRequestWithDeps(env, req, deps)
-		if err != nil {
-			sendUpdate(ctx, ch, core.DlUpdate{Type: core.EvDone, OK: false, ErrText: err.Error()})
-			return
-		}
-		req = preparedReq
+		var err error
 		req.OutputDir, err = prepareDir(req.OutputDir)
 		if err != nil {
 			sendUpdate(ctx, ch, core.DlUpdate{Type: core.EvDone, OK: false, ErrText: err.Error()})

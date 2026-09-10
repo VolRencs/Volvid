@@ -7,6 +7,7 @@ import (
 
 type (
 	msgUpdateChecked struct{ info *core.UpdateInfo }
+	msgDepsChecked   struct{ deps core.CheckDepsResult }
 	msgDepProgress   struct {
 		progress core.FileProgress
 		gen      int
@@ -64,5 +65,4 @@ type (
 		target inputTarget
 		tag    int
 	}
-	menuDigitTickMsg struct{}
 )

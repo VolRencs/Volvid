@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	spinnerTickInterval  = 90 * time.Millisecond
-	timerTickInterval    = time.Second
-	digitTimeoutInterval = 700 * time.Millisecond
+	spinnerTickInterval = 90 * time.Millisecond
+	timerTickInterval   = time.Second
 )
 
 func spinnerTickCmd() tea.Cmd {
@@ -22,10 +21,6 @@ func spinnerTickCmd() tea.Cmd {
 
 func timerTickCmd() tea.Cmd {
 	return tea.Tick(timerTickInterval, func(ts time.Time) tea.Msg { return timerTickMsg(ts) })
-}
-
-func digitTimeoutCmd() tea.Cmd {
-	return tea.Tick(digitTimeoutInterval, func(time.Time) tea.Msg { return menuDigitTickMsg{} })
 }
 
 func openDownloadsDirCmd(api AppAPI, path string) tea.Cmd {
@@ -81,9 +76,9 @@ func fetchPlaylistCmd(api AppAPI, ctx context.Context, url string, l core.Locale
 	}
 }
 
-func searchYouTubeCmd(api AppAPI, ctx context.Context, query string, gen int) tea.Cmd {
+func searchYouTubeCmd(api AppAPI, ctx context.Context, query string, l core.Locale, gen int) tea.Cmd {
 	return func() tea.Msg {
-		results, err := api.SearchYouTube(ctx, query)
+		results, err := api.SearchYouTube(ctx, query, l)
 		return msgSearchResults{results: results, err: err, gen: gen}
 	}
 }
@@ -129,5 +124,11 @@ func listenDownloadCmd(ch <-chan core.DlUpdate, gen int) tea.Cmd {
 func checkUpdateCmd(api AppAPI) tea.Cmd {
 	return func() tea.Msg {
 		return msgUpdateChecked{info: api.CheckUpdate()}
+	}
+}
+
+func depsCheckCmd(api AppAPI) tea.Cmd {
+	return func() tea.Msg {
+		return msgDepsChecked{deps: api.DetectDeps()}
 	}
 }

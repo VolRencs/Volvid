@@ -76,13 +76,12 @@ func (m *Model) resetPlaylistState() {
 	m.plInput.SetValue("")
 	m.closePlaylistInput()
 }
-func (m *Model) resetProfileState() {
-	m.forceSingle = false
-	m.numWorkers = 1
-	m.mode = core.ModeVideo
-	m.profile = m.defaultVideoProfile()
+
+// resetProfileSelection clears the profile/track pickers and their selection
+// state while keeping the target, playlist entries and worker count.
+func (m *Model) resetProfileSelection() {
+	m.profile = core.OutputProfile{}
 	m.flowErr = ""
-	m.dlEntries = nil
 	m.qualityChoices = nil
 	m.videoProfiles = nil
 	m.audioProfiles = nil
@@ -90,12 +89,16 @@ func (m *Model) resetProfileState() {
 	m.subsOffered = false
 	m.audioTracks = nil
 	m.audioOffered = false
-	m.audioCursor = 0
-	m.audioTop = 0
-	m.audioSelected = nil
-	m.subCursor = 0
-	m.subTop = 0
-	m.subSelected = nil
+	m.audioList.reset()
+	m.subList.reset()
+}
+func (m *Model) resetProfileState() {
+	m.forceSingle = false
+	m.numWorkers = 1
+	m.mode = core.ModeVideo
+	m.dlEntries = nil
+	m.resetProfileSelection()
+	m.profile = m.defaultVideoProfile()
 }
 func (m *Model) defaultVideoProfile() core.OutputProfile {
 	return m.api.DefaultVideoProfile(m.locale)

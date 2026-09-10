@@ -98,7 +98,6 @@ func (m Model) menuItems() []string {
 }
 
 func (m Model) syncMenu() Model {
-	m.menuDigits = ""
 	m.menu.SetItems(m.menuItems())
 	return m
 }

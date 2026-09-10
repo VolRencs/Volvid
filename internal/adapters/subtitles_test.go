@@ -225,6 +225,19 @@ func TestAudioRetagArgs(t *testing.T) {
 			t.Fatalf("got %v, want %v", args, want)
 		}
 	}
+
+	// An unmappable language is skipped without shifting later stream tags.
+	args = audioRetagArgs("in.mp4", "out.mp4", []string{"", "ger"}, false)
+	want = []string{"-y", "-hide_banner", "-loglevel", "error", "-i", "in.mp4",
+		"-map", "0", "-c", "copy", "-metadata:s:a:1", "language=ger", "out.mp4"}
+	if len(args) != len(want) {
+		t.Fatalf("got %v, want %v", args, want)
+	}
+	for i := range want {
+		if args[i] != want[i] {
+			t.Fatalf("got %v, want %v", args, want)
+		}
+	}
 }
 
 func TestRetagAudioLanguagesIntegration(t *testing.T) {

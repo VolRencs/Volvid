@@ -60,15 +60,11 @@ func transcodeDownloadedVideo(
 				_ = os.Remove(tmp)
 				return "", fmt.Errorf("video transcoding failed: %w", err)
 			}
-			// Сценарий «удалить оригинал после конвертации»:
-			// если контейнер сменил расширение, готовый файл — finalPath,
-			// а исходник нужно удалить сразу, не дожидаясь deferred cleanup.
+			// Remove the original when the container changed extension.
+			// Deferred cleanup covers a failed removal; the successful
+			// finalPath is never touched.
 			if finalPath != outputPath {
-				if err := os.Remove(outputPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-					// Не удалось удалить сразу — deferred cleanup добьёт,
-					// но успешный finalPath уже не трогаем.
-					_ = err
-				}
+				_ = os.Remove(outputPath)
 			}
 			return finalPath, nil
 		}
@@ -83,7 +79,7 @@ func transcodeDownloadedVideo(
 
 	text := strings.TrimSpace(string(lastOut))
 	if text == "" {
-		text = commandErrorText(lastErr)
+		text = commandErrorText(lastErr, l)
 	}
 	if lastErr != nil {
 		return "", fmt.Errorf("video transcoding failed: %s: %w", text, lastErr)

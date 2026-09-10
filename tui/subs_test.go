@@ -28,7 +28,7 @@ func subtitleTestModel() Model {
 	m.locale = core.LocaleEN
 	m.subTracks = []core.SubtitleTrack{{Lang: "en"}, {Lang: "ru", Auto: true}}
 	m.subsOffered = true
-	m.subSelected = map[string]bool{}
+	m.subList.selected = map[string]bool{}
 	m.screen = scrSubtitles
 	m = m.syncMenu()
 	return m
@@ -49,8 +49,8 @@ func TestSubtitleConfirmEmptyMeansOff(t *testing.T) {
 func TestSubtitleRowZeroSkipsImmediately(t *testing.T) {
 	m := subtitleTestModel()
 	// Even with languages checked, cursor on "no subtitles" means off.
-	m.subSelected = map[string]bool{"en": true}
-	m.subCursor = 0
+	m.subList.selected = map[string]bool{"en": true}
+	m.subList.cursor = 0
 	got := confirmViaEnter(m)
 	if got.profile.SubMode != core.SubOff || len(got.profile.SubLangs) != 0 {
 		t.Fatalf("expected subs off, got %+v", got.profile)
@@ -59,10 +59,10 @@ func TestSubtitleRowZeroSkipsImmediately(t *testing.T) {
 
 func TestSubtitleMultiSelect(t *testing.T) {
 	m := subtitleTestModel()
-	m.subCursor = 1
+	m.subList.cursor = 1
 	model, _ := m.handleSubtitlesKey(subKey("space")) // en
 	m = model.(Model)
-	m.subCursor = 2
+	m.subList.cursor = 2
 	model, _ = m.handleSubtitlesKey(subKey("space")) // ru
 	m = model.(Model)
 
@@ -79,13 +79,13 @@ func TestSubtitleToggleAll(t *testing.T) {
 	m := subtitleTestModel()
 	model, _ := m.handleSubtitlesKey(subKey("a"))
 	m = model.(Model)
-	if len(m.subSelected) != 2 {
-		t.Fatalf("expected all selected, got %v", m.subSelected)
+	if len(m.subList.selected) != 2 {
+		t.Fatalf("expected all selected, got %v", m.subList.selected)
 	}
 	model, _ = m.handleSubtitlesKey(subKey("a"))
 	m = model.(Model)
-	if len(m.subSelected) != 0 {
-		t.Fatalf("expected none selected, got %v", m.subSelected)
+	if len(m.subList.selected) != 0 {
+		t.Fatalf("expected none selected, got %v", m.subList.selected)
 	}
 }
 
@@ -98,8 +98,8 @@ func TestSubtitleCursorStaysInViewport(t *testing.T) {
 		model, _ := m.handleSubtitlesKey(subKey("down"))
 		m = model.(Model)
 	}
-	if m.subCursor != len(m.subTracks) {
-		t.Fatalf("expected cursor at end, got %d", m.subCursor)
+	if m.subList.cursor != len(m.subTracks) {
+		t.Fatalf("expected cursor at end, got %d", m.subList.cursor)
 	}
 	body := m.viewSubtitles()
 	if body == "" {
@@ -113,7 +113,7 @@ func audioTrackTestModel() Model {
 	m.locale = core.LocaleEN
 	m.audioTracks = []core.AudioTrack{{Lang: "en"}, {Lang: "ru"}}
 	m.audioOffered = true
-	m.audioSelected = map[string]bool{}
+	m.audioList.selected = map[string]bool{}
 	m.screen = scrAudioTrack
 	m = m.syncMenu()
 	return m
@@ -127,8 +127,8 @@ func confirmAudioViaEnter(m Model) Model {
 func TestAudioTrackRowZeroSkipsImmediately(t *testing.T) {
 	m := audioTrackTestModel()
 	m.target = core.ParsedTarget{Kind: core.TargetVideo, CanonicalURL: "https://www.youtube.com/watch?v=x"}
-	m.audioSelected = map[string]bool{"en": true}
-	m.audioCursor = 0
+	m.audioList.selected = map[string]bool{"en": true}
+	m.audioList.cursor = 0
 	m.subTracks = []core.SubtitleTrack{{Lang: "en"}}
 	m.subsOffered = true
 	got := confirmAudioViaEnter(m)
@@ -142,10 +142,10 @@ func TestAudioTrackRowZeroSkipsImmediately(t *testing.T) {
 
 func TestAudioTrackMultiSelect(t *testing.T) {
 	m := audioTrackTestModel()
-	m.audioCursor = 1
+	m.audioList.cursor = 1
 	model, _ := m.handleAudioTrackKey(subKey("space")) // en
 	m = model.(Model)
-	m.audioCursor = 2
+	m.audioList.cursor = 2
 	model, _ = m.handleAudioTrackKey(subKey("space")) // ru
 	m = model.(Model)
 
@@ -189,7 +189,7 @@ func TestAudioTrackToggleAll(t *testing.T) {
 	m := audioTrackTestModel()
 	model, _ := m.handleAudioTrackKey(subKey("a"))
 	m = model.(Model)
-	if len(m.audioSelected) != 2 {
-		t.Fatalf("expected all selected, got %v", m.audioSelected)
+	if len(m.audioList.selected) != 2 {
+		t.Fatalf("expected all selected, got %v", m.audioList.selected)
 	}
 }

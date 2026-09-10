@@ -39,7 +39,7 @@ func streamYtdlp(env *Env, ctx context.Context, slot int, l core.Locale, deps co
 		slices.Concat(streamProtocolArgs(), args)...,
 	)
 	if err != nil {
-		return failedDownload(err)
+		return failedDownload(err, l)
 	}
 	defer cancel()
 	defer pr.Close()
@@ -102,12 +102,12 @@ func streamYtdlp(env *Env, ctx context.Context, slot int, l core.Locale, deps co
 		if waitErr := waitCommand(cmd, runCtx); waitErr != nil {
 			err = errors.Join(err, waitErr)
 		}
-		setDownloadError(&result, fmt.Errorf("yt-dlp output: %w", err))
+		setDownloadError(&result, fmt.Errorf("yt-dlp output: %w", err), l)
 		return result
 	}
 
 	if err := waitCommand(cmd, runCtx); err != nil {
-		setDownloadError(&result, err)
+		setDownloadError(&result, err, l)
 		return result
 	}
 	return result
@@ -203,8 +203,8 @@ func postprocessLabel(line string, l core.Locale) string {
 		return loc.MergeProc
 	}
 }
-func failedDownload(err error) downloadResult {
-	return downloadResult{Err: err, ErrText: commandErrorText(err)}
+func failedDownload(err error, l core.Locale) downloadResult {
+	return downloadResult{Err: err, ErrText: commandErrorText(err, l)}
 }
 func interruptErr(ctx context.Context) error {
 	if ctx != nil {
@@ -214,15 +214,15 @@ func interruptErr(ctx context.Context) error {
 	}
 	return context.Canceled
 }
-func canceledDownload(ctx context.Context) downloadResult {
-	return failedDownload(interruptErr(ctx))
+func canceledDownload(ctx context.Context, l core.Locale) downloadResult {
+	return failedDownload(interruptErr(ctx), l)
 }
-func setDownloadError(result *downloadResult, err error) {
+func setDownloadError(result *downloadResult, err error, l core.Locale) {
 	if result == nil || err == nil {
 		return
 	}
 	result.Err = err
-	setDownloadErrorText(result, commandErrorText(err))
+	setDownloadErrorText(result, commandErrorText(err, l))
 }
 func setDownloadErrorText(result *downloadResult, text string) {
 	if result == nil {
@@ -237,16 +237,17 @@ func setDownloadErrorText(result *downloadResult, text string) {
 func clampProgressPercent(pct float64) float64 {
 	return min(100, max(0, pct))
 }
-func commandErrorText(err error) string {
+func commandErrorText(err error, l core.Locale) string {
 	if err == nil {
 		return ""
 	}
 
+	loc := i18n.StringsFor(l)
 	switch {
 	case errors.Is(err, context.Canceled):
-		return "operation cancelled"
+		return loc.ErrCancelled
 	case errors.Is(err, context.DeadlineExceeded):
-		return "operation timed out"
+		return loc.ErrTimedOut
 	default:
 		return err.Error()
 	}

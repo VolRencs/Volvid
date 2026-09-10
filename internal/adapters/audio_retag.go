@@ -58,7 +58,9 @@ func isASCIILetters(s string) bool {
 }
 
 // audioRetagArgs builds a stream-copy ffmpeg command that stamps ISO
-// language tags onto audio streams in order. faststart keeps mp4 layout.
+// language tags onto audio streams in order. An empty slot means the
+// language is unmappable: it is skipped, but the stream index is preserved
+// so later tags stay on their own tracks. faststart keeps mp4 layout.
 func audioRetagArgs(input, output string, isoLangs []string, faststart bool) []string {
 	args := []string{
 		"-y",
@@ -72,6 +74,9 @@ func audioRetagArgs(input, output string, isoLangs []string, faststart bool) []s
 		args = append(args, "-movflags", "+faststart")
 	}
 	for i, iso := range isoLangs {
+		if iso == "" {
+			continue
+		}
 		args = append(args, fmt.Sprintf("-metadata:s:a:%d", i), "language="+iso)
 	}
 	return append(args, output)
@@ -88,13 +93,15 @@ func retagAudioLanguages(ctx context.Context, ffmpeg, videoPath string, langs []
 	if videoPath == "" || ffmpeg == "" {
 		return fmt.Errorf("retag requires ffmpeg and video path")
 	}
-	isoLangs := make([]string, 0, len(langs))
-	for _, lang := range langs {
+	isoLangs := make([]string, len(langs))
+	mappable := 0
+	for i, lang := range langs {
 		if iso, ok := audioLangISO(lang); ok {
-			isoLangs = append(isoLangs, iso)
+			isoLangs[i] = iso
+			mappable++
 		}
 	}
-	if len(isoLangs) == 0 {
+	if mappable == 0 {
 		return fmt.Errorf("no mappable audio languages")
 	}
 

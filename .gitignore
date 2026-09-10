@@ -1,0 +1,14 @@
+# Build artifacts
+/Volvid
+/Volvid.exe
+*.syso
+*.test
+*.out
+
+# Self-update artifacts
+*.new
+*.new.exe
+*.update.bat
+
+# Local runtime data
+.volvid*

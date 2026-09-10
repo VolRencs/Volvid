@@ -6,7 +6,7 @@
 
 **Keyboard-driven TUI for downloading YouTube video, audio and thumbnails — via yt-dlp + ffmpeg.**
 
-[![Go](https://img.shields.io/badge/Go-1.27.0%2B-00ADD8?style=flat-square&logo=go)](go.mod)
+[![Go](https://img.shields.io/badge/Go-1.27.1%2B-00ADD8?style=flat-square&logo=go)](go.mod)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)](#platforms)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
 
@@ -49,7 +49,7 @@ chmod +x Volvid
 
 ### Build from source
 
-Requires **Go 1.27.0+** (`go.mod`; CI uses `1.27.1`).
+Requires **Go 1.27.1+** (`go.mod`; CI uses `1.27.1`).
 
 ```bash
 git clone https://github.com/VolRencs/Volvid
@@ -58,7 +58,7 @@ go build -trimpath -buildvcs=false -ldflags="-s -w" -o Volvid ./cmd/downloader
 ./Volvid
 ```
 
-Release Linux builds additionally inject the version: `-X volvid/internal/adapters.Version=$VOLVID_VERSION` (see `scripts/build-linux-downloader.sh`).
+Release builds inject the version when `VOLVID_VERSION` is set: `-X volvid/internal/adapters.Version=$VOLVID_VERSION` (see `scripts/build-linux-downloader.sh` and `scripts/build-windows-downloader.sh`).
 
 ### Build Windows .exe with icon
 
@@ -77,15 +77,15 @@ go install github.com/akavel/rsrc@v0.10.2
 4. Choose Video / Audio / Thumbnail.
 5. Video: quality scan (`Best`/`Economy`/height) → output (`Original`, `H264`, `H265`, `VP9`, `AV1`, `MKV-copy`). Audio: `MP3 320k`, `MP3 192k`, `M4A Best`, `Opus Best`, `FLAC`.
 6. Video with dubs: pick audio tracks checklist (`Space`, `A` for all) — shown only when 2+ languages exist; then pick subtitles to embed (`Space` multi-select, first row skips). Sidecar `.srt` files are removed, tracks stay inside the container with language tags.
-6. Optional fragment for single video/audio (video/audio only): `1:00-2:30`, open-ended `start-` / `start+`, or URL timestamp (`t`/`start`).
-7. Playlist downloads ask for worker count; watch progress (`Esc` cancels). Summary keeps session success/failure history.
+7. Optional fragment for single video/audio (video/audio only): `1:00-2:30`, open-ended `start-` / `start+`, or URL timestamp (`t`/`start`).
+8. Playlist downloads ask for worker count; watch progress (`Esc` cancels). Summary keeps session success/failure history.
 
 ## Controls
 
 | Key | Scope | Action |
 |-----|-------|--------|
 | `↑` / `↓` | menus, playlist | Move |
-| `0-9` (multi-digit, e.g. `12`) | menus | Jump to item, `Enter` confirms |
+| `1-9` | menus | Jump to item and activate |
 | `Enter` | menus, inputs | Continue / confirm |
 | `Space` | playlist, subtitles, audio tracks (not in `/`-input) | Toggle entry |
 | `a` / `а` | playlist, subtitles, audio tracks | Select all / clear all |
@@ -109,21 +109,24 @@ Defaults use standard user dirs; overrides via env:
 | `VOLVID_DEPS_DIR` | managed `yt-dlp`/`ffmpeg`/`node` | `DataDir/deps` |
 | `VOLVID_DOWNLOADS_DIR` | lock download location (disables picker) | system `Downloads`, saved choice in `ConfigDir/.volvid_downloads_dir` |
 
-Also: `VOLVID_FFMPEG_SHA256` (pin ffmpeg), `VOLVID_VERSION` (release version injection, Linux script), `VOLVID_GO_CACHE_ROOT`/`GOCACHE`/`GOMODCACHE` (build cache, `scripts/go-env.sh`).
+Also: `VOLVID_FFMPEG_SHA256` (pin ffmpeg), `VOLVID_VERSION` (release version injection, both build scripts), `VOLVID_GO_CACHE_ROOT`/`GOCACHE`/`GOMODCACHE` (build cache, `scripts/go-env.sh`).
 
 ## Architecture
 
 ```text
 cmd/downloader/   composition root: adapters.NewEnv + tui.New(env, ctx)
 tui/              Bubble Tea UI: screen.go (state machine), menu/flow/keys/bindings,
-                  view*.go + deps_*.go (render), appapi.go (seam), *_state.go
-internal/core/    pure domain, no I/O: target/fragment/request/playlist/probe/quality/deps/session
+                  view*.go + deps_*.go (render), checklist.go (track pickers),
+                  appapi.go (seam), *_state.go
+internal/core/    pure domain, no I/O: target/fragment/clock/profile/deps/probe/
+                  decode/sanitize/session
 internal/i18n/    UIStrings + locale formatting + profile factories
 internal/services/ use-cases: PlanDownload (validation), LaunchProgress (worker)
-internal/adapters/ I/O: http/process/request/playlist/deps*/download_*/release/probe/
-                  quality_scan/ytjson + platform paths (downloads_dir_*) and pickers (folder_picker_*)
+internal/adapters/ I/O: http/process/request/playlist/ytdlp_scan/probe/quality_scan/
+                  release/deps*/download_* + platform paths (downloads_dir_*) and
+                  pickers (folder_picker_*)
 scripts/          build-linux-downloader.sh, build-windows-downloader.sh, go-env.sh
-assets/           TUI.png, Downloader.png, icon/icon.ico
+assets/           logo-1.png, logo-2.png, tui.png, icon/icon.ico
 ```
 
 ```text
@@ -143,7 +146,7 @@ Production: tui.New(env, ctx) wraps newAppAPI(env). Tests: tui.NewWithDeps(ctx, 
 
 ## Continuous Integration
 
-`checks.yml` (push/PR to `main`): `go vet`, `go test -race`, build matrix `ubuntu-latest` + `windows-latest` via the two scripts. `build.yml` (on release `published`): version from tag (`VOLVID_VERSION=${GITHUB_REF_NAME#v}`), builds `Volvid.exe` / `Volvid`, uploads with `ncipollo/release-action@v1` (no signing).
+`checks.yml` (push/PR to `Dev`): `go vet`, `gofmt -l`, `staticcheck`, `go test -race`, build matrix `ubuntu-latest` + `windows-latest` via the two scripts. `build.yml` (on release `published`): version from tag (`VOLVID_VERSION=${GITHUB_REF_NAME#v}`), builds `Volvid.exe` / `Volvid`, uploads with `ncipollo/release-action@v1` (no signing).
 
 ## Troubleshooting
 

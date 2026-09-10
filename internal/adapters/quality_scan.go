@@ -100,8 +100,8 @@ func buildQualityChoices(heights []int, counts map[int]int, videos []videoQualit
 			Available: counts[height],
 			Total:     total,
 			SizeBytes: size,
-			FmtChain:  chains[i:],
-			FmtLabels: labels[i:],
+			FmtChain:  slices.Clone(chains[i:]),
+			FmtLabels: slices.Clone(labels[i:]),
 		})
 	}
 	return choices

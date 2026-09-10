@@ -196,7 +196,7 @@ func (m Model) screenView() screenView {
 			body:       m.viewDepsManage(),
 			notice:     notice,
 			noticeKind: kind,
-			bindings:   m.depBindings(),
+			bindings:   m.hintsFor(),
 		}
 
 	case scrURL:
@@ -230,7 +230,7 @@ func (m Model) screenView() screenView {
 			body:       m.viewPlaylist(),
 			notice:     m.plInputErr,
 			noticeKind: noticeError,
-			bindings:   m.playlistBindings(),
+			bindings:   m.hintsFor(),
 		}
 
 	case scrFragmentChoice:
@@ -297,7 +297,7 @@ func (m Model) screenView() screenView {
 			body:       m.viewSummary(),
 			notice:     notice,
 			noticeKind: kind,
-			bindings:   m.summaryBindings(),
+			bindings:   m.hintsFor(),
 		}
 	}
 
@@ -395,6 +395,11 @@ func (m Model) stageTitle() string {
 		return strings.TrimSpace(u.SpinnerSearch)
 	case scrFragmentProbe:
 		return strings.TrimSpace(u.SpinnerFragment)
+	case scrUpdateCheck:
+		if m.depRefreshing {
+			return strings.TrimSpace(u.DepsRefreshing)
+		}
+		return strings.TrimSpace(u.SpinnerUpdate)
 	default:
 		return strings.TrimSpace(u.SpinnerUpdate)
 	}
@@ -431,11 +436,7 @@ func (m Model) playlistSubtitle() string {
 		total = len(m.plInfo.Entries)
 	}
 	subtitle := fmt.Sprintf(m.u().PlSelectedFmt, m.selectedPlaylistCount(), total)
-	if total > 0 && total > m.playlistViewportHeight() {
-		start := m.plTop + 1
-		end := min(total, m.plTop+m.playlistViewportHeight())
-		subtitle += fmt.Sprintf("  ·  %d-%d/%d", start, end, total)
-	}
+	subtitle += viewportRangeText(m.plTop, total, m.playlistViewportHeight())
 	return subtitle
 }
 func (m Model) downloadTitle() string {

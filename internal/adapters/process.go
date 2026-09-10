@@ -53,11 +53,8 @@ func (b *cmdBuffer) String() string {
 
 func (b *cmdBuffer) Bytes() []byte { return b.buf }
 
-// Back-compat aliases: stderr uses truncating mode, stdout uses fail mode.
-type limitedBuffer = cmdBuffer
-type cappedBuffer = cmdBuffer
-
-func commandErrorWithStderr(err error, stderr limitedBuffer) error {
+// stderr uses truncating mode, stdout uses fail mode.
+func commandErrorWithStderr(err error, stderr cmdBuffer) error {
 	if err == nil {
 		return nil
 	}
@@ -83,10 +80,10 @@ func runCommandOutput(ctx context.Context, timeout time.Duration, merge bool, na
 	defer cancel()
 
 	cmd := newProcessTreeCommand(runCtx, name, args...)
-	var stdout cappedBuffer
+	var stdout cmdBuffer
 	stdout.limit = commandStdoutMaxBytes
 	stdout.failOnCap = true
-	var stderr limitedBuffer
+	var stderr cmdBuffer
 	stderr.limit = commandStderrCaptureSize
 	if merge {
 		cmd.Stdout = &stdout
