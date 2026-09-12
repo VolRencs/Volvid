@@ -5,18 +5,19 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"volvid/internal/core"
 )
 
 // resolveRuntimeDeps returns cached runtime deps (cookies/js-runtime/UA).
 func resolveRuntimeDeps(env *Env) core.CheckDepsResult {
-	result, _ := env.runtimeDepsCache.LoadWithTTL(struct{}{}, runtimeDepsTTL, func() (core.CheckDepsResult, error) {
+	result, _ := env.runtimeDepsCache.Load(struct{}{}, runtimeDepsTTL, nil, func() (core.CheckDepsResult, error) {
 		return detectDeps(env, false), nil
 	})
 	return result
 }
 
-func ytdlpBaseArgs(env *Env, deps core.CheckDepsResult) []string {
+func ytdlpBaseArgs(deps core.CheckDepsResult) []string {
 	args := make([]string, 0, 7)
 	args = append(args, "--ignore-config", "--no-warnings")
 	args = append(args, core.FFmpegArgs(deps)...)
@@ -32,40 +33,34 @@ func ytdlpBaseArgs(env *Env, deps core.CheckDepsResult) []string {
 	if deps.Runtime.Status == core.StatusActive && strings.TrimSpace(deps.Runtime.Path) != "" {
 		args = append(args, "--js-runtimes", "node:"+deps.Runtime.Path)
 	}
-	if ua := runtimeUserAgent(env, deps); ua != "" {
+	if ua := runtimeUserAgent(deps); ua != "" {
 		args = append(args, "--user-agent", ua)
 	}
 	return args
 }
 
-func ytdlpCommandArgsFor(env *Env, deps core.CheckDepsResult, base []string) []string {
-	return append(ytdlpBaseArgs(env, deps), base...)
+func ytdlpCommandArgsFor(deps core.CheckDepsResult, base []string) []string {
+	return append(ytdlpBaseArgs(deps), base...)
 }
 
-func runtimeUserAgent(env *Env, deps core.CheckDepsResult) string {
+func runtimeUserAgent(deps core.CheckDepsResult) string {
 	if deps.Cookies.Status != core.StatusActive {
 		return ""
 	}
 	if runtime.GOOS != "linux" || !strings.EqualFold(strings.TrimSpace(deps.Cookies.Browser), "firefox") {
 		return ""
 	}
-	return env.firefoxUserAgent()
+	return firefoxUserAgent()
 }
 
-func (env *Env) firefoxUserAgent() string {
-	env.firefoxUserAgentOnce.Do(func() {
-		env.firefoxUserAgentCache = buildFirefoxUserAgent()
-	})
-	return env.firefoxUserAgentCache
-}
+var firefoxUserAgent = sync.OnceValue(buildFirefoxUserAgent)
 
 func buildFirefoxUserAgent() string {
 	version := detectFirefoxVersion()
 	if version == "" {
 		version = "128.0"
 	}
-	platform := firefoxUAPlatform()
-	return "Mozilla/5.0 (" + platform + "; rv:" + version + ") Gecko/20100101 Firefox/" + version
+	return "Mozilla/5.0 (X11; Linux x86_64; rv:" + version + ") Gecko/20100101 Firefox/" + version
 }
 
 func buildDownloadCommandArgs(req core.DownloadRequest, deps core.CheckDepsResult, sourceURL, outputTemplate, format string, extra []string) ([]string, error) {

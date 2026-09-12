@@ -80,7 +80,7 @@ func (m Model) submitURLInput() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	target, err := m.api.ParseTarget(rawURL)
+	target, err := core.ParseTarget(rawURL)
 	if err != nil {
 		m.urlErr = m.u().URLErrBad + ": " + err.Error()
 		return m, nil
@@ -153,7 +153,7 @@ func (m Model) activateSearchResult(idx int) (tea.Model, tea.Cmd) {
 		return m, m.searchInput.Focus()
 	}
 
-	target, err := m.api.ParseTarget(result.URL)
+	target, err := core.ParseTarget(result.URL)
 	if err != nil {
 		m.screen = scrSearchInput
 		m.searchErr = m.u().SearchErrFailed + ": " + err.Error()
@@ -218,9 +218,6 @@ func (m Model) returnFromDependencyScreen() (tea.Model, tea.Cmd) {
 	}
 
 	target := m.depReturnScreen
-	if target == scrUpdateCheck {
-		target = scrURL
-	}
 
 	m.depErr = ""
 	m.screen = target
@@ -284,8 +281,7 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 		m.api.PrepareDownload,
 	)
 	if err != nil {
-		var missing *services.MissingDependencyError
-		if errors.As(err, &missing) {
+		if missing, ok := errors.AsType[*services.MissingDependencyError](err); ok {
 			m.depReturnScreen = m.screen
 			return m.openDependencyScreenWithError(depModeManage, m.depRequirementText(missing.Name))
 		}
@@ -314,7 +310,7 @@ func (m Model) startDownload() (tea.Model, tea.Cmd) {
 	dlCtx, dlCancel := context.WithCancel(m.baseCtx)
 	m.dlCancel = dlCancel
 
-	m.api.StartDownload(dlCtx, plan.Request, plan.Deps, ch)
+	m.api.StartDownload(dlCtx, plan.Request, deps, ch)
 	return m, tea.Batch(listenDownloadCmd(ch, m.dlGen), timerTickCmd())
 }
 func (m Model) cancelDownload() (tea.Model, tea.Cmd) {

@@ -176,8 +176,7 @@ func shouldRetryHTTPError(err error) bool {
 		return false
 	}
 
-	var netErr net.Error
-	if errors.As(err, &netErr) {
+	if netErr, ok := errors.AsType[net.Error](err); ok {
 		return netErr.Timeout()
 	}
 	// Do not retry TLS/redirect-policy/url errors without a timeout:
@@ -208,15 +207,7 @@ func downloadFileContext(
 	ctx = resolveContext(ctx)
 	ctx, cancel := context.WithTimeout(ctx, defaultFileDownloadTimeout)
 	defer cancel()
-	return downloadFileWith(ctx, env.dlClient, url, dest, l, ch)
-}
-func downloadFileWith(
-	ctx context.Context,
-	client *http.Client,
-	url, dest string,
-	l core.Locale,
-	ch chan<- core.FileProgress,
-) error {
+
 	if err := ensureDownloadDir(dest); err != nil {
 		return err
 	}
@@ -226,7 +217,7 @@ func downloadFileWith(
 		return err
 	}
 
-	resp, err := doSafeRequest(ctx, client, req)
+	resp, err := doSafeRequest(ctx, env.dlClient, req)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", url, err)
 	}
@@ -313,13 +304,9 @@ func validateDownloadResponse(resp *http.Response, url string) error {
 	}
 	return nil
 }
-func tempFilePattern(name string) string {
-	return core.SanitizeFileStem(name, "download")
-}
-
 func createTempDownloadFile(dest string) (string, *os.File, error) {
 	dir := filepath.Dir(dest)
-	pattern := tempFilePattern(filepath.Base(dest)) + ".*.part"
+	pattern := core.SanitizeFileStem(filepath.Base(dest), "download") + ".*.part"
 	file, err := os.CreateTemp(dir, pattern)
 	if err != nil {
 		return "", nil, fmt.Errorf("create temp file for %s: %w", dest, err)
@@ -384,8 +371,7 @@ func replaceFilesWithBackup(paths map[string]string) error {
 		var errs []error
 		// Reverse order mirrors the replacements; entries without an old
 		// destination must be removed, not restored.
-		for i := len(applied) - 1; i >= 0; i-- {
-			entry := applied[i]
+		for _, entry := range slices.Backward(applied) {
 			if !entry.hadOld {
 				if err := os.Remove(entry.dest); err != nil && !errors.Is(err, os.ErrNotExist) {
 					errs = append(errs, fmt.Errorf("rollback remove %s: %w", filepath.Base(entry.dest), err))

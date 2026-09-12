@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	Version = "7.4.3"
+	Version = "7.4.4"
 
 	ffmpegWinURL   = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ffmpegLinuxURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
@@ -121,72 +121,29 @@ const (
 	slotResetDelay       = 300 * time.Millisecond
 )
 
-type runtimePaths struct {
+type Env struct {
+	IsWindows bool
+
 	AppDir    string
 	ConfigDir string
 	DataDir   string
 	DepsDir   string
-}
 
-type managedBinaries struct {
 	YtdlpBin   string
 	FFmpegBin  string
 	FFprobeBin string
 	NodeBin    string
-}
 
-type httpClients struct {
 	apiClient *http.Client
 	dlClient  *http.Client
-}
 
-type depCaches struct {
 	depsCache        *flightCache[struct{}, core.CheckDepsResult]
 	runtimeDepsCache *flightCache[struct{}, core.CheckDepsResult]
 	probeCache       *flightCache[string, *core.MediaProbe]
+	ffmpegEncoders   *flightCache[string, map[string]bool]
 
-	firefoxUserAgentOnce  sync.Once
-	firefoxUserAgentCache string
-
-	ffmpegEncodersMu     sync.Mutex
-	ffmpegEncodersValue  map[string]map[string]bool
-	ffmpegEncodersFlight map[string]*encoderFlight
-}
-
-// encoderFlight dedupes concurrent `ffmpeg -encoders` probes for one binary.
-type encoderFlight struct {
-	done     chan struct{}
-	encoders map[string]bool
-}
-
-type Env struct {
-	IsWindows bool
-
-	runtimePaths
-	managedBinaries
-	httpClients
-	depCaches
-
-	dirs dirStore
-}
-
-// dirStore owns the mutable downloads-folder override behind a lock,
-// so path state is not scattered across Env methods.
-type dirStore struct {
-	mu  sync.RWMutex
-	dir string
-}
-
-func (s *dirStore) get() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.dir
-}
-
-func (s *dirStore) set(path string) {
-	s.mu.Lock()
-	s.dir = path
-	s.mu.Unlock()
+	downloadsDirMu sync.RWMutex
+	downloadsDir   string
 }
 
 func NewEnv() *Env {
@@ -195,6 +152,7 @@ func NewEnv() *Env {
 		depsCache:        newFlightCache[struct{}, core.CheckDepsResult](),
 		runtimeDepsCache: newFlightCache[struct{}, core.CheckDepsResult](),
 		probeCache:       newFlightCache[string, *core.MediaProbe](),
+		ffmpegEncoders:   newFlightCache[string, map[string]bool](),
 	}
 
 	exe := currentExecutablePath()
@@ -234,24 +192,18 @@ func (env *Env) DownloadsDir() string {
 	if env == nil {
 		return ""
 	}
-	return env.dirs.get()
+	env.downloadsDirMu.RLock()
+	defer env.downloadsDirMu.RUnlock()
+	return env.downloadsDir
 }
 
 func (env *Env) setDownloadsDir(path string) {
 	if env == nil {
 		return
 	}
-	env.dirs.set(path)
-}
-
-func (env *Env) invalidateFFmpegEncoders() {
-	if env == nil {
-		return
-	}
-	env.ffmpegEncodersMu.Lock()
-	defer env.ffmpegEncodersMu.Unlock()
-	clear(env.ffmpegEncodersValue)
-	clear(env.ffmpegEncodersFlight)
+	env.downloadsDirMu.Lock()
+	defer env.downloadsDirMu.Unlock()
+	env.downloadsDir = path
 }
 
 const (
@@ -267,7 +219,7 @@ func (env *Env) initRuntimePaths(exeDir string) {
 	env.ConfigDir = resolveConfigDir(env)
 	env.DataDir = resolveDataDir(env)
 	env.DepsDir = resolveArtifactDir(envDepsDir, filepath.Join(env.DataDir, "deps"))
-	env.dirs.set(resolveDownloadsDir(env))
+	env.setDownloadsDir(resolveDownloadsDir(env))
 }
 
 func resolveConfigDir(env *Env) string {

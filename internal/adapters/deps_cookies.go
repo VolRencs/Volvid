@@ -150,7 +150,7 @@ func resolveCookieRoots(roots []string) ([]string, bool) {
 func expandCookieRoot(root string) []string {
 	if !strings.ContainsAny(root, "*?[") {
 		if pathExists(root) {
-			return []string{absoluteIfPossible(root)}
+			return []string{cleanAbsPath(root)}
 		}
 		return nil
 	}
@@ -161,7 +161,7 @@ func expandCookieRoot(root string) []string {
 	out := make([]string, 0, len(matches))
 	for _, match := range matches {
 		if pathExists(match) {
-			out = append(out, absoluteIfPossible(match))
+			out = append(out, cleanAbsPath(match))
 		}
 	}
 	return out
@@ -179,7 +179,7 @@ func cookieCandidates(browser string, roots []string, scan profileScanner) []coo
 			cookiePath, modTime := scan.state(root, profileDir)
 			out = append(out, cookieCandidate{
 				Browser:    browser,
-				Profile:    absoluteIfPossible(profileDir),
+				Profile:    cleanAbsPath(profileDir),
 				CookiePath: cookiePath,
 				ModTime:    modTime,
 			})
@@ -301,7 +301,7 @@ func profileCookieState(profileDir string, cookiePaths ...string) (string, time.
 			path = filepath.Join(profileDir, path)
 		}
 		if info, ok := fileInfo(path); ok && !info.IsDir() {
-			return absoluteIfPossible(path), info.ModTime()
+			return cleanAbsPath(path), info.ModTime()
 		}
 	}
 	return "", time.Time{}
@@ -456,15 +456,15 @@ func resolveUserPath(home, raw string) string {
 		return ""
 	}
 	if rest, ok := strings.CutPrefix(raw, "~"+string(os.PathSeparator)); ok {
-		return absoluteIfPossible(filepath.Join(home, rest))
+		return cleanAbsPath(filepath.Join(home, rest))
 	}
 	if filepath.IsAbs(raw) {
-		return absoluteIfPossible(raw)
+		return cleanAbsPath(raw)
 	}
 	if home == "" {
-		return absoluteIfPossible(raw)
+		return cleanAbsPath(raw)
 	}
-	return absoluteIfPossible(filepath.Join(home, raw))
+	return cleanAbsPath(filepath.Join(home, raw))
 }
 func dedupeStrings(items []string, key func(string) string) []string {
 	out := make([]string, 0, len(items))

@@ -17,7 +17,7 @@ func writeAppConfig(path, content string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return atomicWriteFile(path, []byte(content), 0o644)
+	return writeStagedFile(bytes.NewReader([]byte(content)), path, 0o644, -1)
 }
 
 // binaryBaseName returns the base name of a binary path.
@@ -70,8 +70,19 @@ func writeStagedFile(src io.Reader, dest string, perm os.FileMode, maxBytes int6
 	return nil
 }
 
-func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
-	return writeStagedFile(bytes.NewReader(data), path, perm, -1)
+// createSiblingTemp reserves ".<base>.<kind>-*.<ext>" next to path and returns
+// its name. The caller owns the file and must remove it on failure.
+func createSiblingTemp(path, kind, ext string) (string, error) {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"."+kind+"-*."+ext)
+	if err != nil {
+		return "", err
+	}
+	name := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", err
+	}
+	return name, nil
 }
 
 func prepareDir(path string) (string, error) {

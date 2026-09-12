@@ -5,7 +5,6 @@ package adapters
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -46,10 +45,7 @@ func pickDirectory(parent context.Context, current, title string) (string, error
 		return "", fmt.Errorf("resolve session bus name: no unique connection name")
 	}
 
-	token, err := portalHandleToken()
-	if err != nil {
-		return "", err
-	}
+	token := portalHandleToken()
 	requestPath := portalRequestPath(sender, token)
 
 	subscribe := func(p dbus.ObjectPath) error {
@@ -180,12 +176,8 @@ func parsePortalFolderSignal(sig *dbus.Signal) (string, error) {
 	return cleanAbsPath(path), nil
 }
 
-func portalHandleToken() (string, error) {
-	buf := make([]byte, 8)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generate portal token: %w", err)
-	}
-	return "volvid" + hex.EncodeToString(buf), nil
+func portalHandleToken() string {
+	return "volvid" + rand.Text()
 }
 
 func portalRequestPath(sender, token string) dbus.ObjectPath {

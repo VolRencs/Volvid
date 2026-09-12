@@ -1,7 +1,6 @@
 package adapters
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"volvid/internal/core"
@@ -104,14 +104,10 @@ func ApplyUpdateFor(env *Env, ctx context.Context, l core.Locale, info *core.Upd
 	if err != nil {
 		return fmt.Errorf("resolve absolute path: %w", err)
 	}
-	if env.IsWindows {
-		tmp := strings.TrimSuffix(dest, ".exe") + ".new.exe"
-		if err := downloadFileContext(env, ctx, info.DlURL, tmp, l, ch); err != nil {
-			return err
-		}
-		return applyUpdatePlatform(tmp, dest)
-	}
 	tmp := dest + ".new"
+	if env.IsWindows {
+		tmp = strings.TrimSuffix(dest, ".exe") + ".new.exe"
+	}
 	if err := downloadFileContext(env, ctx, info.DlURL, tmp, l, ch); err != nil {
 		return err
 	}
@@ -134,10 +130,5 @@ func versionGT(a, b string) bool {
 	if !okA || !okB {
 		return false
 	}
-	for i := range 4 {
-		if c := cmp.Compare(av[i], bv[i]); c != 0 {
-			return c > 0
-		}
-	}
-	return false
+	return slices.Compare(av[:], bv[:]) > 0
 }

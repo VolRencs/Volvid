@@ -21,8 +21,8 @@ func TestPlanDownloadMissingYtDlp(t *testing.T) {
 	_, err := PlanDownload(testDeps(false, true),
 		core.ParsedTarget{Kind: core.TargetVideo, CanonicalURL: "https://www.youtube.com/watch?v=x"},
 		core.OutputProfile{Mode: core.ModeVideo}, nil, 0, true, nil, nil, 1, "/tmp", core.LocaleEN, okPrepare)
-	var missing *MissingDependencyError
-	if !errors.As(err, &missing) {
+	missing, ok := errors.AsType[*MissingDependencyError](err)
+	if !ok {
 		t.Fatalf("expected MissingDependencyError, got %v", err)
 	}
 	if missing.Name != "yt-dlp" {
@@ -34,8 +34,8 @@ func TestPlanDownloadMissingFFmpegForAudio(t *testing.T) {
 	_, err := PlanDownload(testDeps(true, false),
 		core.ParsedTarget{Kind: core.TargetVideo, CanonicalURL: "https://www.youtube.com/watch?v=x"},
 		core.OutputProfile{Mode: core.ModeAudio}, nil, 0, true, nil, nil, 1, "/tmp", core.LocaleEN, okPrepare)
-	var missing *MissingDependencyError
-	if !errors.As(err, &missing) {
+	missing, ok := errors.AsType[*MissingDependencyError](err)
+	if !ok {
 		t.Fatalf("expected MissingDependencyError, got %v", err)
 	}
 	if missing.Name != "ffmpeg" {

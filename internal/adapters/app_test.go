@@ -51,13 +51,11 @@ func TestDownloadsDirRoundTripConcurrent(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 50 {
 				_ = env.DownloadsDir()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -72,7 +70,7 @@ func newBareEnv() *Env {
 
 func TestScanQualityChoicesCancelledContext(t *testing.T) {
 	env := newBareEnv()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	choices, err := scanQualityChoicesContext(env, ctx, []string{"https://youtu.be/dQw4w9WgXcQ"})
@@ -83,7 +81,7 @@ func TestScanQualityChoicesCancelledContext(t *testing.T) {
 
 func TestScanQualityChoicesEmptyInput(t *testing.T) {
 	env := newBareEnv()
-	if _, err := scanQualityChoicesContext(env, context.Background(), nil); err == nil {
+	if _, err := scanQualityChoicesContext(env, t.Context(), nil); err == nil {
 		t.Fatal("expected error for empty input")
 	}
 }
@@ -94,7 +92,7 @@ func TestProbeOnBareEnvDoesNotPanic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseTarget: %v", err)
 	}
-	ProbeMediaDurationContext(env, context.Background(), target)
+	ProbeMediaDurationContext(env, t.Context(), target)
 }
 
 func TestScanChecksumManifest(t *testing.T) {
@@ -243,11 +241,9 @@ func TestDetectFFmpegVideoEncodersConcurrent(t *testing.T) {
 	results := make([]map[string]bool, callers)
 	var wg sync.WaitGroup
 	for i := range callers {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			results[i] = detectFFmpegVideoEncoders(env, context.Background(), ffmpeg)
-		}(i)
+		wg.Go(func() {
+			results[i] = detectFFmpegVideoEncoders(env, t.Context(), ffmpeg)
+		})
 	}
 	wg.Wait()
 	for i := 1; i < callers; i++ {

@@ -14,7 +14,6 @@ import (
 // DownloadPlan is the validated decision to start a download.
 type DownloadPlan struct {
 	Request core.DownloadRequest
-	Deps    core.CheckDepsResult
 	Workers int
 	Total   int
 }
@@ -76,7 +75,6 @@ func PlanDownload(
 
 	return DownloadPlan{
 		Request: prepared,
-		Deps:    deps,
 		Workers: workers,
 		Total:   len(entries),
 	}, nil

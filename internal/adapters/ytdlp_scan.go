@@ -34,16 +34,43 @@ func flatScanError(err error, count int, timeoutErr error) error {
 	return err
 }
 
-func scanYTDLPJSONLines(env *Env, ctx context.Context, timeout time.Duration, args []string, handle func(map[string]any)) error {
-	cmd, stdout, runCtx, cancel, err := startYTDLPMergedOutputCommand(env, ctx, timeout, resolveRuntimeDeps(env), args...)
+var (
+	// errYtdlpStart marks failures to start the yt-dlp process.
+	errYtdlpStart = errors.New("yt-dlp start")
+	// errYtdlpOutput marks failures while reading the merged output stream.
+	errYtdlpOutput = errors.New("yt-dlp output")
+)
+
+// runYtdlpLines starts yt-dlp with merged stderr, feeds every non-empty line
+// to handle and returns the process result. Start/read failures are wrapped
+// with the sentinels above; the process exit error is returned untouched.
+func runYtdlpLines(
+	ctx context.Context,
+	timeout time.Duration,
+	deps core.CheckDepsResult,
+	args []string,
+	handle func(line []byte) error,
+) error {
+	cmd, stdout, runCtx, cancel, err := startYTDLPMergedOutputCommand(ctx, timeout, deps, args...)
 	if err != nil {
-		return fmt.Errorf("yt-dlp start: %w", err)
+		return fmt.Errorf("%w: %w", errYtdlpStart, err)
 	}
 	defer cancel()
 	defer stdout.Close()
 
+	if err := readCommandLines(stdout, handle); err != nil {
+		cancel()
+		if waitErr := waitCommand(cmd, runCtx); waitErr != nil {
+			err = errors.Join(err, waitErr)
+		}
+		return fmt.Errorf("%w: %w", errYtdlpOutput, err)
+	}
+	return waitCommand(cmd, runCtx)
+}
+
+func scanYTDLPJSONLines(env *Env, ctx context.Context, timeout time.Duration, args []string, handle func(map[string]any)) error {
 	var firstErrorLine string
-	if err := readCommandLines(stdout, func(line []byte) error {
+	err := runYtdlpLines(ctx, timeout, resolveRuntimeDeps(env), args, func(line []byte) error {
 		if len(line) == 0 {
 			return nil
 		}
@@ -56,24 +83,20 @@ func scanYTDLPJSONLines(env *Env, ctx context.Context, timeout time.Duration, ar
 		}
 		handle(entry)
 		return nil
-	}); err != nil {
-		cancel()
-		if waitErr := waitCommand(cmd, runCtx); waitErr != nil {
-			err = errors.Join(err, waitErr)
-		}
-		return fmt.Errorf("yt-dlp output: %w", err)
+	})
+	if err == nil {
+		return nil
 	}
-
-	if err := waitCommand(cmd, runCtx); err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return err
-		}
-		if firstErrorLine != "" {
-			return fmt.Errorf("yt-dlp: %w: %s", err, firstErrorLine)
-		}
-		return fmt.Errorf("yt-dlp: %w", err)
+	if errors.Is(err, errYtdlpStart) || errors.Is(err, errYtdlpOutput) {
+		return err
 	}
-	return nil
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return err
+	}
+	if firstErrorLine != "" {
+		return fmt.Errorf("yt-dlp: %w: %s", err, firstErrorLine)
+	}
+	return fmt.Errorf("yt-dlp: %w", err)
 }
 
 func ytdlpErrorLine(line string) string {

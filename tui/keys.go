@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"volvid/internal/core"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -8,7 +10,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 
 	if k == "tab" {
-		m.locale = m.api.NextLocale(m.locale)
+		m.locale = core.NextLocale(m.locale)
 		_ = m.api.SaveLocale(m.locale)
 		m.syncLocalizedInputs()
 		m = m.syncMenu()
@@ -94,59 +96,48 @@ func (m Model) handleEscape(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		}
 		return m, nil, true
 	}
-	if handler, ok := escHandlers[m.screen]; ok {
-		model, cmd := handler(m)
-		return model, cmd, true
-	}
-	return m, nil, false
-}
-
-var escHandlers = map[screen]func(Model) (tea.Model, tea.Cmd){
-	scrSearchInput:    func(m Model) (tea.Model, tea.Cmd) { return m.exitSearch() },
-	scrSearchResults:  func(m Model) (tea.Model, tea.Cmd) { return m.exitSearch() },
-	scrSearchFetch:    func(m Model) (tea.Model, tea.Cmd) { return m.exitSearch() },
-	scrPlaylistAsk:    func(m Model) (tea.Model, tea.Cmd) { return m.exitToURL() },
-	scrPlaylist:       func(m Model) (tea.Model, tea.Cmd) { return m.exitToURL() },
-	scrFragmentChoice: func(m Model) (tea.Model, tea.Cmd) { return m.exitToURL() },
-	scrMode:           func(m Model) (tea.Model, tea.Cmd) { return m.exitToURL() },
-	scrPlaylistFetch: func(m Model) (tea.Model, tea.Cmd) {
+	var model tea.Model
+	var cmd tea.Cmd
+	switch m.screen {
+	case scrSearchInput, scrSearchResults, scrSearchFetch:
+		model, cmd = m.exitSearch()
+	case scrPlaylistAsk, scrPlaylist, scrFragmentChoice, scrMode:
+		model, cmd = m.exitToURL()
+	case scrPlaylistFetch, scrFragmentProbe:
 		m = m.cancelOps()
-		return m.exitToURL()
-	},
-	scrFragmentProbe: func(m Model) (tea.Model, tea.Cmd) {
+		model, cmd = m.exitToURL()
+	case scrQualityFetch:
 		m = m.cancelOps()
-		return m.exitToURL()
-	},
-	scrQualityFetch: func(m Model) (tea.Model, tea.Cmd) {
-		m = m.cancelOps()
-		return m.startModeSelectionWithNotice("")
-	},
-	scrTracksFetch: func(m Model) (tea.Model, tea.Cmd) {
+		model, cmd = m.startModeSelectionWithNotice("")
+	case scrTracksFetch:
 		m = m.cancelOps()
 		m.screen = scrVideoOutput
-		m = m.syncMenu()
-		return m, nil
-	},
-	scrAudio:       func(m Model) (tea.Model, tea.Cmd) { return m.startModeSelectionWithNotice("") },
-	scrQuality:     func(m Model) (tea.Model, tea.Cmd) { return m.startModeSelectionWithNotice("") },
-	scrVideoOutput: func(m Model) (tea.Model, tea.Cmd) { return m.gotoQualitySelection() },
-	scrAudioTrack: func(m Model) (tea.Model, tea.Cmd) {
+		model, cmd = m.syncMenu(), nil
+	case scrAudio, scrQuality:
+		model, cmd = m.startModeSelectionWithNotice("")
+	case scrVideoOutput:
+		model, cmd = m.gotoQualitySelection()
+	case scrAudioTrack:
 		m.screen = scrVideoOutput
-		m = m.syncMenu()
-		return m, nil
-	},
-	scrSubtitles: func(m Model) (tea.Model, tea.Cmd) {
+		model, cmd = m.syncMenu(), nil
+	case scrSubtitles:
 		m.screen = scrVideoOutput
 		if m.audioOffered {
 			m.screen = scrAudioTrack
 		}
-		m = m.syncMenu()
-		return m, nil
-	},
-	scrWorkers:   func(m Model) (tea.Model, tea.Cmd) { return m.gotoWorkersBack() },
-	scrDownload:  func(m Model) (tea.Model, tea.Cmd) { return m.cancelDownload() },
-	scrSummary:   func(m Model) (tea.Model, tea.Cmd) { return m.resetForNext() },
-	scrDepUpdate: func(m Model) (tea.Model, tea.Cmd) { return m.returnFromDependencyScreen() },
+		model, cmd = m.syncMenu(), nil
+	case scrWorkers:
+		model, cmd = m.gotoWorkersBack()
+	case scrDownload:
+		model, cmd = m.cancelDownload()
+	case scrSummary:
+		model, cmd = m.resetForNext()
+	case scrDepUpdate:
+		model, cmd = m.returnFromDependencyScreen()
+	default:
+		return m, nil, false
+	}
+	return model, cmd, true
 }
 
 func isOpenFolderKey(msg tea.KeyPressMsg) bool {
@@ -159,7 +150,7 @@ func isOpenFolderKey(msg tea.KeyPressMsg) bool {
 }
 func isPickFolderKey(msg tea.KeyPressMsg) bool {
 	switch msg.String() {
-	case "ctrl+o", "ctrl+O", "ctrl+щ", "ctrl+Щ":
+	case "ctrl+o", "ctrl+щ":
 		return true
 	default:
 		return false

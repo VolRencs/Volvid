@@ -104,9 +104,9 @@ func parseTargetIDs(target *ParsedTarget, host string, u *url.URL) error {
 		case "playlist":
 			target.PlaylistID = strings.TrimSpace(query.Get("list"))
 		default:
-			parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-			if len(parts) >= 2 && (parts[0] == "shorts" || parts[0] == "live") {
-				target.VideoID = parts[1]
+			kind, rest, _ := strings.Cut(strings.Trim(u.Path, "/"), "/")
+			if rest != "" && (kind == "shorts" || kind == "live") {
+				target.VideoID, _, _ = strings.Cut(rest, "/")
 				target.PlaylistID = strings.TrimSpace(query.Get("list"))
 			}
 		}
@@ -144,10 +144,8 @@ func cleanTargetID(raw string) string {
 	if value == "" || value == "." {
 		return ""
 	}
-	if i := strings.IndexByte(value, '/'); i >= 0 {
-		return value[:i]
-	}
-	return value
+	head, _, _ := strings.Cut(value, "/")
+	return head
 }
 
 func parseURLStartAtURL(u *url.URL) (int, bool) {

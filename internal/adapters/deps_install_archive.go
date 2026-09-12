@@ -88,9 +88,8 @@ func listTarArchive(ctx context.Context, archive string) ([]string, error) {
 	return parseTarListOutput(string(output))
 }
 func parseTarListOutput(output string) ([]string, error) {
-	lines := strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n")
-	entries := make([]string, 0, len(lines))
-	for _, line := range lines {
+	entries := make([]string, 0, strings.Count(output, "\n")+1)
+	for line := range strings.SplitSeq(strings.ReplaceAll(output, "\r\n", "\n"), "\n") {
 		entry, err := validateArchiveMemberPath(line)
 		if err != nil {
 			return nil, fmt.Errorf("validate archive path: %w", err)

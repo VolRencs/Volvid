@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
 PKG_DIR="$ROOT_DIR/cmd/downloader"
 ICON_FILE="$ROOT_DIR/assets/icon/icon.ico"
 SYSO_FILE="$PKG_DIR/zz_build_windows_icon.syso"
 
 OUTPUT_PATH="${1:-$ROOT_DIR/Volvid.exe}"
-
-source "$ROOT_DIR/scripts/go-env.sh"
-
-require_tool() {
-	local tool="$1"
-	if ! command -v "$tool" >/dev/null 2>&1; then
-		echo "missing required tool: $tool" >&2
-		exit 1
-	fi
-}
 
 resolve_tool_candidate() {
 	local tool="$1"
@@ -83,9 +74,4 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 
 "$RSRC_TOOL" -ico "$ICON_FILE" -arch amd64 -o "$SYSO_FILE"
 
-LD_FLAGS="-s -w"
-if [[ -n "${VOLVID_VERSION:-}" ]]; then
-	LD_FLAGS="$LD_FLAGS -X volvid/internal/adapters.Version=$VOLVID_VERSION"
-fi
-
-GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="$LD_FLAGS" -o "$OUTPUT_PATH" "$ROOT_DIR/cmd/downloader"
+GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags="$(ldflags)" -o "$OUTPUT_PATH" "$ROOT_DIR/cmd/downloader"

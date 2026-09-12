@@ -33,7 +33,6 @@ func (m Model) View() tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
 	v.WindowTitle = "Volvid · v" + m.api.AppVersion()
-	v.Cursor = nil
 	return v
 }
 func (m Model) buildScreen(body string) string {
@@ -253,23 +252,9 @@ func (m Model) screenView() screenView {
 	case scrVideoOutput:
 		return m.menuScreen(u.VideoOutputTitle, m.profile.Label, m.flowErr)
 	case scrAudioTrack:
-		return screenView{
-			title:      strings.TrimSpace(u.AudioTrackTitle),
-			subtitle:   m.audioTrackSubtitle(),
-			body:       m.viewAudioTracks(),
-			notice:     m.flowErr,
-			noticeKind: noticeWarn,
-			bindings:   []binding{m.kbMove(), m.kbSpace(), m.kbEnter(), m.kbAll(), m.kbEsc()},
-		}
+		return m.checklistScreen(u.AudioTrackTitle, m.checklistSubtitle(len(m.audioTracks), len(m.audioList.selected), m.audioList.top), m.viewAudioTracks())
 	case scrSubtitles:
-		return screenView{
-			title:      strings.TrimSpace(u.SubtitleTitle),
-			subtitle:   m.subtitleSubtitle(),
-			body:       m.viewSubtitles(),
-			notice:     m.flowErr,
-			noticeKind: noticeWarn,
-			bindings:   []binding{m.kbMove(), m.kbSpace(), m.kbEnter(), m.kbAll(), m.kbEsc()},
-		}
+		return m.checklistScreen(u.SubtitleTitle, m.checklistSubtitle(len(m.subTracks), len(m.subList.selected), m.subList.top), m.viewSubtitles())
 	case scrWorkers:
 		return m.menuScreen(u.ParallelFmt, fmt.Sprintf(u.WorkersQueuedFmt, len(m.dlEntries)), "")
 
@@ -300,11 +285,7 @@ func (m Model) screenView() screenView {
 			bindings:   m.hintsFor(),
 		}
 	}
-
-	return screenView{
-		title: "Volvid",
-		body:  m.renderSpinnerScreen(m.stageTitle()),
-	}
+	panic(fmt.Sprintf("unhandled screen %d", m.screen))
 }
 
 // loadingScreen is the single shared spinner screen for all fetch states.
@@ -342,6 +323,18 @@ func (m Model) inputScreen(title, subtitle, body, notice string) screenView {
 	}
 }
 
+// checklistScreen is the single shared multi-select track screen.
+func (m Model) checklistScreen(title, subtitle, body string) screenView {
+	return screenView{
+		title:      strings.TrimSpace(title),
+		subtitle:   subtitle,
+		body:       body,
+		notice:     m.flowErr,
+		noticeKind: noticeWarn,
+		bindings:   []binding{m.kbMove(), m.kbSpace(), m.kbEnter(), m.kbAll(), m.kbEsc()},
+	}
+}
+
 // progressMeta renders the shared "pct · bytes · speed" meta line used by
 // dependency progress and download slots.
 func progressMeta(locale core.Locale, pct float64, doneB, totalB int64, speed string) string {
@@ -376,9 +369,8 @@ func (m Model) renderNotice(text string, kind noticeKind) string {
 		return sNoticeWarn.Render(tag + sBody.Render(text))
 	case noticeError:
 		return sNoticeErr.Render(tag + sBody.Render(text))
-	default:
-		return text
 	}
+	return ""
 }
 func (m Model) stageTitle() string {
 	u := m.u()
@@ -399,10 +391,8 @@ func (m Model) stageTitle() string {
 		if m.depRefreshing {
 			return strings.TrimSpace(u.DepsRefreshing)
 		}
-		return strings.TrimSpace(u.SpinnerUpdate)
-	default:
-		return strings.TrimSpace(u.SpinnerUpdate)
 	}
+	return strings.TrimSpace(u.SpinnerUpdate)
 }
 func (m Model) renderSpinnerScreen(text string) string {
 	return m.renderSectionBlock("", sTitle.Render(m.spinnerView())+"  "+sBody.Render(strings.TrimSpace(text)))
@@ -451,43 +441,57 @@ func (m Model) downloadSubtitle() string {
 	}
 	return formatElapsed(m.dlElapsed)
 }
+
+type downloadOutcome uint8
+
+const (
+	outcomeSingleOK downloadOutcome = iota
+	outcomeSingleFail
+	outcomeAllOK
+	outcomePartial
+	outcomeAllFail
+)
+
+func (m Model) downloadOutcome() downloadOutcome {
+	if m.dlTotal > 0 {
+		switch {
+		case m.dlDone == 0 && m.dlFailed > 0:
+			return outcomeAllFail
+		case m.dlFailed > 0:
+			return outcomePartial
+		default:
+			return outcomeAllOK
+		}
+	}
+	if !m.singleOK {
+		return outcomeSingleFail
+	}
+	return outcomeSingleOK
+}
+
 func (m Model) summaryTitle() string {
 	var glyph string
-	switch {
-	case m.allDownloadFailed():
+	switch m.downloadOutcome() {
+	case outcomeAllFail, outcomeSingleFail:
 		glyph = sErr.Render(iconCross)
-	case m.partiallyDownloadFailed():
+	case outcomePartial:
 		glyph = sWarn.Render(iconDotOn)
 	default:
 		glyph = sOk.Render(iconCheck)
 	}
 	return glyph + "  " + m.summaryOutcome()
 }
-func (m Model) allDownloadFailed() bool {
-	if m.dlTotal > 0 {
-		return m.dlDone == 0 && m.dlFailed > 0
-	}
-	return !m.singleOK
-}
-func (m Model) partiallyDownloadFailed() bool {
-	return m.dlTotal > 0 && m.dlFailed > 0 && m.dlDone > 0
-}
+
 func (m Model) summaryOutcome() string {
 	u := m.u()
-	if m.dlTotal > 0 {
-		switch {
-		case m.dlDone == 0 && m.dlFailed > 0:
-			return u.SummaryFail
-		case m.dlFailed > 0:
-			return u.SummaryPartial
-		default:
-			return u.SummaryOK
-		}
-	}
-	if !m.singleOK {
+	switch m.downloadOutcome() {
+	case outcomeAllFail, outcomeSingleFail:
 		return u.SummaryFail
+	case outcomePartial:
+		return u.SummaryPartial
+	default:
+		return u.SummaryOK
 	}
-	return u.SummaryOK
 }
 func (m Model) summarySubtitle() string {
 	if m.dlTotal > 0 {

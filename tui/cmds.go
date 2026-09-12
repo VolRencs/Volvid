@@ -20,7 +20,7 @@ func spinnerTickCmd() tea.Cmd {
 }
 
 func timerTickCmd() tea.Cmd {
-	return tea.Tick(timerTickInterval, func(ts time.Time) tea.Msg { return timerTickMsg(ts) })
+	return tea.Tick(timerTickInterval, func(time.Time) tea.Msg { return timerTickMsg{} })
 }
 
 func openDownloadsDirCmd(api AppAPI, path string) tea.Cmd {

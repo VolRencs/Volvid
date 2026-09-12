@@ -3,7 +3,6 @@ package adapters
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,24 +29,11 @@ func ffmpegBinFor(env *Env, deps core.CheckDepsResult) string {
 	}
 	return strings.TrimSpace(env.FFmpegBin)
 }
-func streamYtdlp(env *Env, ctx context.Context, slot int, l core.Locale, deps core.CheckDepsResult, args []string, ch chan<- core.DlUpdate, cleanup *downloadCleanup) downloadResult {
-	cmd, pr, runCtx, cancel, err := startYTDLPMergedOutputCommand(
-		env,
-		ctx,
-		0,
-		deps,
-		slices.Concat(streamProtocolArgs(), args)...,
-	)
-	if err != nil {
-		return failedDownload(err, l)
-	}
-	defer cancel()
-	defer pr.Close()
-
+func streamYtdlp(ctx context.Context, slot int, l core.Locale, deps core.CheckDepsResult, args []string, ch chan<- core.DlUpdate, cleanup *downloadCleanup) downloadResult {
 	result := downloadResult{}
 	lastTitle := ""
 
-	if err := readCommandLines(pr, func(raw []byte) error {
+	err := runYtdlpLines(ctx, 0, deps, slices.Concat(streamProtocolArgs(), args), func(raw []byte) error {
 		line := strings.TrimSpace(string(raw))
 		if line == "" {
 			return nil
@@ -97,18 +83,9 @@ func streamYtdlp(env *Env, ctx context.Context, slot int, l core.Locale, deps co
 			}
 		}
 		return nil
-	}); err != nil {
-		cancel()
-		if waitErr := waitCommand(cmd, runCtx); waitErr != nil {
-			err = errors.Join(err, waitErr)
-		}
-		setDownloadError(&result, fmt.Errorf("yt-dlp output: %w", err), l)
-		return result
-	}
-
-	if err := waitCommand(cmd, runCtx); err != nil {
+	})
+	if err != nil {
 		setDownloadError(&result, err, l)
-		return result
 	}
 	return result
 }

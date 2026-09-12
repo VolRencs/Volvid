@@ -38,7 +38,7 @@ func runDownloadRequest(env *Env, ctx context.Context, slot int, req core.Downlo
 		if err != nil {
 			return failedDownload(err, req.Locale)
 		}
-		result = streamYtdlp(env, ctx, slot, req.Locale, deps, args, ch, cleanup)
+		result = streamYtdlp(ctx, slot, req.Locale, deps, args, ch, cleanup)
 		if result.Err == nil {
 			finalPath, err := transcodeDownloadedVideo(env, ctx, slot, req.Profile, req.Locale, deps, result.OutputPath, ch)
 			if err != nil {
@@ -148,8 +148,9 @@ func runPlaylistDownloads(env *Env, ctx context.Context, req core.DownloadReques
 	jobs := enqueuePlaylistJobs(ctx, entries)
 	outputDir := playlistOutputDir(req)
 	for slot := range workerCount {
-		wg.Add(1)
-		go playlistWorker(env, ctx, slot, req, deps, outputDir, jobs, ch, wg, cleanup)
+		wg.Go(func() {
+			playlistWorker(env, ctx, slot, req, deps, outputDir, jobs, ch, cleanup)
+		})
 	}
 }
 func enqueuePlaylistJobs(ctx context.Context, entries []core.PlaylistEntry) <-chan core.PlaylistEntry {
@@ -175,10 +176,8 @@ func playlistWorker(
 	outputDir string,
 	jobs <-chan core.PlaylistEntry,
 	ch chan<- core.DlUpdate,
-	wg *sync.WaitGroup,
 	cleanup *downloadCleanup,
 ) {
-	defer wg.Done()
 	for entry := range jobs {
 		if ctx.Err() != nil {
 			return

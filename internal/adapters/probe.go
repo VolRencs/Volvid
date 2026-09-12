@@ -54,17 +54,16 @@ func probeMediaWithDeps(env *Env, ctx context.Context, deps core.CheckDepsResult
 	}
 	key := probeCacheKey(target)
 
-	probe, err := env.probeCache.ProbeLoad(key, ctx, func() (*core.MediaProbe, error) {
-		return probeMediaUncached(env, ctx, deps, target)
+	probe, err := env.probeCache.Load(key, probeCacheTTL, ctx, func() (*core.MediaProbe, error) {
+		return probeMediaUncached(ctx, deps, target)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return cloneMediaProbe(probe), nil
 }
-func probeMediaUncached(env *Env, ctx context.Context, deps core.CheckDepsResult, target core.ParsedTarget) (*core.MediaProbe, error) {
+func probeMediaUncached(ctx context.Context, deps core.CheckDepsResult, target core.ParsedTarget) (*core.MediaProbe, error) {
 	out, err := ytdlpOutput(
-		env,
 		ctx,
 		qualityScanTimeout,
 		deps,

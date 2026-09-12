@@ -49,7 +49,7 @@ func transcodeDownloadedVideo(
 		if err != nil {
 			return "", err
 		}
-		args := injectOutputPath(command, tmp)
+		args := append(command, tmp)
 		out, err := commandCombinedOutput(ctx, 0, ffmpeg, args...)
 		if err == nil {
 			if err := os.Chmod(tmp, 0o644); err != nil {
@@ -100,31 +100,15 @@ func transcodeFinalPath(outputPath, container string) string {
 	}
 	return strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + "." + container
 }
-func injectOutputPath(args []string, output string) []string {
-	out := make([]string, 0, len(args)+1)
-	out = append(out, args...)
-	return append(out, output)
-}
 func transcodeTempPath(outputPath, container string) (string, error) {
-	dir := filepath.Dir(outputPath)
-	base := filepath.Base(outputPath)
 	ext := strings.TrimSpace(container)
 	if ext == "" {
-		ext, _ = strings.CutPrefix(filepath.Ext(base), ".")
+		ext, _ = strings.CutPrefix(filepath.Ext(outputPath), ".")
 	}
 	if ext == "" {
 		ext = "mp4"
 	}
-	tmp, err := os.CreateTemp(dir, "."+base+".transcode-*."+ext)
-	if err != nil {
-		return "", err
-	}
-	name := tmp.Name()
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(name)
-		return "", err
-	}
-	return name, nil
+	return createSiblingTemp(outputPath, "transcode", ext)
 }
 
 type hardwareVideoEncoder struct {
@@ -271,51 +255,21 @@ func detectFFmpegVideoEncoders(env *Env, ctx context.Context, ffmpeg string) map
 		return nil
 	}
 
-	env.ffmpegEncodersMu.Lock()
-	if env.ffmpegEncodersValue == nil {
-		env.ffmpegEncodersValue = map[string]map[string]bool{}
-	}
-	if env.ffmpegEncodersFlight == nil {
-		env.ffmpegEncodersFlight = map[string]*encoderFlight{}
-	}
-	if encoders, ok := env.ffmpegEncodersValue[ffmpeg]; ok {
-		env.ffmpegEncodersMu.Unlock()
-		return maps.Clone(encoders)
-	}
-	if flight, ok := env.ffmpegEncodersFlight[ffmpeg]; ok {
-		env.ffmpegEncodersMu.Unlock()
-		if ctx == nil {
-			<-flight.done
-			return maps.Clone(flight.encoders)
+	encoders, err := env.ffmpegEncoders.Load(ffmpeg, 0, ctx, func() (map[string]bool, error) {
+		out, err := commandOutput(ctx, ffmpegEncodersTimeout, ffmpeg, "-hide_banner", "-encoders")
+		if err != nil {
+			return nil, err
 		}
-		select {
-		case <-flight.done:
-			return maps.Clone(flight.encoders)
-		case <-ctx.Done():
-			return map[string]bool{}
-		}
+		return parseFFmpegVideoEncoders(string(out)), nil
+	})
+	if err != nil {
+		return nil
 	}
-	flight := &encoderFlight{done: make(chan struct{})}
-	env.ffmpegEncodersFlight[ffmpeg] = flight
-	env.ffmpegEncodersMu.Unlock()
-
-	out, err := commandOutput(ctx, ffmpegEncodersTimeout, ffmpeg, "-hide_banner", "-encoders")
-	encoders := map[string]bool{}
-	if err == nil {
-		encoders = parseFFmpegVideoEncoders(string(out))
-	}
-
-	env.ffmpegEncodersMu.Lock()
-	env.ffmpegEncodersValue[ffmpeg] = encoders
-	flight.encoders = encoders
-	close(flight.done)
-	delete(env.ffmpegEncodersFlight, ffmpeg)
-	env.ffmpegEncodersMu.Unlock()
 	return maps.Clone(encoders)
 }
 func parseFFmpegVideoEncoders(output string) map[string]bool {
 	encoders := map[string]bool{}
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 2 || !strings.Contains(fields[0], "V") {
 			continue

@@ -106,25 +106,17 @@ func (m Model) renderPlaylistItems() string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) subtitleSubtitle() string {
-	return m.checklistSubtitle(len(m.subTracks), len(m.subList.selected), m.subList.top)
-}
-
-func (m Model) audioTrackSubtitle() string {
-	return m.checklistSubtitle(len(m.audioTracks), len(m.audioList.selected), m.audioList.top)
-}
-
 // checklistSubtitle renders the shared "selected/total · scroll" line.
 func (m Model) checklistSubtitle(total, selected, top int) string {
 	subtitle := fmt.Sprintf(m.u().PlSelectedFmt, selected, total)
-	return subtitle + viewportRangeText(top, total+1, m.playlistViewportHeight())
+	return subtitle + viewportRangeText(top, total, m.playlistViewportHeight())
 }
 
 func (m Model) viewSubtitles() string {
 	if len(m.subTracks) == 0 {
 		return ""
 	}
-	return m.renderSectionBlock("", renderChecklistView(m, m.subList, m.subTracks, m.u().SubtitleOff, m.subtitleTrackLabel))
+	return m.renderSectionBlock("", renderChecklistView(m, m.subList, m.subTracks, m.subtitleTrackLabel))
 }
 
 func (m Model) viewAudioTracks() string {
@@ -135,34 +127,23 @@ func (m Model) viewAudioTracks() string {
 		m,
 		m.audioList,
 		m.audioTracks,
-		m.u().AudioTrackOriginal,
 		func(track core.AudioTrack) string { return strings.TrimSpace(track.Lang) },
 	))
 }
 
-// renderChecklistView renders row 0 (the "no override" action) plus language
-// rows with check marks. Shared by the subtitle and audio checklists.
-func renderChecklistView[T any](m Model, list checklist[T], tracks []T, actionLabel string, label func(T) string) string {
-	rows := list.rowCount(tracks)
+// renderChecklistView renders language rows with check marks. Shared by the
+// subtitle and audio checklists; an empty selection means nothing is added.
+func renderChecklistView[T any](m Model, list checklist[T], tracks []T, label func(T) string) string {
 	start := list.top
-	end := min(rows, start+m.playlistViewportHeight())
-	indexWidth := max(2, len(strconv.Itoa(rows)))
+	end := min(len(tracks), start+m.playlistViewportHeight())
+	indexWidth := max(2, len(strconv.Itoa(len(tracks))))
 	rowWidth := m.cardBodyWidth()
 
 	lines := make([]string, 0, end-start)
 	for i := start; i < end; i++ {
-		if i == 0 {
-			data := listRowData{
-				index:  "",
-				active: list.cursor == 0,
-				label:  trunc(actionLabel, listLabelWidth(rowWidth, listRowData{index: ""})),
-			}
-			lines = append(lines, renderListRow(rowWidth, data))
-			continue
-		}
-		track := tracks[i-1]
+		track := tracks[i]
 		data := listRowData{
-			index:    fmt.Sprintf("%*d", indexWidth, i),
+			index:    fmt.Sprintf("%*d", indexWidth, i+1),
 			hasCheck: true,
 			checked:  list.isSelected(track),
 			active:   i == list.cursor,

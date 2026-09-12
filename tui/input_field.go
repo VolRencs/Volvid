@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -115,14 +116,14 @@ func (i *inputField) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		i.cursor = len(i.value)
 	case "backspace", "ctrl+h":
 		if i.cursor > 0 {
-			i.value = append(i.value[:i.cursor-1], i.value[i.cursor:]...)
+			i.value = slices.Delete(i.value, i.cursor-1, i.cursor)
 			i.cursor--
 		}
 	case "alt+backspace", "ctrl+w":
 		i.deleteWordBackward()
 	case "delete", "ctrl+d":
 		if i.cursor < len(i.value) {
-			i.value = append(i.value[:i.cursor], i.value[i.cursor+1:]...)
+			i.value = slices.Delete(i.value, i.cursor, i.cursor+1)
 		}
 	case "alt+delete", "alt+d":
 		i.deleteWordForward()
@@ -156,7 +157,7 @@ func (i *inputField) insertRunes(runes []rune) tea.Cmd {
 		}
 	}
 
-	i.value = append(i.value[:i.cursor], append(runes, i.value[i.cursor:]...)...)
+	i.value = slices.Insert(i.value, i.cursor, runes...)
 	i.cursor += len(runes)
 	return i.touch()
 }
@@ -211,7 +212,7 @@ func (i *inputField) deleteWordBackward() {
 	if start == i.cursor {
 		return
 	}
-	i.value = append(i.value[:start], i.value[i.cursor:]...)
+	i.value = slices.Delete(i.value, start, i.cursor)
 	i.cursor = start
 }
 
@@ -220,7 +221,7 @@ func (i *inputField) deleteWordForward() {
 	if end == i.cursor {
 		return
 	}
-	i.value = append(i.value[:i.cursor], i.value[end:]...)
+	i.value = slices.Delete(i.value, i.cursor, end)
 }
 
 func (i *inputField) wordBackward() {
@@ -316,8 +317,8 @@ func (i *inputField) touch() tea.Cmd {
 
 func isClipboardPasteKey(msg tea.KeyPressMsg) bool {
 	switch msg.String() {
-	case "ctrl+v", "ctrl+shift+v", "shift+ctrl+v", "shift+insert":
+	case "ctrl+v", "ctrl+shift+v", "shift+insert":
 		return true
 	}
-	return msg.Text == string(rune(22))
+	return false
 }

@@ -10,10 +10,10 @@ import (
 )
 
 // stubAPI is a scriptable AppAPI fake: no processes, no network, no fs.
-// Env-dependent behavior is canned via fields; pure parsing delegates to
-// core, labels to i18n.
+// Env-dependent behavior is canned via fields; everything else falls back to
+// the production adapter.
 type stubAPI struct {
-	AppAPI // nil embedded; overridden methods below take precedence
+	AppAPI
 
 	locale core.Locale
 	deps   core.CheckDepsResult
@@ -31,11 +31,12 @@ func testDeps(ytAvail, ffAvail bool) core.CheckDepsResult {
 }
 
 func newStubAPI() *stubAPI {
-	return &stubAPI{locale: core.LocaleEN, deps: testDeps(true, true), dir: "/tmp/volvid-test"}
-}
-
-func (s *stubAPI) ParseTarget(raw string) (core.ParsedTarget, error) {
-	return core.ParseTarget(raw)
+	return &stubAPI{
+		AppAPI: newAppAPI(adapters.NewEnv()),
+		locale: core.LocaleEN,
+		deps:   testDeps(true, true),
+		dir:    "/tmp/volvid-test",
+	}
 }
 
 func (s *stubAPI) DetectDeps() core.CheckDepsResult { return s.deps }
@@ -53,14 +54,6 @@ func (s *stubAPI) StartDownload(_ context.Context, _ core.DownloadRequest, _ cor
 	s.started = true
 }
 
-func (s *stubAPI) DefaultVideoProfile(l core.Locale) core.OutputProfile {
-	return i18n.DefaultVideoProfile(l)
-}
-
-func (s *stubAPI) DefaultProfileForMode(mode core.DownloadMode, l core.Locale) core.OutputProfile {
-	return i18n.DefaultProfileForMode(mode, l)
-}
-
 func (s *stubAPI) DownloadsDir() string { return s.dir }
 
 func (s *stubAPI) DownloadsDirLocked() bool { return false }
@@ -70,22 +63,6 @@ func (s *stubAPI) IsWindows() bool { return false }
 func (s *stubAPI) LoadLocale() core.Locale { return s.locale }
 
 func (s *stubAPI) SaveLocale(l core.Locale) error { s.locale = l; return nil }
-
-func (s *stubAPI) NextLocale(l core.Locale) core.Locale { return core.NextLocale(l) }
-
-func (s *stubAPI) Strings(l core.Locale) *i18n.UIStrings { return i18n.StringsFor(l) }
-
-func (s *stubAPI) ParseFragment(raw string, d int) (core.DownloadFragment, error) {
-	return core.ParseBoundedFragmentRange(raw, d)
-}
-
-func (s *stubAPI) ValidateFragment(f core.DownloadFragment, d int) error {
-	return core.ValidateFragmentDuration(f, d)
-}
-
-func (s *stubAPI) ParseSelection(raw string, maxIdx int, l core.Locale) ([]int, error) {
-	return adapters.ParseSelectionFor(raw, maxIdx, l)
-}
 
 func (s *stubAPI) ResolveSubtitles(_ context.Context, _ string) ([]core.SubtitleTrack, error) {
 	return []core.SubtitleTrack{{Lang: "en"}, {Lang: "ru", Auto: true}}, nil
@@ -138,21 +115,5 @@ func TestStartDownloadValidationErrorStaysOnConfig(t *testing.T) {
 	}
 	if stub.started {
 		t.Fatal("download must not start on validation error")
-	}
-}
-
-func TestNewWithDepsUsesInjectedAPI(t *testing.T) {
-	stub := newStubAPI()
-	stub.locale = core.LocaleRU
-	got := NewWithDeps(context.Background(), stub)
-	m, ok := got.(Model)
-	if !ok {
-		t.Fatalf("expected Model, got %T", got)
-	}
-	if m.locale != core.LocaleRU {
-		t.Fatalf("expected injected locale ru, got %v", m.locale)
-	}
-	if m.api == nil {
-		t.Fatal("expected api to be set")
 	}
 }

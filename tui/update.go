@@ -369,7 +369,7 @@ func (m Model) handleDlUpdate(u core.DlUpdate, gen int) (tea.Model, tea.Cmd) {
 		m.session.Record(label, m.url, ok)
 		m.screen = scrSummary
 		m.timerActive = false
-		m.dlElapsed = time.Since(m.dlStartedAt).Round(time.Second)
+		m.updateElapsed()
 		m = m.syncMenu()
 		return m, nil
 	}

@@ -105,15 +105,11 @@ func retagAudioLanguages(ctx context.Context, ffmpeg, videoPath string, langs []
 		return fmt.Errorf("no mappable audio languages")
 	}
 
-	dir := filepath.Dir(videoPath)
-	base := filepath.Base(videoPath)
-	ext := strings.TrimPrefix(filepath.Ext(base), ".")
-	tmp, err := os.CreateTemp(dir, "."+base+".retag-*."+ext)
+	ext := strings.TrimPrefix(filepath.Ext(videoPath), ".")
+	tmpName, err := createSiblingTemp(videoPath, "retag", ext)
 	if err != nil {
 		return err
 	}
-	tmpName := tmp.Name()
-	_ = tmp.Close()
 
 	faststart := strings.EqualFold(ext, "mp4")
 	args := audioRetagArgs(videoPath, tmpName, isoLangs, faststart)

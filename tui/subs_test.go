@@ -46,23 +46,12 @@ func TestSubtitleConfirmEmptyMeansOff(t *testing.T) {
 	}
 }
 
-func TestSubtitleRowZeroSkipsImmediately(t *testing.T) {
-	m := subtitleTestModel()
-	// Even with languages checked, cursor on "no subtitles" means off.
-	m.subList.selected = map[string]bool{"en": true}
-	m.subList.cursor = 0
-	got := confirmViaEnter(m)
-	if got.profile.SubMode != core.SubOff || len(got.profile.SubLangs) != 0 {
-		t.Fatalf("expected subs off, got %+v", got.profile)
-	}
-}
-
 func TestSubtitleMultiSelect(t *testing.T) {
 	m := subtitleTestModel()
-	m.subList.cursor = 1
+	m.subList.cursor = 0
 	model, _ := m.handleSubtitlesKey(subKey("space")) // en
 	m = model.(Model)
-	m.subList.cursor = 2
+	m.subList.cursor = 1
 	model, _ = m.handleSubtitlesKey(subKey("space")) // ru
 	m = model.(Model)
 
@@ -91,14 +80,14 @@ func TestSubtitleToggleAll(t *testing.T) {
 
 func TestSubtitleCursorStaysInViewport(t *testing.T) {
 	m := subtitleTestModel()
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		m.subTracks = append(m.subTracks, core.SubtitleTrack{Lang: "l" + string(rune('a'+i))})
 	}
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		model, _ := m.handleSubtitlesKey(subKey("down"))
 		m = model.(Model)
 	}
-	if m.subList.cursor != len(m.subTracks) {
+	if m.subList.cursor != len(m.subTracks)-1 {
 		t.Fatalf("expected cursor at end, got %d", m.subList.cursor)
 	}
 	body := m.viewSubtitles()
@@ -124,11 +113,11 @@ func confirmAudioViaEnter(m Model) Model {
 	return model.(Model)
 }
 
-func TestAudioTrackRowZeroSkipsImmediately(t *testing.T) {
+func TestAudioConfirmEmptyMeansOriginal(t *testing.T) {
 	m := audioTrackTestModel()
 	m.target = core.ParsedTarget{Kind: core.TargetVideo, CanonicalURL: "https://www.youtube.com/watch?v=x"}
-	m.audioList.selected = map[string]bool{"en": true}
-	m.audioList.cursor = 0
+	m.audioList.cursor = 1
+	m.audioList.selected = map[string]bool{}
 	m.subTracks = []core.SubtitleTrack{{Lang: "en"}}
 	m.subsOffered = true
 	got := confirmAudioViaEnter(m)
@@ -142,10 +131,10 @@ func TestAudioTrackRowZeroSkipsImmediately(t *testing.T) {
 
 func TestAudioTrackMultiSelect(t *testing.T) {
 	m := audioTrackTestModel()
-	m.audioList.cursor = 1
+	m.audioList.cursor = 0
 	model, _ := m.handleAudioTrackKey(subKey("space")) // en
 	m = model.(Model)
-	m.audioList.cursor = 2
+	m.audioList.cursor = 1
 	model, _ = m.handleAudioTrackKey(subKey("space")) // ru
 	m = model.(Model)
 

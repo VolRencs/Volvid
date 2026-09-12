@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -22,7 +21,7 @@ func loadDeps(env *Env, force bool) core.CheckDepsResult {
 			return v
 		}
 	}
-	result, _ := env.depsCache.Load(struct{}{}, func() (core.CheckDepsResult, error) {
+	result, _ := env.depsCache.Load(struct{}{}, 0, nil, func() (core.CheckDepsResult, error) {
 		return detectDeps(env, true), nil
 	})
 	return result
@@ -30,7 +29,7 @@ func loadDeps(env *Env, force bool) core.CheckDepsResult {
 func invalidateDepsCache(env *Env) {
 	env.depsCache.InvalidateAll()
 	env.runtimeDepsCache.InvalidateAll()
-	env.invalidateFFmpegEncoders()
+	env.ffmpegEncoders.InvalidateAll()
 }
 
 type depSpec struct {
@@ -44,34 +43,31 @@ type depSpec struct {
 	ParseVersion func(string) string
 }
 
+var (
+	ytdlpDepSpec   = depSpec{Key: "ytdlp", Name: "yt-dlp", Required: true, Downloadable: true, LookNames: []string{"yt-dlp"}, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}
+	ffmpegDepSpec  = depSpec{Key: "ffmpeg", Name: "ffmpeg", Required: true, Downloadable: true, LookNames: []string{"ffmpeg"}, VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine}
+	ffprobeDepSpec = depSpec{Key: "ffprobe", Name: "ffprobe", VersionArgs: []string{"-version"}, ParseVersion: firstNonEmptyLine}
+	nodeDepSpec    = depSpec{Key: "node", Name: "node", Required: false, Downloadable: true, LookNames: []string{"node"}, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}
+)
+
 func detectDeps(env *Env, withVersions bool) core.CheckDepsResult {
 	var ytdlp, ffmpeg, node core.DependencyInfo
 	var wg sync.WaitGroup
-	wg.Add(3)
-	go func() {
-		defer wg.Done()
-		ytdlp = detectExecutableDependency(context.Background(), depSpec{
-			Key: "ytdlp", Name: "yt-dlp", Required: true, Downloadable: true,
-			LookNames: []string{"yt-dlp"}, ManagedPath: env.YtdlpBin,
-			VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine,
-		}, withVersions)
-	}()
-	go func() {
-		defer wg.Done()
-		ffmpeg = detectExecutableDependency(context.Background(), depSpec{
-			Key: "ffmpeg", Name: "ffmpeg", Required: true, Downloadable: true,
-			LookNames: []string{"ffmpeg"}, ManagedPath: env.FFmpegBin,
-			VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine,
-		}, withVersions)
-	}()
-	go func() {
-		defer wg.Done()
-		node = detectExecutableDependency(context.Background(), depSpec{
-			Key: "node", Name: "node", Required: false, Downloadable: true,
-			LookNames: []string{"node"}, ManagedPath: env.NodeBin,
-			VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine,
-		}, withVersions)
-	}()
+	wg.Go(func() {
+		spec := ytdlpDepSpec
+		spec.ManagedPath = env.YtdlpBin
+		ytdlp = detectExecutableDependency(context.Background(), spec, withVersions)
+	})
+	wg.Go(func() {
+		spec := ffmpegDepSpec
+		spec.ManagedPath = env.FFmpegBin
+		ffmpeg = detectExecutableDependency(context.Background(), spec, withVersions)
+	})
+	wg.Go(func() {
+		spec := nodeDepSpec
+		spec.ManagedPath = env.NodeBin
+		node = detectExecutableDependency(context.Background(), spec, withVersions)
+	})
 	wg.Wait()
 
 	deps := core.CheckDepsResult{YTDLP: ytdlp, FFmpeg: ffmpeg, Node: node}
@@ -84,7 +80,7 @@ func detectExecutableDependency(ctx context.Context, spec depSpec, withVersion b
 	dep := core.DependencyInfo{Key: spec.Key, Name: spec.Name, Required: spec.Required, Downloadable: spec.Downloadable, Source: core.DepMissing}
 
 	if path, ok := firstLookPath(spec.LookNames...); ok {
-		dep.Path = absoluteIfPossible(path)
+		dep.Path = cleanAbsPath(path)
 		dep.Source = core.DepSystem
 		dep.Available = true
 	} else if pathExists(spec.ManagedPath) {
@@ -143,22 +139,19 @@ func firefoxVersionFromLine(line string) string {
 	}
 	return ""
 }
-func firefoxUAPlatform() string {
-	return "X11; Linux x86_64"
-}
-func ytdlpOutput(env *Env, ctx context.Context, timeout time.Duration, deps core.CheckDepsResult, args ...string) ([]byte, error) {
+func ytdlpOutput(ctx context.Context, timeout time.Duration, deps core.CheckDepsResult, args ...string) ([]byte, error) {
 	bin := strings.TrimSpace(deps.YTDLP.Path)
 	if bin == "" {
 		return nil, fmt.Errorf("yt-dlp is required")
 	}
-	return commandOutput(ctx, timeout, bin, ytdlpCommandArgsFor(env, deps, args)...)
+	return commandOutput(ctx, timeout, bin, ytdlpCommandArgsFor(deps, args)...)
 }
-func startYTDLPMergedOutputCommand(env *Env, ctx context.Context, timeout time.Duration, deps core.CheckDepsResult, args ...string) (*exec.Cmd, io.ReadCloser, context.Context, context.CancelFunc, error) {
+func startYTDLPMergedOutputCommand(ctx context.Context, timeout time.Duration, deps core.CheckDepsResult, args ...string) (*exec.Cmd, io.ReadCloser, context.Context, context.CancelFunc, error) {
 	bin := strings.TrimSpace(deps.YTDLP.Path)
 	if bin == "" {
 		return nil, nil, nil, nil, fmt.Errorf("yt-dlp is required")
 	}
-	return startMergedOutputCommand(ctx, timeout, bin, ytdlpCommandArgsFor(env, deps, args)...)
+	return startMergedOutputCommand(ctx, timeout, bin, ytdlpCommandArgsFor(deps, args)...)
 }
 func commandVersionLine(ctx context.Context, bin string, args ...string) string {
 	if strings.TrimSpace(bin) == "" {
@@ -169,7 +162,7 @@ func commandVersionLine(ctx context.Context, bin string, args ...string) string 
 }
 func firstNonEmptyLine(text string) string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			return line
@@ -200,15 +193,4 @@ func pathExists(path string) bool {
 	}
 	_, ok := fileInfo(path)
 	return ok
-}
-func absoluteIfPossible(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return path
-	}
-	return abs
 }

@@ -1,6 +1,7 @@
 package i18n
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -46,9 +47,9 @@ func TestDefaultProfilesHaveLabels(t *testing.T) {
 }
 
 func TestQualityProfile(t *testing.T) {
-	q := core.QualityChoice{Key: "best", Best: true, FmtChain: []string{"best"}}
+	q := core.QualityChoice{Best: true, FmtChain: []string{"best"}}
 	p := QualityProfile(q, core.LocaleEN)
-	if p.Mode != core.ModeVideo || p.Key != "best" || p.Label == "" {
+	if p.Mode != core.ModeVideo || p.Label == "" {
 		t.Fatalf("bad quality profile: %+v", p)
 	}
 	if got := len(QualityChoiceLabels([]core.QualityChoice{q}, core.LocaleRU)); got != 1 {
@@ -86,5 +87,19 @@ func TestStringsFor(t *testing.T) {
 	}
 	if got := PlaylistSuffix(core.LocaleEN, 3); !strings.Contains(got, "3") {
 		t.Fatalf("expected suffix with 3, got %q", got)
+	}
+}
+
+// TestCatalogCompleteness guards against fields missing from a locale catalog:
+// the zero value would otherwise ship as an empty (invisible) string.
+func TestCatalogCompleteness(t *testing.T) {
+	for _, l := range []core.Locale{core.LocaleEN, core.LocaleRU} {
+		value := reflect.ValueOf(*StringsFor(l))
+		typ := value.Type()
+		for i := range value.NumField() {
+			if strings.TrimSpace(value.Field(i).String()) == "" {
+				t.Errorf("locale %v: missing translation for %s", l, typ.Field(i).Name)
+			}
+		}
 	}
 }

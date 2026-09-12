@@ -41,7 +41,7 @@ func (m Model) handleFragmentInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 		m = m.syncMenu()
 		return m, nil
 	case "enter":
-		fragment, err := m.api.ParseFragment(m.fragmentIn.Value(), m.mediaDuration)
+		fragment, err := core.ParseBoundedFragmentRange(m.fragmentIn.Value(), m.mediaDuration)
 		if err != nil {
 			m.fragmentErr = i18n.FragmentInputErrorText(m.locale, err, m.mediaDuration)
 			return m, nil
@@ -126,17 +126,14 @@ func handleChecklistKey[T any](
 	return *m, nil
 }
 
-// confirmSubtitleSelection applies the checked languages: cursor on the
-// "no subtitles" row or an empty checklist means off, otherwise the checked
-// tracks (in listed order) are embedded.
+// confirmSubtitleSelection applies the checked languages: an empty checklist
+// means no subtitles are added.
 func (m Model) confirmSubtitleSelection() (tea.Model, tea.Cmd) {
 	m.profile.SubMode = core.SubOff
 	m.profile.SubLangs = nil
-	if m.subList.cursor != 0 {
-		if langs := m.subList.selectedKeys(m.subTracks); len(langs) > 0 {
-			m.profile.SubMode = core.SubEmbed
-			m.profile.SubLangs = langs
-		}
+	if langs := m.subList.selectedKeys(m.subTracks); len(langs) > 0 {
+		m.profile.SubMode = core.SubEmbed
+		m.profile.SubLangs = langs
 	}
 	m.flowErr = ""
 	return m.continueAfterProfileSelection()
@@ -161,55 +158,54 @@ func (m Model) handlePlaylistInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	}
 }
 
-type activeInputState struct {
-	field *inputField
-	err   *string
-}
-
-func (m *Model) activeInputState() (activeInputState, bool) {
+// withActiveInput resolves the input field focused on the current screen and
+// applies fn to it and its error slot. It reports whether a field exists.
+func (m *Model) withActiveInput(fn func(field *inputField, err *string)) bool {
+	var field *inputField
+	var err *string
 	switch {
 	case m.screen == scrURL:
-		return activeInputState{field: &m.urlInput, err: &m.urlErr}, true
+		field, err = &m.urlInput, &m.urlErr
 	case m.screen == scrSearchInput:
-		return activeInputState{field: &m.searchInput, err: &m.searchErr}, true
+		field, err = &m.searchInput, &m.searchErr
 	case m.screen == scrPlaylist && m.plInputMode:
-		return activeInputState{field: &m.plInput, err: &m.plInputErr}, true
+		field, err = &m.plInput, &m.plInputErr
 	case m.screen == scrFragmentInput:
-		return activeInputState{field: &m.fragmentIn, err: &m.fragmentErr}, true
+		field, err = &m.fragmentIn, &m.fragmentErr
+	default:
+		return false
 	}
-	return activeInputState{}, false
+	fn(field, err)
+	return true
 }
 func (m *Model) pasteIntoActiveInput(content string) tea.Cmd {
-	input, ok := m.activeInputState()
+	var cmds []tea.Cmd
+	ok := m.withActiveInput(func(field *inputField, err *string) {
+		if !field.Focused() {
+			cmds = append(cmds, field.Focus())
+		}
+		before := field.Value()
+		cmds = append(cmds, field.insertRunes([]rune(content)))
+		if field.Value() != before && err != nil {
+			*err = ""
+		}
+	})
 	if !ok {
 		return nil
 	}
-	return m.pasteIntoInput(input, content)
-}
-func (m *Model) pasteIntoInput(input activeInputState, content string) tea.Cmd {
-	var cmds []tea.Cmd
-	if !input.field.Focused() {
-		cmds = append(cmds, input.field.Focus())
-	}
-
-	before := input.field.Value()
-	cmd := input.field.insertRunes([]rune(content))
-	if input.field.Value() != before && input.err != nil {
-		*input.err = ""
-	}
-	cmds = append(cmds, cmd)
 	return tea.Batch(cmds...)
 }
 func (m *Model) updateActiveInput(msg tea.Msg) tea.Cmd {
-	input, ok := m.activeInputState()
+	var cmd tea.Cmd
+	ok := m.withActiveInput(func(field *inputField, err *string) {
+		before := field.Value()
+		cmd = field.Update(msg)
+		if field.Value() != before && err != nil {
+			*err = ""
+		}
+	})
 	if !ok {
 		return nil
-	}
-
-	before := input.field.Value()
-	cmd := input.field.Update(msg)
-	if input.field.Value() != before && input.err != nil {
-		*input.err = ""
 	}
 	return cmd
 }
@@ -227,14 +223,13 @@ func (m Model) handleAudioTrackKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return handleChecklistKey(&m, msg, &m.audioList, m.audioTracks, m.confirmAudioTrackSelection)
 }
 
-// confirmAudioTrackSelection applies the checked languages: cursor on the
-// "original" row or an empty checklist means no override, otherwise the
-// checked tracks (in listed order) are embedded alongside the default audio.
-// Subtitles were resolved in the same batch, so this routes directly.
+// confirmAudioTrackSelection applies the checked languages: an empty
+// checklist means no override, i.e. the original audio only. Subtitles were
+// resolved in the same batch, so this routes directly.
 func (m Model) confirmAudioTrackSelection() (tea.Model, tea.Cmd) {
 	m.profile.AudioLangs = nil
-	if m.audioList.cursor != 0 {
-		m.profile.AudioLangs = m.audioList.selectedKeys(m.audioTracks)
+	if langs := m.audioList.selectedKeys(m.audioTracks); len(langs) > 0 {
+		m.profile.AudioLangs = langs
 	}
 	m.flowErr = ""
 	if m.subsOffered {

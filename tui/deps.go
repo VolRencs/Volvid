@@ -1,21 +1,116 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"volvid/internal/core"
 
 	"charm.land/lipgloss/v2"
+
+	tea "charm.land/bubbletea/v2"
 )
 
+type depStatusRow struct {
+	Label string
+	Value string
+}
+
+type depState string
+
+const (
+	depStateActive    depState = "active"
+	depStateMissing   depState = "missing"
+	depStateNotActive depState = "not_active"
+	depStateAvailable depState = "available"
+	depStateChecking  depState = "checking"
+)
+
+type depScreenMode uint8
+
+const (
+	depModeStartup depScreenMode = iota + 1
+	depModeManage
+)
+
+type depAction struct {
+	Label string
+	Run   func(Model) (tea.Model, tea.Cmd)
+}
+
+func (m Model) depActions() []depAction {
+	u := m.u()
+	actions := make([]depAction, 0, 5)
+	for _, dep := range m.deps.ActionableDependencies() {
+		key := dep.Key
+		label := fmt.Sprintf(u.DepActionDownloadFmt, dep.Name)
+		if dep.Available && dep.Source == core.DepManaged {
+			label = fmt.Sprintf(u.DepActionUpdateFmt, dep.Name)
+		}
+		actions = append(actions, depAction{
+			Label: label,
+			Run: func(m Model) (tea.Model, tea.Cmd) {
+				return m.startDependencyDownload(scrDepDl, key, false, func(ctx context.Context, ch chan<- core.FileProgress) error {
+					return m.api.InstallDependency(ctx, key, m.locale, ch)
+				})
+			},
+		})
+	}
+
+	if !m.depRefreshing {
+		actions = append(actions, depAction{
+			Label: u.DepActionRefresh,
+			Run:   func(m Model) (tea.Model, tea.Cmd) { return m.startDepsRefresh() },
+		})
+	}
+	if m.depMode == depModeStartup && !m.deps.MissingRequired() {
+		actions = append(actions, depAction{
+			Label: u.DepActionContinue,
+			Run:   func(m Model) (tea.Model, tea.Cmd) { return m.gotoURLWithDeps(m.deps) },
+		})
+	}
+	if m.depMode == depModeManage {
+		actions = append(actions, depAction{
+			Label: u.DepActionBack,
+			Run:   func(m Model) (tea.Model, tea.Cmd) { return m.returnFromDependencyScreen() },
+		})
+	} else if m.deps.MissingRequired() {
+		actions = append(actions, depAction{
+			Label: u.DepActionExit,
+			Run:   func(m Model) (tea.Model, tea.Cmd) { return m, tea.Quit },
+		})
+	}
+	return actions
+}
+
+func (m Model) depRequirementText(name string) string {
+	return fmt.Sprintf(m.u().DepRequirementFmt, name)
+}
+
+func (m Model) viewDependencyProgress() string {
+	lines := []string{renderProgressBar(m.progressBarWidth(), m.depProgress.Pct)}
+	meta := progressMeta(m.locale, m.depProgress.Pct, m.depProgress.DoneB, m.depProgress.TotalB, m.depProgress.Speed)
+	lines = append(lines, meta)
+	return m.renderSectionBlock("", strings.Join(lines, "\n"))
+}
+
+func (m Model) renderUpdateDone() string {
+	return m.renderSectionBlock("", sMeta.Render(m.u().UpdateAppliedUnix))
+}
+
 func (m Model) viewDepsManage() string {
+	cookiesDetail := strings.TrimSpace(m.deps.Cookies.Browser)
+	if profile := strings.TrimSpace(m.deps.Cookies.ProfileName); cookiesDetail != "" && profile != "" {
+		cookiesDetail += ":" + profile
+	}
+
 	rows := make([]depStatusRow, 0, len(m.deps.Dependencies())+2)
 	for _, dep := range m.deps.Dependencies() {
 		rows = append(rows, depStatusRow{Label: dep.Name, Value: m.depLineValue(dep)})
 	}
 	rows = append(rows,
-		depStatusRow{Label: "cookies", Value: m.depAccessValue(m.deps.Cookies.Status, m.cookiesAccessDetail())},
-		depStatusRow{Label: "js", Value: m.depAccessValue(m.deps.Runtime.Status, m.runtimeAccessDetail())},
+		depStatusRow{Label: "cookies", Value: m.depAccessValue(m.deps.Cookies.Status, cookiesDetail)},
+		depStatusRow{Label: "js", Value: m.depAccessValue(m.deps.Runtime.Status, strings.TrimSpace(m.deps.Runtime.Name))},
 	)
 
 	parts := []string{m.renderSectionBlock("", renderDepStatusRows(rows))}
@@ -27,6 +122,7 @@ func (m Model) viewDepsManage() string {
 	}
 	return strings.Join(parts, "\n\n")
 }
+
 func (m Model) systemDepsCount() int {
 	count := 0
 	for _, dep := range m.deps.Dependencies() {
@@ -36,6 +132,7 @@ func (m Model) systemDepsCount() int {
 	}
 	return count
 }
+
 func renderDepStatusRows(rows []depStatusRow) string {
 	labelWidth := 0
 	for _, row := range rows {
@@ -48,6 +145,7 @@ func renderDepStatusRows(rows []depStatusRow) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
 func (m Model) depLineValue(dep core.DependencyInfo) string {
 	role := m.depRoleText(dep)
 	if !dep.Available {
@@ -68,6 +166,7 @@ func (m Model) depLineValue(dep core.DependencyInfo) string {
 	}
 	return sOk.Render(version) + sDim.Render("  ["+strings.Join(meta, ", ")+"]")
 }
+
 func (m Model) depAccessValue(status, detail string) string {
 	status = strings.TrimSpace(status)
 	detail = strings.TrimSpace(detail)
@@ -82,8 +181,6 @@ func (m Model) depAccessValue(status, detail string) string {
 			return sOk.Render(m.depText(depStateActive))
 		}
 		return sOk.Render(detail) + sDim.Render("  ["+status+"]")
-	case core.StatusNoProfile:
-		fallthrough
 	default:
 		if detail == "" {
 			return sWarn.Render(status)
@@ -91,6 +188,7 @@ func (m Model) depAccessValue(status, detail string) string {
 		return sWarn.Render(detail) + sDim.Render("  ["+status+"]")
 	}
 }
+
 func (m Model) depText(kind depState) string {
 	u := m.u()
 	switch kind {
@@ -105,27 +203,16 @@ func (m Model) depText(kind depState) string {
 	case depStateChecking:
 		return u.DepStatusChecking
 	}
-	return string(kind)
+	return ""
 }
-func (m Model) cookiesAccessDetail() string {
-	browser := strings.TrimSpace(m.deps.Cookies.Browser)
-	if browser == "" {
-		return ""
-	}
-	if profile := strings.TrimSpace(m.deps.Cookies.ProfileName); profile != "" {
-		return browser + ":" + profile
-	}
-	return browser
-}
-func (m Model) runtimeAccessDetail() string {
-	return strings.TrimSpace(m.deps.Runtime.Name)
-}
+
 func (m Model) depRoleText(dep core.DependencyInfo) string {
 	if dep.Required {
 		return m.u().DepRoleRequired
 	}
 	return m.u().DepRoleOptional
 }
+
 func (m Model) depSourceText(source core.DependencySource) string {
 	switch source {
 	case core.DepManaged:

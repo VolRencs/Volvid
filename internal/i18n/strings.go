@@ -16,11 +16,11 @@ type UIStrings struct {
 	UpdateAvail, CurrentVerShort string
 	PlaylistMixWarn              string
 
-	DepsUpdating, DepsRefreshing                     string
-	AppUpdating, UpdateAppliedWin, UpdateAppliedUnix string
-	UpdateDonePrefix                                 string
-	HelpAnyKey, HelpExit, DepsOK                     string
-	DownloadsDirLocked, PickDownloadsFailed          string
+	DepsUpdating, DepsRefreshing            string
+	AppUpdating, UpdateAppliedUnix          string
+	UpdateDonePrefix                        string
+	HelpAnyKey, HelpExit, DepsOK            string
+	DownloadsDirLocked, PickDownloadsFailed string
 
 	PasteURL, URLErrEmpty, URLErrBad, URLHints, PickDownloadsTitle                                        string
 	SearchTitle, SearchPrompt, SearchPlaceholder, SearchErrEmpty, SearchErrFailed, SearchNoResults        string
@@ -41,9 +41,9 @@ type UIStrings struct {
 
 	ParallelFmt, QualityTitle, VideoOutputTitle, AudioTitle, WorkersQueuedFmt string
 
-	SubtitleTitle, SubtitleOff, SubtitleAutoTag string
+	SubtitleTitle, SubtitleAutoTag string
 
-	AudioTrackTitle, AudioTrackOriginal string
+	AudioTrackTitle string
 
 	ModeTitle, ModeVideo, ModeAudio, ModeThumbnail                                 string
 	AudioMP3320, AudioMP3192, AudioM4ABest, AudioOpusBest, AudioFLAC, OutThumbnail string
@@ -91,7 +91,6 @@ var strEN = UIStrings{
 	DepsUpdating:      "Updating dependencies…",
 	DepsRefreshing:    "Refreshing dependency status…",
 	AppUpdating:       "Updating app…",
-	UpdateAppliedWin:  "The app will close and replace the executable in the background.",
 	UpdateAppliedUnix: "Binary replaced. Restart the adapters.",
 	UpdateDonePrefix:  "Update applied",
 	HelpAnyKey:        "Any key", HelpExit: "exit", DepsOK: "Dependencies updated.",
@@ -127,9 +126,9 @@ var strEN = UIStrings{
 
 	ParallelFmt: "Parallel downloads", QualityTitle: "Choose quality", VideoOutputTitle: "Choose video format", AudioTitle: "Choose audio", WorkersQueuedFmt: "%d items queued",
 
-	SubtitleTitle: "Embed subtitles", SubtitleOff: "No subtitles", SubtitleAutoTag: "auto",
+	SubtitleTitle: "Embed subtitles", SubtitleAutoTag: "auto",
 
-	AudioTrackTitle: "Choose audio track", AudioTrackOriginal: "Original",
+	AudioTrackTitle: "Choose audio track",
 
 	ModeTitle: "Choose mode", ModeVideo: "Video", ModeAudio: "Audio", ModeThumbnail: "Thumbnail",
 	AudioMP3320: "Audio · MP3 320k", AudioMP3192: "Audio · MP3 192k", AudioM4ABest: "Audio · M4A/AAC Best",
@@ -198,7 +197,6 @@ var strRU = UIStrings{
 	DepsUpdating:      "Обновление зависимостей…",
 	DepsRefreshing:    "Обновляю статус зависимостей…",
 	AppUpdating:       "Обновление приложения…",
-	UpdateAppliedWin:  "Приложение закроется и заменит исполняемый файл в фоне.",
 	UpdateAppliedUnix: "Бинарный файл обновлён. Перезапустите приложение.",
 	UpdateDonePrefix:  "Обновление применено",
 	HelpAnyKey:        "Любая клавиша", HelpExit: "выйти", DepsOK: "Зависимости обновлены.",
@@ -234,9 +232,9 @@ var strRU = UIStrings{
 
 	ParallelFmt: "Параллельная загрузка", QualityTitle: "Выбери качество", VideoOutputTitle: "Выбери формат видео", AudioTitle: "Выбери аудио", WorkersQueuedFmt: "%d видео в очереди",
 
-	SubtitleTitle: "Встроить субтитры", SubtitleOff: "Без субтитров", SubtitleAutoTag: "авто",
+	SubtitleTitle: "Встроить субтитры", SubtitleAutoTag: "авто",
 
-	AudioTrackTitle: "Выбери аудиодорожку", AudioTrackOriginal: "Оригинал",
+	AudioTrackTitle: "Выбери аудиодорожку",
 
 	ModeTitle: "Выбери режим", ModeVideo: "Видео", ModeAudio: "Аудио", ModeThumbnail: "Превью",
 	AudioMP3320: "Аудио · MP3 320k", AudioMP3192: "Аудио · MP3 192k", AudioM4ABest: "Аудио · M4A/AAC Лучшее",

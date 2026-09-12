@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"strings"
@@ -110,7 +111,7 @@ func renderProgressBar(width int, pct float64) string {
 }
 
 func renderBadge(label, value string) string {
-	return badge(label+":", value, sBadgeValue)
+	return sBadge.Render(sBadgeLabel.Render(label+":") + " " + sBadgeValue.Render(value))
 }
 
 func renderStatusChip(label, value string, ok bool) string {
@@ -132,10 +133,6 @@ func renderActionBadge(key, label string) string {
 	)
 }
 
-func badge(label, value string, valueStyle lipgloss.Style) string {
-	return sBadge.Render(sBadgeLabel.Render(label) + " " + valueStyle.Render(value))
-}
-
 func renderFileLink(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -145,11 +142,7 @@ func renderFileLink(path string) string {
 }
 
 func versionBadgeValue(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "—"
-	}
-	return value
+	return cmp.Or(strings.TrimSpace(value), "—")
 }
 
 func noticeTag(u *i18n.UIStrings, kind noticeKind) string {
@@ -189,10 +182,11 @@ func (m Model) cardStyle() lipgloss.Style {
 // screenCardStyle tints the card border by flow outcome.
 func (m Model) screenCardStyle() lipgloss.Style {
 	border := cBorder
+	outcome := m.downloadOutcome()
 	switch {
-	case m.screen == scrSummary && m.allDownloadFailed():
+	case m.screen == scrSummary && (outcome == outcomeAllFail || outcome == outcomeSingleFail):
 		border = cOutcomeFail
-	case m.screen == scrSummary && m.partiallyDownloadFailed():
+	case m.screen == scrSummary && outcome == outcomePartial:
 		border = cOutcomePartial
 	case m.screen == scrSummary:
 		border = cOutcomeOK

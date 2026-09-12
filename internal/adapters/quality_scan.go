@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"sync"
 	"volvid/internal/core"
 )
+
+func descendingInts(a, b int) int { return cmp.Compare(b, a) }
 
 type videoQualityInfo struct {
 	heights      []int
@@ -64,7 +65,7 @@ func scanQualityChoicesContext(env *Env, ctx context.Context, urls []string) ([]
 		return nil, errors.New("quality scan: no formats found")
 	}
 
-	slices.SortFunc(heights, func(a, b int) int { return cmp.Compare(b, a) })
+	slices.SortFunc(heights, descendingInts)
 	return buildQualityChoices(heights, counts, videos, len(urls)), nil
 }
 func buildQualityChoices(heights []int, counts map[int]int, videos []videoQualityInfo, total int) []core.QualityChoice {
@@ -95,7 +96,6 @@ func buildQualityChoices(heights []int, counts map[int]int, videos []videoQualit
 			size += row[i]
 		}
 		choices = append(choices, core.QualityChoice{
-			Key:       strconv.Itoa(height),
 			Height:    height,
 			Available: counts[height],
 			Total:     total,
@@ -160,7 +160,7 @@ func videoQualityInfoFromProbe(probe *core.MediaProbe) (videoQualityInfo, error)
 		}
 	}
 
-	slices.SortFunc(heights, func(a, b int) int { return cmp.Compare(b, a) })
+	slices.SortFunc(heights, descendingInts)
 	return videoQualityInfo{
 		heights:      heights,
 		sizeByHeight: sizeByHeight,
@@ -180,9 +180,7 @@ func runQualityScan(env *Env, ctx context.Context, urls []string) <-chan quality
 
 	var wg sync.WaitGroup
 	for range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for {
 				select {
 				case <-ctx.Done():
@@ -200,7 +198,7 @@ func runQualityScan(env *Env, ctx context.Context, urls []string) <-chan quality
 					}
 				}
 			}
-		}()
+		})
 	}
 
 	go func() {

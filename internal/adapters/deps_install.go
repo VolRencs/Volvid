@@ -38,9 +38,9 @@ func ensureDepsDir(env *Env) error {
 	}
 	return nil
 }
-func requireStagedBinary(ctx context.Context, name string, spec depSpec) error {
+func requireStagedBinary(ctx context.Context, spec depSpec) error {
 	if detectExecutableDependency(ctx, spec, true).Version == "" {
-		return fmt.Errorf("binary %s downloaded but does not run", name)
+		return fmt.Errorf("binary %s downloaded but does not run", spec.Name)
 	}
 	return nil
 }
@@ -61,9 +61,9 @@ func installYtDlpFor(env *Env, ctx context.Context, l core.Locale, ch chan<- cor
 	if err != nil {
 		return fmt.Errorf("yt-dlp asset metadata: %w", err)
 	}
-	staging, err := os.MkdirTemp(env.DepsDir, ".ytdlp-*")
+	staging, err := stageDownloadDir(env)
 	if err != nil {
-		return fmt.Errorf("create install staging dir: %w", err)
+		return err
 	}
 	defer os.RemoveAll(staging)
 
@@ -79,7 +79,9 @@ func installYtDlpFor(env *Env, ctx context.Context, l core.Locale, ch chan<- cor
 			return fmt.Errorf("chmod yt-dlp: %w", err)
 		}
 	}
-	if err := requireStagedBinary(ctx, "yt-dlp", depSpec{Key: "ytdlp", Name: "yt-dlp", ManagedPath: stagedYtdlp, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}); err != nil {
+	spec := ytdlpDepSpec
+	spec.ManagedPath = stagedYtdlp
+	if err := requireStagedBinary(ctx, spec); err != nil {
 		return err
 	}
 	if err := replaceFilesWithBackup(map[string]string{stagedYtdlp: env.YtdlpBin}); err != nil {
@@ -134,10 +136,14 @@ func installFFmpegFor(env *Env, ctx context.Context, l core.Locale, ch chan<- co
 		return fmt.Errorf("extract ffmpeg archive: %w", err)
 	}
 
-	if err := requireStagedBinary(ctx, "ffmpeg", depSpec{Key: "ffmpeg", Name: "ffmpeg", ManagedPath: stagedFFmpeg, VersionArgs: []string{"-version"}, ParseVersion: ffmpegVersionFromLine}); err != nil {
+	ffmpegSpec := ffmpegDepSpec
+	ffmpegSpec.ManagedPath = stagedFFmpeg
+	if err := requireStagedBinary(ctx, ffmpegSpec); err != nil {
 		return err
 	}
-	if err := requireStagedBinary(ctx, "ffprobe", depSpec{ManagedPath: stagedFFprobe, VersionArgs: []string{"-version"}, ParseVersion: firstNonEmptyLine}); err != nil {
+	ffprobeSpec := ffprobeDepSpec
+	ffprobeSpec.ManagedPath = stagedFFprobe
+	if err := requireStagedBinary(ctx, ffprobeSpec); err != nil {
 		return err
 	}
 	if err := replaceFilesWithBackup(map[string]string{
@@ -185,7 +191,9 @@ func installNodeFor(env *Env, ctx context.Context, l core.Locale, ch chan<- core
 		return fmt.Errorf("extract node archive: %w", err)
 	}
 
-	if err := requireStagedBinary(ctx, "node", depSpec{Key: "node", Name: "node", ManagedPath: stagedNode, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}); err != nil {
+	nodeSpec := nodeDepSpec
+	nodeSpec.ManagedPath = stagedNode
+	if err := requireStagedBinary(ctx, nodeSpec); err != nil {
 		return err
 	}
 	if err := replaceFilesWithBackup(map[string]string{stagedNode: env.NodeBin}); err != nil {
@@ -293,7 +301,7 @@ func downloadText(env *Env, ctx context.Context, url string) (string, error) {
 }
 
 func scanChecksumManifest(manifest string, match func(asset string) bool) (string, string, error) {
-	for _, line := range strings.Split(strings.ReplaceAll(manifest, "\r\n", "\n"), "\n") {
+	for line := range strings.SplitSeq(manifest, "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) < 2 {
 			continue

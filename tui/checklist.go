@@ -3,8 +3,8 @@ package tui
 import "strconv"
 
 // checklist is the shared multi-select list behind the subtitle and audio
-// track pickers. Row 0 is the "no override" action; rows 1..N map to tracks.
-// Selection is keyed by a track key (the language tag).
+// track pickers. Selection is keyed by a track key (the language tag); an
+// empty selection means "add nothing" (no subtitles / original audio only).
 type checklist[T any] struct {
 	cursor   int
 	top      int
@@ -23,10 +23,6 @@ func (c *checklist[T]) reset() {
 	c.selected = map[string]bool{}
 }
 
-func (c checklist[T]) rowCount(tracks []T) int {
-	return len(tracks) + 1
-}
-
 func (c checklist[T]) isSelected(track T) bool {
 	return c.selected[c.key(track)]
 }
@@ -40,18 +36,13 @@ func (c *checklist[T]) clearSelection() {
 
 func (c *checklist[T]) trackAt(tracks []T) (T, bool) {
 	var zero T
-	idx := c.cursor - 1
-	if idx < 0 || idx >= len(tracks) {
+	if c.cursor < 0 || c.cursor >= len(tracks) {
 		return zero, false
 	}
-	return tracks[idx], true
+	return tracks[c.cursor], true
 }
 
 func (c *checklist[T]) toggle(tracks []T) {
-	if c.cursor == 0 {
-		c.clearSelection()
-		return
-	}
 	track, ok := c.trackAt(tracks)
 	if !ok {
 		return
@@ -92,8 +83,8 @@ func (c checklist[T]) selectedKeys(tracks []T) []string {
 }
 
 func (c *checklist[T]) move(delta int, tracks []T, viewportHeight int) {
-	rows := c.rowCount(tracks)
-	c.cursor = max(0, min(c.cursor+delta, rows-1))
+	rows := len(tracks)
+	c.cursor = max(0, min(c.cursor+delta, max(0, rows-1)))
 	c.top = clampWindowTop(c.cursor, c.top, rows, viewportHeight)
 }
 

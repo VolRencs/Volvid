@@ -109,18 +109,6 @@ func New(env *adapters.Env, ctx context.Context) tea.Model {
 	return newModelWithAPI(ctx, newAppAPI(env))
 }
 
-// NewWithDeps injects a custom AppAPI (fake in tests, adapter in prod).
-// This is the seam that breaks the hard tui -> adapters coupling.
-func NewWithDeps(ctx context.Context, api AppAPI) tea.Model {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if api == nil {
-		api = newAppAPI(adapters.NewEnv())
-	}
-	return newModelWithAPI(ctx, api)
-}
-
 func newModelWithAPI(ctx context.Context, api AppAPI) Model {
 	loc := api.LoadLocale()
 
@@ -130,11 +118,11 @@ func newModelWithAPI(ctx context.Context, api AppAPI) Model {
 		screen:      scrUpdateCheck,
 		locale:      loc,
 		urlInput:    newInput(inputURL, "https://youtu.be/...", inputW, 300),
-		searchInput: newInput(inputSearch, api.Strings(loc).SearchPlaceholder, inputW, 120),
-		plInput:     newInput(inputPlaylist, api.Strings(loc).PlInputPlaceholder, 38, 100),
+		searchInput: newInput(inputSearch, i18n.StringsFor(loc).SearchPlaceholder, inputW, 120),
+		plInput:     newInput(inputPlaylist, i18n.StringsFor(loc).PlInputPlaceholder, 38, 100),
 		fragmentIn:  newInput(inputFragment, "1:00-2:30", 28, 32),
 		mode:        core.ModeVideo,
-		profile:     api.DefaultVideoProfile(loc),
+		profile:     i18n.DefaultVideoProfile(loc),
 		numWorkers:  1,
 		plSelected:  map[int]bool{},
 		audioList:   newChecklist(func(track core.AudioTrack) string { return track.Lang }),
@@ -152,7 +140,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) u() *i18n.UIStrings {
-	return m.api.Strings(m.locale)
+	return i18n.StringsFor(m.locale)
 }
 
 func (m Model) cancelOps() Model {

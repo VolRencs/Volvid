@@ -25,8 +25,63 @@ func (m Model) activateMenu() (tea.Model, tea.Cmd) {
 	if len(m.menu.items) == 0 {
 		return m, nil
 	}
-	if handler, ok := menuActions[m.screen]; ok {
-		return handler(m, m.menu.Index())
+	idx := m.menu.Index()
+
+	switch m.screen {
+	case scrUpdateReady:
+		if idx == 0 {
+			info := m.updateInfo
+			return m.startDependencyDownload(scrUpdateDl, "", true, func(ctx context.Context, ch chan<- core.FileProgress) error {
+				return m.api.ApplyUpdate(ctx, m.locale, info, ch)
+			})
+		}
+		return m.gotoChecks()
+	case scrDepUpdate:
+		return m.activateDependencyAction(idx)
+	case scrPlaylistAsk:
+		if idx == 0 {
+			m.forceSingle = true
+			return m.startFragmentFlow()
+		}
+		return m.startOpScreen(scrPlaylistFetch, func(ctx context.Context, gen int) tea.Cmd {
+			return fetchPlaylistCmd(m.api, ctx, m.url, m.locale, gen)
+		})
+	case scrSummary:
+		if idx == 0 {
+			return m.resetForNext()
+		}
+		return m, tea.Quit
+	case scrSearchResults:
+		return m.activateSearchResult(idx)
+	case scrFragmentChoice:
+		return m.activateFragmentChoice(idx)
+	case scrMode:
+		return m.activateModeChoice(idx)
+	case scrAudio:
+		if idx < 0 || idx >= len(m.audioProfiles) {
+			return m, nil
+		}
+		return m.unifyProfileChoice(m.audioProfiles[idx])
+	case scrQuality:
+		if idx < 0 || idx >= len(m.qualityChoices) {
+			return m, nil
+		}
+		m.profile = i18n.QualityProfile(m.qualityChoices[idx], m.locale)
+		m.videoProfiles = i18n.VideoOutputProfiles(m.profile, m.locale)
+		m.flowErr = ""
+		m.screen = scrVideoOutput
+		m = m.syncMenu()
+		return m, nil
+	case scrVideoOutput:
+		if idx < 0 || idx >= len(m.videoProfiles) {
+			return m, nil
+		}
+		m.profile = m.videoProfiles[idx]
+		m.flowErr = ""
+		return m.startTracksStep()
+	case scrWorkers:
+		m.numWorkers = idx + 1
+		return m.startDownload()
 	}
 	return m, nil
 }
@@ -38,97 +93,12 @@ func (m Model) unifyProfileChoice(profile core.OutputProfile) (tea.Model, tea.Cm
 	return m.continueAfterProfileSelection()
 }
 
-var menuActions = map[screen]func(Model, int) (tea.Model, tea.Cmd){
-	scrUpdateReady: func(m Model, idx int) (tea.Model, tea.Cmd) {
-		if idx == 0 {
-			info := m.updateInfo
-			return m.startDependencyDownload(scrUpdateDl, "", true, func(ctx context.Context, ch chan<- core.FileProgress) error {
-				return m.api.ApplyUpdate(ctx, m.locale, info, ch)
-			})
-		}
-		return m.gotoChecks()
-	},
-	scrDepUpdate: func(m Model, idx int) (tea.Model, tea.Cmd) {
-		return m.activateDependencyAction(idx)
-	},
-	scrPlaylistAsk: func(m Model, idx int) (tea.Model, tea.Cmd) {
-		if idx == 0 {
-			m.forceSingle = true
-			return m.startFragmentFlow()
-		}
-		var ctx context.Context
-		m, ctx = m.nextOpCtx()
-		m.screen = scrPlaylistFetch
-		return m, tea.Batch(fetchPlaylistCmd(m.api, ctx, m.url, m.locale, m.opGen), spinnerTickCmd())
-	},
-	scrSummary: func(m Model, idx int) (tea.Model, tea.Cmd) {
-		if idx == 0 {
-			return m.resetForNext()
-		}
-		return m, tea.Quit
-	},
-	scrSearchResults: func(m Model, idx int) (tea.Model, tea.Cmd) {
-		return m.activateSearchResult(idx)
-	},
-	scrFragmentChoice: func(m Model, idx int) (tea.Model, tea.Cmd) {
-		return m.activateFragmentChoice(idx)
-	},
-	scrMode: func(m Model, idx int) (tea.Model, tea.Cmd) {
-		return m.activateModeChoice(idx)
-	},
-	scrAudio: func(m Model, idx int) (tea.Model, tea.Cmd) {
-		if idx < 0 || idx >= len(m.audioProfiles) {
-			return m, nil
-		}
-		return m.unifyProfileChoice(m.audioProfiles[idx])
-	},
-	scrQuality: func(m Model, idx int) (tea.Model, tea.Cmd) {
-		if idx < 0 || idx >= len(m.qualityChoices) {
-			return m, nil
-		}
-		m.profile = i18n.QualityProfile(m.qualityChoices[idx], m.locale)
-		m.videoProfiles = i18n.VideoOutputProfiles(m.profile, m.locale)
-		m.flowErr = ""
-		m.screen = scrVideoOutput
-		m = m.syncMenu()
-		return m, nil
-	},
-	scrVideoOutput: func(m Model, idx int) (tea.Model, tea.Cmd) {
-		if idx < 0 || idx >= len(m.videoProfiles) {
-			return m, nil
-		}
-		m.profile = m.videoProfiles[idx]
-		m.flowErr = ""
-		return m.startTracksStep()
-	},
-	scrWorkers: func(m Model, idx int) (tea.Model, tea.Cmd) {
-		m.numWorkers = idx + 1
-		return m.startDownload()
-	},
-}
-
 func (m Model) activateDependencyAction(idx int) (tea.Model, tea.Cmd) {
 	actions := m.depActions()
 	if idx < 0 || idx >= len(actions) {
 		return m, nil
 	}
-	action := actions[idx]
-	switch action.Kind {
-	case depActionInstall:
-		key := action.Key
-		return m.startDependencyDownload(scrDepDl, key, false, func(ctx context.Context, ch chan<- core.FileProgress) error {
-			return m.api.InstallDependency(ctx, key, m.locale, ch)
-		})
-	case depActionRefresh:
-		return m.startDepsRefresh()
-	case depActionContinue:
-		return m.gotoURLWithDeps(m.deps)
-	case depActionBack:
-		return m.returnFromDependencyScreen()
-	case depActionExit:
-		return m, tea.Quit
-	}
-	return m, nil
+	return actions[idx].Run(m)
 }
 func (m Model) activateModeChoice(idx int) (tea.Model, tea.Cmd) {
 	switch idx {
@@ -166,7 +136,7 @@ func (m Model) activateFragmentChoice(idx int) (tea.Model, tea.Cmd) {
 		return m.startModeSelectionWithNotice("")
 	case m.canUseURLStartFragment() && idx == 1:
 		fragment := core.DownloadFragment{StartAt: m.target.URLStartAt}
-		if err := m.api.ValidateFragment(fragment, m.mediaDuration); err != nil {
+		if err := core.ValidateFragmentDuration(fragment, m.mediaDuration); err != nil {
 			m.flowErr = i18n.FragmentURLStartOutOfBoundsText(m.locale, m.mediaDuration)
 			m = m.syncMenu()
 			return m, nil

@@ -29,8 +29,8 @@ func systemDownloadsDirPlatform() string {
 		home = ""
 	}
 
-	for _, rawLine := range strings.Split(string(b), "\n") {
-		line := strings.TrimSpace(rawLine)
+	for line := range strings.SplitSeq(string(b), "\n") {
+		line = strings.TrimSpace(line)
 		rest, ok := strings.CutPrefix(line, "XDG_DOWNLOAD_DIR=")
 		if !ok {
 			continue

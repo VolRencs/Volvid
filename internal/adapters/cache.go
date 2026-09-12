@@ -112,16 +112,10 @@ func (fc *flightCache[K, V]) awaitFlight(ctx context.Context, fe *flightEntry[V]
 	}
 }
 
-func (fc *flightCache[K, V]) Load(key K, fetch func() (V, error)) (V, error) {
-	return fc.loadWithTTLAndCtx(key, 0, nil, fetch)
-}
-
-func (fc *flightCache[K, V]) LoadWithTTL(key K, ttl time.Duration, fetch func() (V, error)) (V, error) {
-	return fc.loadWithTTLAndCtx(key, ttl, nil, fetch)
-}
-
-func (fc *flightCache[K, V]) ProbeLoad(key K, ctx context.Context, fetch func() (V, error)) (V, error) {
-	return fc.loadWithTTLAndCtx(key, probeCacheTTL, ctx, fetch)
+// Load returns the cached value for key, single-flighting concurrent fetches.
+// A positive ttl bounds the entry's lifetime; ctx cancels a follower's wait.
+func (fc *flightCache[K, V]) Load(key K, ttl time.Duration, ctx context.Context, fetch func() (V, error)) (V, error) {
+	return fc.loadWithTTLAndCtx(key, ttl, ctx, fetch)
 }
 
 func (fc *flightCache[K, V]) Get(key K) (V, bool) {

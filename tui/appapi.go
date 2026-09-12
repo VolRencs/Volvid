@@ -5,18 +5,16 @@ import (
 
 	"volvid/internal/adapters"
 	"volvid/internal/core"
-	"volvid/internal/i18n"
 )
 
 // AppAPI is the anti-corruption layer between the Bubble Tea UI and the
 // domain. TUI code depends on this interface plus pure core/i18n helpers,
 // never on adapters concretes (except this file and constructors).
 //
-// Production use: appAPIAdapter{env} (built by New/NewWithDeps).
+// Production use: appAPIAdapter{env} (built by New).
 // Tests: stubAPI with scripted responses, no processes/network/fs.
 type AppAPI interface {
 	// Target / playlist / search / probe / quality.
-	ParseTarget(raw string) (core.ParsedTarget, error)
 	DetectDeps() core.CheckDepsResult
 	RefreshDeps() core.CheckDepsResult
 	FetchPlaylist(ctx context.Context, url string, l core.Locale) (*core.PlaylistInfo, error)
@@ -29,12 +27,8 @@ type AppAPI interface {
 	// Download pipeline (use-case extracted from flow.go:startDownload).
 	PrepareDownload(req core.DownloadRequest, deps core.CheckDepsResult) (core.DownloadRequest, error)
 	StartDownload(ctx context.Context, req core.DownloadRequest, deps core.CheckDepsResult, ch chan<- core.DlUpdate)
-	DefaultVideoProfile(l core.Locale) core.OutputProfile
-	DefaultProfileForMode(mode core.DownloadMode, l core.Locale) core.OutputProfile
 
-	// Fragment / playlist selection validation.
-	ParseFragment(raw string, mediaDuration int) (core.DownloadFragment, error)
-	ValidateFragment(fragment core.DownloadFragment, mediaDuration int) error
+	// Playlist selection validation.
 	ParseSelection(raw string, maxIdx int, l core.Locale) ([]int, error)
 
 	// Directories / OS integration.
@@ -53,8 +47,6 @@ type AppAPI interface {
 	// Locale / version.
 	LoadLocale() core.Locale
 	SaveLocale(l core.Locale) error
-	NextLocale(l core.Locale) core.Locale
-	Strings(l core.Locale) *i18n.UIStrings
 	IsWindows() bool
 	AppVersion() string
 }
@@ -69,10 +61,6 @@ func newAppAPI(env *adapters.Env) AppAPI {
 		env = adapters.NewEnv()
 	}
 	return appAPIAdapter{env: env}
-}
-
-func (a appAPIAdapter) ParseTarget(raw string) (core.ParsedTarget, error) {
-	return core.ParseTarget(raw)
 }
 
 func (a appAPIAdapter) DetectDeps() core.CheckDepsResult { return adapters.DetectDeps(a.env) }
@@ -111,22 +99,6 @@ func (a appAPIAdapter) StartDownload(ctx context.Context, req core.DownloadReque
 	adapters.StartDownloadRequestContext(a.env, ctx, req, deps, ch)
 }
 
-func (a appAPIAdapter) DefaultVideoProfile(l core.Locale) core.OutputProfile {
-	return i18n.DefaultVideoProfile(l)
-}
-
-func (a appAPIAdapter) DefaultProfileForMode(mode core.DownloadMode, l core.Locale) core.OutputProfile {
-	return i18n.DefaultProfileForMode(mode, l)
-}
-
-func (a appAPIAdapter) ParseFragment(raw string, mediaDuration int) (core.DownloadFragment, error) {
-	return core.ParseBoundedFragmentRange(raw, mediaDuration)
-}
-
-func (a appAPIAdapter) ValidateFragment(fragment core.DownloadFragment, mediaDuration int) error {
-	return core.ValidateFragmentDuration(fragment, mediaDuration)
-}
-
 func (a appAPIAdapter) ParseSelection(raw string, maxIdx int, l core.Locale) ([]int, error) {
 	return adapters.ParseSelectionFor(raw, maxIdx, l)
 }
@@ -162,10 +134,6 @@ func (a appAPIAdapter) ApplyUpdate(ctx context.Context, l core.Locale, info *cor
 func (a appAPIAdapter) LoadLocale() core.Locale { return adapters.LoadLocale(a.env) }
 
 func (a appAPIAdapter) SaveLocale(l core.Locale) error { return adapters.SaveLocale(a.env, l) }
-
-func (a appAPIAdapter) NextLocale(l core.Locale) core.Locale { return core.NextLocale(l) }
-
-func (a appAPIAdapter) Strings(l core.Locale) *i18n.UIStrings { return i18n.StringsFor(l) }
 
 func (a appAPIAdapter) IsWindows() bool { return a.env.IsWindows }
 

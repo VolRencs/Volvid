@@ -3,6 +3,7 @@ package tui
 import (
 	"time"
 	"volvid/internal/core"
+	"volvid/internal/i18n"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -24,7 +25,7 @@ func (m Model) currentProfile() core.OutputProfile {
 	if m.profile.Mode != 0 {
 		return m.profile
 	}
-	return m.api.DefaultProfileForMode(m.mode, m.locale)
+	return i18n.DefaultProfileForMode(m.mode, m.locale)
 }
 
 func (m Model) qualityScanURLs() []string {
@@ -101,7 +102,7 @@ func (m *Model) resetProfileState() {
 	m.profile = m.defaultVideoProfile()
 }
 func (m *Model) defaultVideoProfile() core.OutputProfile {
-	return m.api.DefaultVideoProfile(m.locale)
+	return i18n.DefaultVideoProfile(m.locale)
 }
 func (m *Model) resetFragmentState() {
 	m.mediaDuration = 0

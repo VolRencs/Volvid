@@ -130,9 +130,7 @@ func ParseSelectionFor(raw string, maxIdx int, l core.Locale) ([]int, error) {
 			if err := errors.Join(errA, errB); err != nil {
 				return nil, fmt.Errorf("range %q: %w", part, err)
 			}
-			if a > b {
-				a, b = b, a
-			}
+			a, b = min(a, b), max(a, b)
 			if a < 1 || b > maxIdx {
 				return nil, fmt.Errorf(strs.PlParseRange, a, b, maxIdx)
 			}

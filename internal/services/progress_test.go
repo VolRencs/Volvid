@@ -38,7 +38,7 @@ func TestLaunchProgressForwardsAndTerminates(t *testing.T) {
 		ch <- core.FileProgress{Pct: 50}
 		return nil
 	}
-	ch, cancel := LaunchProgress(context.Background(), fn)
+	ch, cancel := LaunchProgress(t.Context(), fn)
 	defer cancel()
 
 	got := collect(t, ch)
@@ -54,7 +54,7 @@ func TestLaunchProgressForwardsAndTerminates(t *testing.T) {
 func TestLaunchProgressPropagatesError(t *testing.T) {
 	want := errors.New("boom")
 	fn := func(ctx context.Context, ch chan<- core.FileProgress) error { return want }
-	ch, cancel := LaunchProgress(context.Background(), fn)
+	ch, cancel := LaunchProgress(t.Context(), fn)
 	defer cancel()
 
 	got := collect(t, ch)
@@ -68,7 +68,7 @@ func TestLaunchProgressRecoversPanic(t *testing.T) {
 	fn := func(ctx context.Context, ch chan<- core.FileProgress) error {
 		panic("oops")
 	}
-	ch, cancel := LaunchProgress(context.Background(), fn)
+	ch, cancel := LaunchProgress(t.Context(), fn)
 	defer cancel()
 
 	got := collect(t, ch)

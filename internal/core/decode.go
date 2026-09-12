@@ -21,9 +21,6 @@ func decodeStringOr(v any, def string) string {
 
 // MapString reads m[key] tolerantly (playlist search results, flat entries).
 func MapString(m map[string]any, key, def string) string {
-	if m == nil {
-		return def
-	}
 	return decodeStringOr(m[key], def)
 }
 
@@ -101,33 +98,22 @@ func decodeInt(v any) int64 {
 
 // MapFloat reads m[key] tolerantly.
 func MapFloat(m map[string]any, key string) float64 {
-	if m == nil {
-		return 0
-	}
 	return decodeFloat(m[key])
 }
 
-// parseIntOrZero parses CLI/progress integers ("12", " 7 ") -> 0 on error.
+// ParseIntOrZero parses CLI/progress integers ("12", " 7 ") -> 0 on error.
 func ParseIntOrZero(raw string) int64 {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return 0
-	}
-	n, err := strconv.ParseInt(raw, 10, 64)
+	n, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 	if err != nil {
 		return 0
 	}
 	return n
 }
 
-// parsePercentOrZero parses progress percents ("12.5%") -> 0 on error.
+// ParsePercentOrZero parses progress percents ("12.5%") -> 0 on error.
 func ParsePercentOrZero(raw string) float64 {
 	rest, _ := strings.CutSuffix(raw, "%")
-	rest = strings.TrimSpace(rest)
-	if rest == "" {
-		return 0
-	}
-	n, err := strconv.ParseFloat(rest, 64)
+	n, err := strconv.ParseFloat(strings.TrimSpace(rest), 64)
 	if err != nil {
 		return 0
 	}

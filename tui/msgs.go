@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"time"
 	"volvid/internal/core"
 )
 
@@ -60,7 +59,7 @@ type (
 	}
 
 	spinnerTickMsg struct{}
-	timerTickMsg   time.Time
+	timerTickMsg   struct{}
 	cursorBlinkMsg struct {
 		target inputTarget
 		tag    int

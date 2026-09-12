@@ -13,26 +13,14 @@ const (
 	ModeThumbnail
 )
 
-// FormatChain is a yt-dlp -f fallback chain with human labels.
-// Labels[i] describes Formats[i] when present.
-type FormatChain struct {
-	Formats []string
-	Labels  []string
-}
-
-// Chain returns the formats as a slice (nil when empty).
-func (c FormatChain) Chain() []string {
-	return slices.Clone(c.Formats)
-}
-
 const (
 	YtdlpBestFormat     = "bestvideo+bestaudio/best"
 	ytdlpWorst360Format = "bestvideo[height<=360]+bestaudio/best[height<=360]"
 )
 
-var qualityChains = [2]FormatChain{
-	{Formats: []string{YtdlpBestFormat, "best"}},
-	{Formats: []string{ytdlpWorst360Format, "best[height<=360]", "worst"}, Labels: []string{"worst", "360p", "worst"}},
+var qualityChains = [2][]string{
+	{YtdlpBestFormat, "best"},
+	{ytdlpWorst360Format, "best[height<=360]", "worst"},
 }
 
 // QualityChainAt returns a clone of the static format chain (nil if OOB).
@@ -40,11 +28,10 @@ func QualityChainAt(idx int) []string {
 	if idx < 0 || idx >= len(qualityChains) {
 		return nil
 	}
-	return qualityChains[idx].Chain()
+	return slices.Clone(qualityChains[idx])
 }
 
 type QualityChoice struct {
-	Key       string
 	Height    int
 	Best      bool
 	Worst     bool
@@ -58,9 +45,8 @@ type QualityChoice struct {
 // DefaultQualityChoices is the fallback when a live scan is impossible.
 func DefaultQualityChoices() []QualityChoice {
 	return []QualityChoice{
-		{Key: "best", Best: true, FmtChain: QualityChainAt(0)},
+		{Best: true, FmtChain: QualityChainAt(0)},
 		{
-			Key:       "worst",
 			Worst:     true,
 			FmtChain:  QualityChainAt(1),
 			FmtLabels: []string{"worst", "360p", "worst"},
@@ -69,7 +55,6 @@ func DefaultQualityChoices() []QualityChoice {
 }
 
 type OutputProfile struct {
-	Key            string
 	Label          string
 	Mode           DownloadMode
 	VideoFmtChain  []string
