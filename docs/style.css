@@ -105,7 +105,7 @@
   .t-rule{border-top:1px solid var(--t-line);margin:8px 0}
   .t-section{color:var(--t-accent);font-weight:700;margin-top:10px}
   .t-strip{border-left:1px solid var(--t-line);padding-left:1ch;margin-top:2px}
-  .t-input{display:flex;align-items:center;border:1px solid var(--t-primary);border-radius:8px;padding:0 1ch;min-height:1.9em;white-space:nowrap;overflow:hidden}
+  .t-input{display:flex;align-items:center;border:1px solid var(--t-primary);border-radius:8px;padding:0 1ch;min-height:1.9em;margin-top:2px;white-space:nowrap;overflow:hidden}
   .t-ph{color:var(--t-dim)}
   .t-cursor{flex:none;width:1ch;height:1.05em;background:var(--t-soft);animation:blink 1.06s steps(1) infinite}
   .t-link{color:var(--t-soft)}
