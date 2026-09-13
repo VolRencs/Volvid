@@ -1,7 +1,7 @@
 // Typing animation for URL (inside Target box, replaces placeholder)
 const url = 'https://youtu.be/dQw4w9WgXcQ';
 const typedEl = document.getElementById('typed');
-const placeholderEl = typedEl ? typedEl.previousElementSibling : null;
+const placeholderEl = document.getElementById('ph');
 let i = 0, dir = 1;
 function typeLoop() {
   if (!typedEl) return;
@@ -13,21 +13,16 @@ function typeLoop() {
 }
 typeLoop();
 
-// Quality list interactive (numbered picker)
+// Quality picker preview: auto-highlight only, not user-interactive
 const q = [...document.querySelectorAll('#qList li')];
 let qs = 0;
 function paintQ() {
   q.forEach((li, k) => li.classList.toggle('sel', k === qs));
 }
 paintQ();
-setInterval(() => { if (q.length) { qs = (qs + 1) % q.length; paintQ(); } }, 1800);
-document.addEventListener('keydown', e => {
-  if (!q.length) return;
-  if (e.key === 'ArrowDown') { qs = (qs + 1) % q.length; paintQ(); }
-  if (e.key === 'ArrowUp') { qs = (qs - 1 + q.length) % q.length; paintQ(); }
-  const n = parseInt(e.key, 10);
-  if (n >= 1 && n <= q.length) { qs = n - 1; paintQ(); }
-});
+if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  setInterval(() => { if (q.length) { qs = (qs + 1) % q.length; paintQ(); } }, 1800);
+}
 
 // Live version + release links from GitHub (fallback stays if API is unreachable)
 const REPO = 'VolRencs/Volvid';
@@ -51,7 +46,8 @@ async function loadVersion() {
     if (dlLin) dlLin.href = (linA && linA.browser_download_url) || page;
   } catch (err) { /* keep fallback version */ }
 }
-loadVersion();
+const idle = window.requestIdleCallback || (fn => setTimeout(fn, 1200));
+idle(loadVersion);
 
 // First download button matches the visitor's OS (Linux → Volvid, else → Volvid.exe)
 (function osFirst() {
@@ -73,84 +69,82 @@ loadVersion();
 const I18N = {
   ru: {
     'doc.title': 'Volvid — YouTube-загрузчик для терминала',
-    'hero.tagline': 'Быстрый. Удобный. Клавиатурный.',
-    'hero.title': 'Загружай видео и аудио<br>с YouTube <span class="blue">прямо в терминале.</span>',
-    'hero.desc': 'Volvid — это быстрый и удобный TUI-интерфейс<br>для скачивания видео, аудио и превью<br>с YouTube.',
+    'hero.title': 'Скачивай видео и музыку с YouTube <span class="blue">прямо из терминала.</span>',
+    'hero.desc': 'Volvid — лёгкий TUI-загрузчик на yt-dlp и ffmpeg. Вставил ссылку, выбрал качество, получил файл — без браузера и лишних кликов.',
     'hero.dl': 'Скачать', 'hero.dl2': 'Скачать',
     'hero.forWin': 'для Windows', 'hero.forLin': 'для Linux',
     'hero.github': 'Смотреть на GitHub',
     'hero.release': 'Последний релиз:',
     'app.paste': 'Вставь ссылку на видео или плейлист YouTube',
     'app.target': 'Источник', 'app.dlLoc': 'Папка загрузки', 'app.recent': 'Текущая сессия',
-    'app.noDl': '│ В этой сессии ещё не было загрузок.',
+    'app.noDl': 'В этой сессии ещё не было загрузок.',
     'app.ok': 'успешно', 'app.fail': 'ошибки',
     'app.cont': 'продолжить', 'app.search': 'поиск', 'app.folder': 'выбрать папку', 'app.open': 'открыть папку',
     'feat.title': 'Возможности',
-    'feat.sub': 'Все, что нужно для удобной загрузки, в одном инструменте.',
+    'feat.sub': 'Всё для загрузок — в одном приложении.',
     'f1t': 'Видео, аудио и превью',
-    'f1d': 'Скачивайте видео, аудиодорожки и миниатюры через единый пошаговый TUI: от проверки обновлений до итога сессии.',
+    'f1d': 'Видео, аудиодорожки и обложки — всё в одном приложении.',
     'f2t': 'Пресеты качества',
-    'f2d': 'Best и экономные пресеты видео со сканированием качества через yt-dlp. Аудио: MP3 320k и 192k, M4A/AAC Best, Opus Best, FLAC.',
+    'f2d': 'От 144p до 4K, а также MP3 320k, M4A, Opus и FLAC.',
     'f3t': 'Плейлисты',
-    'f3d': 'Браузер плейлистов: выбор клавишей Space, всё сразу — клавишей A, ручные диапазоны — через /.',
+    'f3d': 'Отмечай нужные ролики клавишей Space, всё сразу — A, диапазоны — /.',
     'f4t': 'Поиск на YouTube',
-    'f4d': 'Поиск видео с главного экрана по Ctrl+G — ссылку вставлять не обязательно.',
+    'f4d': 'Ищи видео по Ctrl+G, не выходя из приложения.',
     'f5t': 'Зависимости под контролем',
-    'f5d': 'Проверка yt-dlp и ffmpeg на старте и обновление прямо в интерфейсе по Ctrl+U. Системные бинари в приоритете.',
+    'f5d': 'yt-dlp и ffmpeg проверяются при запуске и обновляются по Ctrl+U.',
     'f6t': 'Cookies и JS-runtime',
-    'f6d': 'Автодетект кукисов браузера на Windows и Linux, проверка опционального node для обхода защиты.',
+    'f6d': 'Автопоиск cookies браузера и node, чтобы обходить защиту.',
     'f8t': 'Итоги сессии',
-    'f8d': 'Сводка после загрузок: история успехов и ошибок, счётчики ok и failed.',
+    'f8d': 'История загрузок со счётчиками успехов и ошибок.',
     'f9t': 'Субтитры и дубляж',
-    'f9d': 'Встраивание субтитров и нескольких аудиодорожек прямо в видео: выбор языков чеклистом, теги сохраняются.',
+    'f9d': 'Вшивает субтитры и аудиодорожки в видео, сохраняя языки.',
     'q.title': 'Выбери качество',
     'q.move': 'движение', 'q.choose': 'выбрать', 'q.cont': 'продолжить', 'q.back': 'назад',
-    'show.eyebrow': 'ПРОСТОЙ И ИНТУИТИВНЫЙ',
-    'show.title': 'Чистый интерфейс.<br><span class="blue">Максимальный контроль.</span>',
-    'show.desc': 'Volvid даёт вам всю мощь, не отвлекая лишним. Никаких окон, никаких переключений — только то, что нужно, именно тогда, когда нужно.',
-    'c1': 'Управление с клавиатуры', 'c2': 'Быстрый и лёгкий', 'c3': 'Красивый и минималистичный TUI',
+    'show.eyebrow': 'ПРОСТО И БЫСТРО',
+    'show.title': 'Всё под контролем. <span class="blue">И ничего лишнего.</span>',
+    'show.desc': 'Каждый шаг — в одном экране: ссылка, качество, загрузка. Ни окон, ни вкладок, ни переключений.',
+    'c1': 'Полное управление с клавиатуры', 'c2': 'Один лёгкий бинарник — без установки', 'c3': 'Аккуратный минималистичный TUI',
     'show.fmt': 'Форматы:',
     'foot.rel': 'Релизы', 'foot.src': 'Исходный код', 'foot.iss': 'Сообщить об ошибке',
     'foot.right': 'Открытый код &nbsp;•&nbsp; Лицензия GPL-3.0'
   },
   en: {
     'doc.title': 'Volvid — YouTube Downloader for the Terminal',
-    'hero.tagline': 'Fast. Handy. Keyboard-driven.',
-    'hero.title': 'Download video & audio<br>from YouTube <span class="blue">right in the terminal.</span>',
-    'hero.desc': 'Volvid is a fast, handy TUI<br>for downloading video, audio & thumbnails<br>from YouTube.',
+    'hero.title': 'Download video & music from YouTube <span class="blue">right from the terminal.</span>',
+    'hero.desc': 'Volvid is a lightweight yt-dlp + ffmpeg downloader. Paste a link, pick a quality, get the file — no browser, no extra clicks.',
     'hero.dl': 'Download', 'hero.dl2': 'Download',
     'hero.forWin': 'for Windows', 'hero.forLin': 'for Linux',
     'hero.github': 'View on GitHub',
     'hero.release': 'Latest release:',
     'app.paste': 'Paste a YouTube video or playlist URL',
     'app.target': 'Target', 'app.dlLoc': 'Download location', 'app.recent': 'Recent session',
-    'app.noDl': '│ No downloads yet in this session.',
+    'app.noDl': 'No downloads yet in this session.',
     'app.ok': 'ok', 'app.fail': 'failed',
     'app.cont': 'continue', 'app.search': 'search', 'app.folder': 'choose folder', 'app.open': 'open folder',
     'feat.title': 'Features',
-    'feat.sub': 'Everything you need for easy downloads, in one tool.',
+    'feat.sub': 'Everything you need for downloads — in one app.',
     'f1t': 'Video, audio & thumbnails',
-    'f1d': 'Download videos, audio tracks and thumbnails through one guided stage-based TUI: from update check to session summary.',
+    'f1d': 'Video, audio tracks and thumbnails — all in one place.',
     'f2t': 'Quality presets',
-    'f2d': 'Best and economy video presets with yt-dlp quality scan. Audio: MP3 320k & 192k, M4A/AAC Best, Opus Best, FLAC.',
+    'f2d': '144p to 4K, plus MP3 320k, M4A, Opus and FLAC.',
     'f3t': 'Playlists',
-    'f3d': 'Playlist browser: pick with Space, select all with A, manual ranges with /.',
+    'f3d': 'Pick videos with Space, select all with A, set ranges with /.',
     'f4t': 'YouTube search',
-    'f4d': 'Search videos from the main screen with Ctrl+G — no link pasting required.',
+    'f4d': 'Search YouTube with Ctrl+G without leaving the app.',
     'f5t': 'Dependencies in check',
-    'f5d': 'yt-dlp and ffmpeg check at startup, refresh right in the UI with Ctrl+U. System binaries preferred.',
+    'f5d': 'yt-dlp and ffmpeg are checked on start and updated with Ctrl+U.',
     'f6t': 'Cookies & JS runtime',
-    'f6d': 'Auto-detects browser cookies on Windows and Linux, checks the optional node runtime.',
+    'f6d': 'Auto-detects browser cookies and the optional node runtime.',
     'f8t': 'Session summary',
-    'f8d': 'Post-download summary: success and failure history, ok and failed counters.',
+    'f8d': 'Download history with success and failure counters.',
     'f9t': 'Subtitles & dubs',
-    'f9d': 'Embed subtitles and multiple audio tracks right into the video: checklist language picker, tags preserved.',
+    'f9d': 'Embeds subtitles and audio tracks into the video, keeping languages.',
     'q.title': 'Choose quality',
     'q.move': 'move', 'q.choose': 'choose', 'q.cont': 'continue', 'q.back': 'back',
-    'show.eyebrow': 'SIMPLE AND INTUITIVE',
-    'show.title': 'Clean interface.<br><span class="blue">Maximum control.</span>',
-    'show.desc': 'Volvid gives you full power without distractions. No windows, no switching — only what you need, exactly when you need it.',
-    'c1': 'Keyboard-driven', 'c2': 'Fast and lightweight', 'c3': 'Beautiful minimalist TUI',
+    'show.eyebrow': 'SIMPLE AND FAST',
+    'show.title': 'Everything under control. <span class="blue">And nothing extra.</span>',
+    'show.desc': 'Every step on one screen: link, quality, download. No windows, no tabs, no switching.',
+    'c1': 'Full keyboard control', 'c2': 'One lightweight binary, no install', 'c3': 'Clean minimalist TUI',
     'show.fmt': 'Formats:',
     'foot.rel': 'Releases', 'foot.src': 'Source code', 'foot.iss': 'Report an issue',
     'foot.right': 'Open source &nbsp;•&nbsp; GPL-3.0 License'
@@ -162,8 +156,9 @@ try {
   if (saved === 'en' || saved === 'ru') lang = saved;
   else lang = (navigator.language || 'ru').toLowerCase().startsWith('en') ? 'en' : 'ru';
 } catch (e) { /* private mode */ }
-function setLang(l) {
-  lang = l === 'en' ? 'en' : 'ru';
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+let firstPaint = true;
+function applyLang() {
   try { localStorage.setItem('volvid-lang', lang); } catch (e) {}
   document.documentElement.lang = lang;
   document.title = I18N[lang]['doc.title'];
@@ -176,24 +171,39 @@ function setLang(l) {
   document.querySelectorAll('#qList .unit').forEach(u => { u.textContent = lang === 'ru' ? 'МБ' : 'MB'; });
   document.querySelectorAll('.langseg button').forEach(b => b.classList.toggle('on', b.dataset.lang === lang));
 }
+function setLang(l) {
+  lang = l === 'en' ? 'en' : 'ru';
+  const useVT = !firstPaint && !reduceMotion.matches && typeof document.startViewTransition === 'function';
+  firstPaint = false;
+  useVT ? document.startViewTransition(applyLang) : applyLang();
+}
 document.querySelectorAll('.langseg button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
 setLang(lang);
 
 // Scroll to top for logo buttons (no anchor ids on this small site)
 document.querySelectorAll('[data-scroll-top]').forEach(b =>
   b.addEventListener('click', () => {
-    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+    window.scrollTo({ top: 0, behavior: reduceMotion.matches ? 'auto' : 'smooth' });
   })
 );
 
-// Reveal on scroll (respects prefers-reduced-motion via CSS)
+// Reveal fallback: native scroll-driven animations handle this where supported
 (function reveal() {
-  const els = document.querySelectorAll('.features .f, .show-text, .showcase .app, .hero-right .app, .foot-top > div');
+  if (reduceMotion.matches) return;
+  if (CSS.supports && CSS.supports('animation-timeline: view()')) return;
+  const els = document.querySelectorAll('.features .f, .show-text, .showcase .app, .foot-top > div');
   if (!('IntersectionObserver' in window) || !els.length) return;
-  els.forEach(el => el.classList.add('rv'));
+  els.forEach((el, k) => {
+    el.classList.add('rv');
+    if (el.matches('.features .f')) el.style.transitionDelay = (k % 8) * 45 + 'ms';
+  });
   const io = new IntersectionObserver(entries => {
-    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('vis'); io.unobserve(e.target); } });
+    entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('vis');
+      io.unobserve(e.target);
+      setTimeout(() => { e.target.style.transitionDelay = ''; }, 700);
+    });
   }, { threshold: 0.12 });
   els.forEach(el => io.observe(el));
 })();
