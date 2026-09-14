@@ -76,7 +76,7 @@ const I18N = {
     'hero.github': 'Смотреть на GitHub',
     'hero.release': 'Последний релиз:',
     'app.paste': 'Вставь ссылку на видео или плейлист YouTube',
-    'app.target': 'Источник', 'app.dlLoc': 'Папка загрузки', 'app.recent': 'Текущая сессия',
+    'app.target': 'Источник', 'app.dlLoc': 'Папка загрузки', 'app.path': '/home/volren/Видео/YouTube', 'app.recent': 'Текущая сессия',
     'app.noDl': 'В этой сессии ещё не было загрузок.',
     'app.ok': 'успешно', 'app.fail': 'ошибки',
     'app.cont': 'продолжить', 'app.search': 'поиск', 'app.folder': 'выбрать папку', 'app.open': 'открыть папку',
@@ -117,7 +117,7 @@ const I18N = {
     'hero.github': 'View on GitHub',
     'hero.release': 'Latest release:',
     'app.paste': 'Paste a YouTube video or playlist URL',
-    'app.target': 'Target', 'app.dlLoc': 'Download location', 'app.recent': 'Recent session',
+    'app.target': 'Target', 'app.dlLoc': 'Download location', 'app.path': '/home/volren/Videos/YouTube', 'app.recent': 'Recent session',
     'app.noDl': 'No downloads yet in this session.',
     'app.ok': 'ok', 'app.fail': 'failed',
     'app.cont': 'continue', 'app.search': 'search', 'app.folder': 'choose folder', 'app.open': 'open folder',
@@ -150,11 +150,11 @@ const I18N = {
     'foot.right': 'Open source &nbsp;•&nbsp; GPL-3.0 License'
   }
 };
-let lang = 'ru';
+let lang = 'en';
 try {
   const saved = localStorage.getItem('volvid-lang');
   if (saved === 'en' || saved === 'ru') lang = saved;
-  else lang = (navigator.language || 'ru').toLowerCase().startsWith('en') ? 'en' : 'ru';
+  else lang = (navigator.language || 'en').toLowerCase().startsWith('ru') ? 'ru' : 'en';
 } catch (e) { /* private mode */ }
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 let firstPaint = true;

@@ -61,8 +61,6 @@
   .hero::after{content:'';position:absolute;top:-170px;right:-100px;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle,color-mix(in oklab,var(--blue) 16%,transparent),transparent 65%);pointer-events:none;animation:drift 16s ease-in-out infinite alternate}
   @keyframes drift{to{translate:-44px 28px;scale:1.07}}
   .hero-grid{position:relative;z-index:1;display:grid;grid-template-columns:1fr 1.06fr;gap:40px;align-items:center}
-  .big-logo{display:flex;align-items:center;gap:16px;margin:0 0 12px}
-  .big-banner{height:56px;width:auto;max-width:100%;display:block}
   .hero h1{font-size:clamp(26px,3.6vw,36px);line-height:1.2;letter-spacing:-.02em;margin:0 0 12px;max-width:24ch}
   .hero h1 .blue,.show-text h2 .blue{background:linear-gradient(115deg,var(--blue2),var(--blue));background-clip:text;-webkit-background-clip:text;color:transparent}
   .hero .desc{color:var(--muted);font-size:15px;line-height:1.65;margin-bottom:20px;max-width:50ch}
@@ -202,7 +200,6 @@
   @media(max-width:900px){
     .hero{padding:44px 0 40px}
     .hero-grid,.show-grid{grid-template-columns:1fr}
-    .big-banner{height:44px}
     .features,.showcase{padding:56px 0}
   }
   @media(max-width:560px){

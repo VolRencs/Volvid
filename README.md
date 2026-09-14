@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![downloader](assets/logo-1.png)
+![VOLVID](assets/logo.svg)
 
 **Keyboard-driven TUI for downloading YouTube video, audio and thumbnails — via yt-dlp + ffmpeg.**
 
@@ -126,7 +126,7 @@ internal/adapters/ I/O: http/process/request/playlist/ytdlp_scan/probe/quality_s
                   release/deps*/download_* + platform paths (downloads_dir_*) and
                   pickers (folder_picker_*)
 scripts/          build-linux-downloader.sh, build-windows-downloader.sh, go-env.sh
-assets/           logo-1.png, logo-2.png, tui.png, icon/icon.ico
+assets/           logo.svg, tui.png, icon/icon.ico
 ```
 
 ```text
