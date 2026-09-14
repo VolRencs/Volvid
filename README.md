@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![VOLVID](assets/logo.svg)
+<img src="assets/logo.svg" alt="VOLVID" height="87">
 
 **Keyboard-driven TUI for downloading YouTube video, audio and thumbnails — via yt-dlp + ffmpeg.**
 
