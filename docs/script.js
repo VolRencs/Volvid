@@ -1,29 +1,3 @@
-// Typing animation for URL (inside Target box, replaces placeholder)
-const url = 'https://youtu.be/dQw4w9WgXcQ';
-const typedEl = document.getElementById('typed');
-const placeholderEl = document.getElementById('ph');
-let i = 0, dir = 1;
-function typeLoop() {
-  if (!typedEl) return;
-  if (placeholderEl) placeholderEl.style.display = i > 0 ? 'none' : '';
-  typedEl.textContent = url.slice(0, i);
-  if (dir === 1) { i++; if (i > url.length) { dir = -1; return setTimeout(typeLoop, 2500); } }
-  else { i--; if (i < 0) { dir = 1; i = 0; } }
-  setTimeout(typeLoop, dir === 1 ? 60 : 20);
-}
-typeLoop();
-
-// Quality picker preview: auto-highlight only, not user-interactive
-const q = [...document.querySelectorAll('#qList li')];
-let qs = 0;
-function paintQ() {
-  q.forEach((li, k) => li.classList.toggle('sel', k === qs));
-}
-paintQ();
-if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-  setInterval(() => { if (q.length) { qs = (qs + 1) % q.length; paintQ(); } }, 1800);
-}
-
 // Live version + release links from GitHub (fallback stays if API is unreachable)
 const REPO = 'VolRencs/Volvid';
 async function loadVersion() {
@@ -48,22 +22,6 @@ async function loadVersion() {
 }
 const idle = window.requestIdleCallback || (fn => setTimeout(fn, 1200));
 idle(loadVersion);
-
-// First download button matches the visitor's OS (Linux → Volvid, else → Volvid.exe)
-(function osFirst() {
-  const box = document.querySelector('.btns');
-  const dlWin = document.getElementById('dlWin');
-  const dlLin = document.getElementById('dlLin');
-  if (!box || !dlWin || !dlLin) return;
-  const ghost = box.querySelector('.btn.ghost');
-  const plat = String((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '').toLowerCase();
-  const first = plat.includes('linux') ? dlLin : dlWin;
-  const second = first === dlLin ? dlWin : dlLin;
-  box.prepend(first);
-  if (ghost) box.appendChild(ghost);
-  first.classList.add('primary'); first.classList.remove('outline');
-  second.classList.add('outline'); second.classList.remove('primary');
-})();
 
 // RU / EN language switch for the whole site
 const I18N = {
@@ -206,5 +164,47 @@ document.querySelectorAll('[data-scroll-top]').forEach(b =>
     });
   }, { threshold: 0.12 });
   els.forEach(el => io.observe(el));
+})();
+
+// Typing animation for URL (inside Target box, replaces placeholder)
+const url = 'https://youtu.be/dQw4w9WgXcQ';
+const typedEl = document.getElementById('typed');
+const placeholderEl = document.getElementById('ph');
+let i = 0, dir = 1;
+function typeLoop() {
+  if (!typedEl) return;
+  if (placeholderEl) placeholderEl.style.display = i > 0 ? 'none' : '';
+  typedEl.textContent = url.slice(0, i);
+  if (dir === 1) { i++; if (i > url.length) { dir = -1; return setTimeout(typeLoop, 2500); } }
+  else { i--; if (i < 0) { dir = 1; i = 0; } }
+  setTimeout(typeLoop, dir === 1 ? 60 : 20);
+}
+typeLoop();
+
+// Quality picker preview: auto-highlight only, not user-interactive
+const q = [...document.querySelectorAll('#qList li')];
+let qs = 0;
+function paintQ() {
+  q.forEach((li, k) => li.classList.toggle('sel', k === qs));
+}
+paintQ();
+if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  setInterval(() => { if (q.length) { qs = (qs + 1) % q.length; paintQ(); } }, 1800);
+}
+
+// First download button matches the visitor's OS (Linux → Volvid, else → Volvid.exe)
+(function osFirst() {
+  const box = document.querySelector('.btns');
+  const dlWin = document.getElementById('dlWin');
+  const dlLin = document.getElementById('dlLin');
+  if (!box || !dlWin || !dlLin) return;
+  const ghost = box.querySelector('.btn.ghost');
+  const plat = String((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '').toLowerCase();
+  const first = plat.includes('linux') ? dlLin : dlWin;
+  const second = first === dlLin ? dlWin : dlLin;
+  box.prepend(first);
+  if (ghost) box.appendChild(ghost);
+  first.classList.add('primary'); first.classList.remove('outline');
+  second.classList.add('outline'); second.classList.remove('primary');
 })();
 
