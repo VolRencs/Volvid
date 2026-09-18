@@ -39,7 +39,12 @@ func ensureDepsDir(env *Env) error {
 	return nil
 }
 func requireStagedBinary(ctx context.Context, spec depSpec) error {
-	if detectExecutableDependency(ctx, spec, true).Version == "" {
+	if strings.TrimSpace(spec.ManagedPath) == "" {
+		return fmt.Errorf("binary %s: staging path is empty", spec.Name)
+	}
+	probe := spec
+	probe.LookNames = nil
+	if parsedVersion(probe, probeVersion(ctx, probe.ManagedPath, probe.VersionArgs...)) == "" {
 		return fmt.Errorf("binary %s downloaded but does not run", spec.Name)
 	}
 	return nil

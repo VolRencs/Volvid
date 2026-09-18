@@ -17,6 +17,7 @@ type AppAPI interface {
 	// Target / playlist / search / probe / quality.
 	DetectDeps() core.CheckDepsResult
 	RefreshDeps() core.CheckDepsResult
+	EnrichDeps(ctx context.Context, deps core.CheckDepsResult) core.CheckDepsResult
 	FetchPlaylist(ctx context.Context, url string, l core.Locale) (*core.PlaylistInfo, error)
 	SearchYouTube(ctx context.Context, query string, l core.Locale) ([]core.SearchResult, error)
 	ResolveQuality(ctx context.Context, urls []string) ([]core.QualityChoice, error)
@@ -66,6 +67,10 @@ func newAppAPI(env *adapters.Env) AppAPI {
 func (a appAPIAdapter) DetectDeps() core.CheckDepsResult { return adapters.DetectDeps(a.env) }
 
 func (a appAPIAdapter) RefreshDeps() core.CheckDepsResult { return adapters.RefreshDeps(a.env) }
+
+func (a appAPIAdapter) EnrichDeps(ctx context.Context, deps core.CheckDepsResult) core.CheckDepsResult {
+	return adapters.EnrichDeps(a.env, ctx, deps)
+}
 
 func (a appAPIAdapter) FetchPlaylist(ctx context.Context, url string, l core.Locale) (*core.PlaylistInfo, error) {
 	return adapters.FetchPlaylistInfoFor(a.env, ctx, url, l)

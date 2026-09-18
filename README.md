@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="assets/logo.svg" alt="VOLVID" height="87">
+<img src="docs/assets/logo.svg" alt="VOLVID" height="87">
 
 **Keyboard-driven TUI for downloading YouTube video, audio and thumbnails — via yt-dlp + ffmpeg.**
 
@@ -29,7 +29,7 @@
 
 ## About
 
-![youtube downloader screenshot](assets/tui.png)
+![youtube downloader screenshot](docs/assets/tui.png)
 
 Volvid guides you through update check → dependencies → URL or search → playlist → fragment → profile → audio tracks → subtitles → download → summary. System binaries are preferred; missing ones can be installed as managed copies under the app data dir. `node` is optional (JS runtime). Browser cookies are auto-detected on Windows and Linux. UI language is English/Russian, toggle with `Tab`.
 
@@ -62,7 +62,7 @@ Release builds inject the version when `VOLVID_VERSION` is set: `-X volvid/inter
 
 ### Build Windows .exe with icon
 
-Icon source: `assets/icon/icon.ico`.
+Icon source: `docs/assets/icon.ico`.
 
 ```bash
 go install github.com/akavel/rsrc@v0.10.2
@@ -126,7 +126,8 @@ internal/adapters/ I/O: http/process/request/playlist/ytdlp_scan/probe/quality_s
                   release/deps*/download_* + platform paths (downloads_dir_*) and
                   pickers (folder_picker_*)
 scripts/          build-linux-downloader.sh, build-windows-downloader.sh, go-env.sh
-assets/           logo.svg, tui.png, icon/icon.ico
+docs/             GitHub Pages site: index.html, style.css, script.js
+docs/assets/      logo.svg, tui.png, icon.ico
 ```
 
 ```text

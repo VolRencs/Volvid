@@ -51,12 +51,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case msgDepsChecked:
-		m.depRefreshing = false
+		m.depRefreshing = true
 		m.deps = msg.deps
+		enrich := enrichDepsCmd(m.api, m.baseCtx, m.deps, m.depRefreshToken)
 		if m.deps.MissingRequired() {
-			return m.openDependencyScreen(depModeStartup)
+			model, cmd := m.openDependencyScreen(depModeStartup)
+			return model, tea.Batch(cmd, enrich)
 		}
-		return m.gotoURLWithDeps(m.deps)
+		model, cmd := m.gotoURLWithDeps(m.deps)
+		return model, tea.Batch(cmd, enrich)
 
 	case msgDepProgress:
 		if msg.gen != m.depGen {
@@ -69,6 +72,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleDepDone(msg)
 
 	case msgDepsRefreshed:
+		if msg.token != m.depRefreshToken {
+			return m, nil
+		}
+		m.depRefreshing = true
+		m.deps = msg.deps
+		if m.screen == scrDepUpdate {
+			m = m.syncMenu()
+		}
+		return m, enrichDepsCmd(m.api, m.baseCtx, m.deps, msg.token)
+
+	case msgDepsVersions:
 		if msg.token != m.depRefreshToken {
 			return m, nil
 		}

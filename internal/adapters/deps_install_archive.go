@@ -75,10 +75,10 @@ func extractArchiveBinariesWithTar(ctx context.Context, archive string, targets 
 	}
 	defer os.RemoveAll(destDir)
 
-	if err := extractTarEntriesWithTar(ctx, archive, destDir, selected); err != nil {
+	if err := extractTarEntriesWithTar(ctx, archive, destDir, slices.Sorted(maps.Values(selected))); err != nil {
 		return fmt.Errorf("extract tar entries: %w", err)
 	}
-	return copyExtractedBinaries(destDir, targets)
+	return copyExtractedBinaries(destDir, selected, targets)
 }
 func listTarArchive(ctx context.Context, archive string) ([]string, error) {
 	output, err := commandCombinedOutput(resolveContext(ctx), tarCommandTimeout, "tar", "-tf", archive)
@@ -103,7 +103,7 @@ func parseTarListOutput(output string) ([]string, error) {
 	}
 	return entries, nil
 }
-func selectTarBinaryEntries(entries []string, targets map[string]string) ([]string, error) {
+func selectTarBinaryEntries(entries []string, targets map[string]string) (map[string]string, error) {
 	selected := make(map[string]string, len(targets))
 	for _, entry := range entries {
 		name := path.Base(entry)
@@ -115,18 +115,16 @@ func selectTarBinaryEntries(entries []string, targets map[string]string) ([]stri
 		}
 	}
 
-	out := make([]string, 0, len(targets))
 	found := make(map[string]bool, len(targets))
-	for _, name := range slices.Sorted(maps.Keys(targets)) {
-		if entry := selected[name]; entry != "" {
+	for name := range targets {
+		if selected[name] != "" {
 			found[name] = true
-			out = append(out, entry)
 		}
 	}
 	if err := requireTargetsFound(targets, found); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return selected, nil
 }
 func betterArchiveBinaryEntry(candidate, current string) bool {
 	candidateBin := strings.Contains("/"+candidate, "/bin/")
@@ -176,67 +174,35 @@ func tarCommandError(err error, output []byte) error {
 	}
 	return fmt.Errorf("tar command failed: %w", err)
 }
-func copyExtractedBinaries(root string, targets map[string]string) error {
+func copyExtractedBinaries(extractDir string, selected, targets map[string]string) error {
+	root, err := os.OpenRoot(extractDir)
+	if err != nil {
+		return fmt.Errorf("open extraction root: %w", err)
+	}
+	defer root.Close()
+
 	found := make(map[string]bool, len(targets))
-
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	for _, name := range slices.Sorted(maps.Keys(targets)) {
+		entry := filepath.FromSlash(selected[name])
+		info, err := root.Lstat(entry)
+		if err != nil {
+			return fmt.Errorf("stat extracted %s: %w", name, err)
 		}
-		// Symlink hardening: remove any symlink inside the extraction
-		// directory and never copy outside it. The external tar extracts
-		// only allowlisted entries into a fresh empty destDir, so an escape
-		// is possible only via a symlink entry; reject those here.
-		if d.Type()&os.ModeSymlink != 0 {
-			_ = os.Remove(path)
-			return nil
-		}
-		if d.IsDir() {
-			return nil
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("refusing non-regular file from archive: %s", selected[name])
 		}
 
-		name := filepath.Base(path)
-		dest, ok := targets[name]
-		if !ok {
-			return nil
+		src, err := root.Open(entry)
+		if err != nil {
+			return fmt.Errorf("open extracted %s: %w", name, err)
 		}
-		if !d.Type().IsRegular() {
-			_ = os.Remove(path)
-			return nil
-		}
-		if err := copyExtractedFile(path, dest); err != nil {
-			return fmt.Errorf("copy extracted file: %w", err)
+		copyErr := writeStagedFile(src, targets[name], 0o755, -1)
+		_ = src.Close()
+		if copyErr != nil {
+			return fmt.Errorf("copy extracted %s: %w", name, copyErr)
 		}
 		found[name] = true
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("walk extracted directory: %w", err)
 	}
 
 	return requireTargetsFound(targets, found)
-}
-func copyExtractedFile(src, dest string) error {
-	info, err := os.Lstat(src)
-	if err != nil {
-		return fmt.Errorf("stat extracted file: %w", err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing symlink from archive: %s", src)
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("refusing non-regular file from archive: %s", src)
-	}
-
-	in, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("open source file: %w", err)
-	}
-	defer in.Close()
-
-	// Atomic staged write (was: direct O_TRUNC write exposed to umask races).
-	if err := writeStagedFile(in, dest, 0o755, -1); err != nil {
-		return fmt.Errorf("copy extracted file: %w", err)
-	}
-	return nil
 }

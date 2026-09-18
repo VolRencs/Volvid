@@ -105,35 +105,52 @@ func (c *downloadCleanup) cleanup() {
 		return
 	}
 	c.mu.Lock()
+	rootPath := c.root
 	paths := make([]string, 0, len(c.paths))
 	for p := range c.paths {
 		paths = append(paths, p)
 	}
 	c.mu.Unlock()
-	byDir := make(map[string][]string)
-	for _, p := range paths {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		dir := filepath.Dir(p)
-		byDir[dir] = append(byDir[dir], p)
-	}
-	for dir, ps := range byDir {
-		for _, p := range ps {
-			deleteDownloadArtifacts(p)
-		}
-		removeMatchingArtifacts(dir, ps)
-	}
-}
-func deleteDownloadArtifacts(path string) {
-	path = strings.TrimSpace(path)
-	if path == "" {
+	if rootPath == "" {
 		return
 	}
-	_ = os.Remove(path)
-	_ = os.Remove(path + artifactPartSuffix)
-	_ = os.Remove(path + artifactYtdlSuffix)
+	root, err := os.OpenRoot(rootPath)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+
+	byDir := make(map[string][]string)
+	for _, p := range paths {
+		rel, ok := cleanupRelativePath(rootPath, p)
+		if !ok {
+			continue
+		}
+		dir := filepath.Dir(rel)
+		byDir[dir] = append(byDir[dir], rel)
+	}
+	for dir, rels := range byDir {
+		for _, rel := range rels {
+			deleteDownloadArtifacts(root, rel)
+		}
+		removeMatchingArtifacts(root, dir, rels)
+	}
+}
+func cleanupRelativePath(rootPath, path string) (string, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", false
+	}
+	rel, err := filepath.Rel(rootPath, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", false
+	}
+	return rel, true
+}
+func deleteDownloadArtifacts(root *os.Root, rel string) {
+	_ = root.Remove(rel)
+	_ = root.Remove(rel + artifactPartSuffix)
+	_ = root.Remove(rel + artifactYtdlSuffix)
 }
 
 // Subtitle sidecar extensions yt-dlp may leave next to an embedded video.
@@ -190,14 +207,19 @@ func cleanupSubtitleSidecars(videoPath string, langs []string) {
 		_ = os.Remove(full)
 	}
 }
-func removeMatchingArtifacts(dir string, paths []string) {
-	bases := make([]string, 0, len(paths))
-	for _, p := range paths {
-		if base := filepath.Base(p); base != "" {
+func removeMatchingArtifacts(root *os.Root, relDir string, rels []string) {
+	bases := make([]string, 0, len(rels))
+	for _, rel := range rels {
+		if base := filepath.Base(rel); base != "" && base != "." {
 			bases = append(bases, base)
 		}
 	}
-	entries, err := os.ReadDir(dir)
+	dir, err := root.Open(relDir)
+	if err != nil {
+		return
+	}
+	entries, err := dir.ReadDir(-1)
+	_ = dir.Close()
 	if err != nil {
 		return
 	}
@@ -210,7 +232,7 @@ func removeMatchingArtifacts(dir string, paths []string) {
 			if strings.HasPrefix(name, base+artifactPartFragPrefix) ||
 				strings.HasPrefix(name, "."+base+artifactTranscodePrefix) ||
 				strings.HasPrefix(name, "."+base+artifactBackupPrefix) {
-				_ = os.Remove(filepath.Join(dir, name))
+				_ = root.Remove(filepath.Join(relDir, name))
 				break
 			}
 		}

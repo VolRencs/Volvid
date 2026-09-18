@@ -36,8 +36,8 @@ func audioLangISO(lang string) (string, bool) {
 		return "", false
 	}
 	primary := tag
-	if i := strings.IndexByte(tag, '-'); i >= 0 {
-		primary = tag[:i]
+	if before, _, ok := strings.Cut(tag, "-"); ok {
+		primary = before
 	}
 	if len(primary) == 3 && isASCIILetters(primary) {
 		return primary, true

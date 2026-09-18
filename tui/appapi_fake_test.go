@@ -43,6 +43,10 @@ func (s *stubAPI) DetectDeps() core.CheckDepsResult { return s.deps }
 
 func (s *stubAPI) RefreshDeps() core.CheckDepsResult { return s.deps }
 
+func (s *stubAPI) EnrichDeps(_ context.Context, deps core.CheckDepsResult) core.CheckDepsResult {
+	return deps
+}
+
 func (s *stubAPI) PrepareDownload(req core.DownloadRequest, _ core.CheckDepsResult) (core.DownloadRequest, error) {
 	if s.prepareErr != nil {
 		return core.DownloadRequest{}, s.prepareErr

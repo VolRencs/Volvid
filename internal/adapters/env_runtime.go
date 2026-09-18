@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	Version = "7.4.4"
+	Version = "7.4.5"
 
 	ffmpegWinURL   = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 	ffmpegLinuxURL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
@@ -95,6 +95,7 @@ const (
 
 const (
 	versionProbeTimeout  = 1500 * time.Millisecond
+	versionProbeAttempts = 2
 	tarCommandTimeout    = 2 * time.Minute
 	maxExtractedFileSize = 512 << 20
 	folderPickerTimeout  = 2 * time.Minute

@@ -1,6 +1,20 @@
 package core
 
-import "testing"
+import (
+	jsonv2 "encoding/json/v2"
+	"testing"
+)
+
+func TestMediaFormatUnmarshalNulls(t *testing.T) {
+	var f MediaFormat
+	payload := `{"height": 1080, "vcodec": null, "acodec": "mp4a", "language": null, "filesize": null, "filesize_approx": 42}`
+	if err := jsonv2.Unmarshal([]byte(payload), &f); err != nil {
+		t.Fatal(err)
+	}
+	if f.Height != 1080 || f.VCodec != "" || f.ACodec != "mp4a" || f.Language != "" || f.Filesize != 0 || f.FilesizeApprox != 42 {
+		t.Fatalf("unexpected format %+v", f)
+	}
+}
 
 func TestDecodeStringOr(t *testing.T) {
 	if got := decodeStringOr("a", "d"); got != "a" {

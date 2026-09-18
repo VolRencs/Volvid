@@ -2,7 +2,7 @@ package adapters
 
 import (
 	"context"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -45,8 +45,12 @@ func checkUpdateContext(env *Env, ctx context.Context) *core.UpdateInfo {
 	if resp.StatusCode != http.StatusOK {
 		return nil
 	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, manifestMaxBytes))
+	if err != nil {
+		return nil
+	}
 	var data map[string]any
-	if err := json.NewDecoder(io.LimitReader(resp.Body, manifestMaxBytes)).Decode(&data); err != nil {
+	if err := jsonv2.Unmarshal(body, &data); err != nil {
 		return nil
 	}
 	latest := strings.TrimPrefix(core.MapString(data, "tag_name", ""), "v")

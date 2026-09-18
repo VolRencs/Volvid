@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title desc">
+  <title id="title">Volvid — YouTube + download</title>
+  <desc id="desc">Red YouTube play tile with a download badge in the corner.</desc>
+  <defs>
+    <linearGradient id="tileFill" x1="0" y1="4" x2="0" y2="250" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#BF3C3A" stop-opacity="0.17"/>
+      <stop offset="0.45" stop-color="#E2241D" stop-opacity="0.135"/>
+      <stop offset="1" stop-color="#D53632" stop-opacity="0.13"/>
+    </linearGradient>
+    <linearGradient id="tileEdge" x1="4" y1="4" x2="243" y2="250" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7E4447" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#A84543" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#C05A55" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="ytFill" x1="0" y1="59" x2="0" y2="191" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F2271E"/>
+      <stop offset="1" stop-color="#D61814"/>
+    </linearGradient>
+    <linearGradient id="badgeFill" x1="0" y1="151" x2="0" y2="252" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FC382D"/>
+      <stop offset="1" stop-color="#DE1D17"/>
+    </linearGradient>
+    <filter id="badgeShadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#7E0B07" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect x="3.5" y="3.5" width="240" height="246.5" rx="50.5" fill="url(#tileFill)"/>
+  <rect x="5" y="5" width="237" height="243" rx="49" fill="none" stroke="url(#tileEdge)" stroke-width="1.8"/>
+
+  <rect x="38.5" y="59" width="169" height="132" rx="32" fill="url(#ytFill)"/>
+
+  <path d="M105 97.5 L149 125.5 L105 153.5 Z" fill="#F6F5F6"/>
+
+  <circle cx="201.5" cy="201.5" r="50.5" fill="url(#badgeFill)" filter="url(#badgeShadow)"/>
+
+  <g fill="#F6F5F6">
+    <rect x="197.5" y="169" width="9" height="30" rx="1.5"/>
+    <path d="M184.5 196.5 H219.5 L202 219.5 Z"/>
+    <rect x="183" y="225.5" width="38.5" height="7" rx="3.5"/>
+  </g>
+</svg>

@@ -12,7 +12,7 @@ import (
 // resolveRuntimeDeps returns cached runtime deps (cookies/js-runtime/UA).
 func resolveRuntimeDeps(env *Env) core.CheckDepsResult {
 	result, _ := env.runtimeDepsCache.Load(struct{}{}, runtimeDepsTTL, nil, func() (core.CheckDepsResult, error) {
-		return detectDeps(env, false), nil
+		return detectDeps(env), nil
 	})
 	return result
 }

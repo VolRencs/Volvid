@@ -190,9 +190,6 @@ func (m Model) openDependencyScreenWithError(mode depScreenMode, errText string)
 	m.depErr = errText
 	m.screen = scrDepUpdate
 	m = m.syncMenu()
-	if mode == depModeManage {
-		return m.startDepsRefresh()
-	}
 	return m, nil
 }
 func (m Model) startDepUpdate() (tea.Model, tea.Cmd) {

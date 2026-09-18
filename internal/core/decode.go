@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"strconv"
 	"strings"
 )
@@ -40,11 +39,6 @@ func decodeFloat(v any) float64 {
 		return float64(n)
 	case uint, uint32, uint64:
 		return float64(decodeInt(v))
-	case json.Number:
-		if f, err := n.Float64(); err == nil {
-			return f
-		}
-		return 0
 	case string:
 		if f, err := strconv.ParseFloat(strings.TrimSpace(n), 64); err == nil {
 			return f
@@ -78,14 +72,6 @@ func decodeInt(v any) int64 {
 			return 0
 		}
 		return int64(n)
-	case json.Number:
-		if i, err := n.Int64(); err == nil {
-			return i
-		}
-		if f, err := n.Float64(); err == nil {
-			return int64(f)
-		}
-		return 0
 	case string:
 		if f, err := strconv.ParseFloat(strings.TrimSpace(n), 64); err == nil {
 			return int64(f)

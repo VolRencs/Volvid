@@ -20,6 +20,10 @@ type (
 		deps  core.CheckDepsResult
 		token int
 	}
+	msgDepsVersions struct {
+		deps  core.CheckDepsResult
+		token int
+	}
 	msgPlaylistFetched struct {
 		info *core.PlaylistInfo
 		err  error

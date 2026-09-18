@@ -4,7 +4,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 PKG_DIR="$ROOT_DIR/cmd/downloader"
-ICON_FILE="$ROOT_DIR/assets/icon/icon.ico"
+ICON_FILE="$ROOT_DIR/docs/assets/icon.ico"
 SYSO_FILE="$PKG_DIR/zz_build_windows_icon.syso"
 
 OUTPUT_PATH="${1:-$ROOT_DIR/Volvid.exe}"

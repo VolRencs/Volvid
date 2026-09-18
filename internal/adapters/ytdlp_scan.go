@@ -2,7 +2,7 @@ package adapters
 
 import (
 	"context"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -75,7 +75,7 @@ func scanYTDLPJSONLines(env *Env, ctx context.Context, timeout time.Duration, ar
 			return nil
 		}
 		var entry map[string]any
-		if err := json.Unmarshal(line, &entry); err != nil {
+		if err := jsonv2.Unmarshal(line, &entry); err != nil {
 			if firstErrorLine == "" {
 				firstErrorLine = ytdlpErrorLine(string(line))
 			}

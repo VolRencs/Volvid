@@ -69,6 +69,12 @@ func refreshDepsCmd(api AppAPI, token int) tea.Cmd {
 	}
 }
 
+func enrichDepsCmd(api AppAPI, ctx context.Context, deps core.CheckDepsResult, token int) tea.Cmd {
+	return func() tea.Msg {
+		return msgDepsVersions{deps: api.EnrichDeps(ctx, deps), token: token}
+	}
+}
+
 func fetchPlaylistCmd(api AppAPI, ctx context.Context, url string, l core.Locale, gen int) tea.Cmd {
 	return func() tea.Msg {
 		info, err := api.FetchPlaylist(ctx, url, l)

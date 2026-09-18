@@ -2,10 +2,11 @@ package adapters
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,10 +24,10 @@ func findBinary(name string) (string, error) {
 	return exec.LookPath(name)
 }
 
-func rawMap(langs ...string) map[string]json.RawMessage {
-	m := make(map[string]json.RawMessage, len(langs))
+func rawMap(langs ...string) map[string]jsontext.Value {
+	m := make(map[string]jsontext.Value, len(langs))
 	for _, lang := range langs {
-		m[lang] = json.RawMessage(`[{"ext":"vtt"}]`)
+		m[lang] = jsontext.Value(`[{"ext":"vtt"}]`)
 	}
 	return m
 }
@@ -56,13 +57,7 @@ func TestSubtitleDownloadArgs(t *testing.T) {
 		joined += a + " "
 	}
 	for _, want := range []string{"--write-subs", "--write-auto-subs", "--sub-langs", "en,ru", "--sub-format", "srt", "--convert-subs", "srt", "--embed-subs"} {
-		found := false
-		for _, a := range args {
-			if a == want {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(args, want)
 		if !found {
 			t.Fatalf("expected %q in %v (joined %q)", want, args, joined)
 		}
@@ -166,13 +161,7 @@ func TestApplyAudioTrackSelector(t *testing.T) {
 func TestVideoModeArgsAudioMultistreams(t *testing.T) {
 	multi := core.OutputProfile{Mode: core.ModeVideo, AudioLangs: []string{"en", "ru"}}
 	args := videoModeArgs(multi, "bestvideo+bestaudio/best")
-	found := false
-	for _, a := range args {
-		if a == "--audio-multistreams" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(args, "--audio-multistreams")
 	if !found {
 		t.Fatalf("expected --audio-multistreams in %v", args)
 	}

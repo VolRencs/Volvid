@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -22,10 +23,40 @@ func loadDeps(env *Env, force bool) core.CheckDepsResult {
 		}
 	}
 	result, _ := env.depsCache.Load(struct{}{}, 0, nil, func() (core.CheckDepsResult, error) {
-		return detectDeps(env, true), nil
+		return detectDeps(env), nil
 	})
 	return result
 }
+
+func EnrichDeps(env *Env, ctx context.Context, deps core.CheckDepsResult) core.CheckDepsResult {
+	entries := []struct {
+		dep  *core.DependencyInfo
+		spec depSpec
+	}{
+		{&deps.YTDLP, ytdlpDepSpec},
+		{&deps.FFmpeg, ffmpegDepSpec},
+		{&deps.Node, nodeDepSpec},
+	}
+	var wg sync.WaitGroup
+	for _, entry := range entries {
+		if !entry.dep.Available || entry.dep.Version != "" || strings.TrimSpace(entry.dep.Path) == "" {
+			continue
+		}
+		wg.Go(func() {
+			entry.dep.Version = parsedVersion(entry.spec, probeVersion(ctx, entry.dep.Path, entry.spec.VersionArgs...))
+		})
+	}
+	wg.Wait()
+	return deps
+}
+
+func parsedVersion(spec depSpec, raw string) string {
+	if parse := spec.ParseVersion; parse != nil {
+		return strings.TrimSpace(parse(raw))
+	}
+	return strings.TrimSpace(raw)
+}
+
 func invalidateDepsCache(env *Env) {
 	env.depsCache.InvalidateAll()
 	env.runtimeDepsCache.InvalidateAll()
@@ -50,23 +81,23 @@ var (
 	nodeDepSpec    = depSpec{Key: "node", Name: "node", Required: false, Downloadable: true, LookNames: []string{"node"}, VersionArgs: []string{"--version"}, ParseVersion: firstNonEmptyLine}
 )
 
-func detectDeps(env *Env, withVersions bool) core.CheckDepsResult {
+func detectDeps(env *Env) core.CheckDepsResult {
 	var ytdlp, ffmpeg, node core.DependencyInfo
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		spec := ytdlpDepSpec
 		spec.ManagedPath = env.YtdlpBin
-		ytdlp = detectExecutableDependency(context.Background(), spec, withVersions)
+		ytdlp = detectDependency(spec)
 	})
 	wg.Go(func() {
 		spec := ffmpegDepSpec
 		spec.ManagedPath = env.FFmpegBin
-		ffmpeg = detectExecutableDependency(context.Background(), spec, withVersions)
+		ffmpeg = detectDependency(spec)
 	})
 	wg.Go(func() {
 		spec := nodeDepSpec
 		spec.ManagedPath = env.NodeBin
-		node = detectExecutableDependency(context.Background(), spec, withVersions)
+		node = detectDependency(spec)
 	})
 	wg.Wait()
 
@@ -76,7 +107,8 @@ func detectDeps(env *Env, withVersions bool) core.CheckDepsResult {
 	deps.Runtime = detectJSRuntime(node)
 	return deps
 }
-func detectExecutableDependency(ctx context.Context, spec depSpec, withVersion bool) core.DependencyInfo {
+
+func detectDependency(spec depSpec) core.DependencyInfo {
 	dep := core.DependencyInfo{Key: spec.Key, Name: spec.Name, Required: spec.Required, Downloadable: spec.Downloadable, Source: core.DepMissing}
 
 	if path, ok := firstLookPath(spec.LookNames...); ok {
@@ -89,14 +121,6 @@ func detectExecutableDependency(ctx context.Context, spec depSpec, withVersion b
 		dep.Available = true
 	}
 
-	if dep.Available && withVersion {
-		parse := spec.ParseVersion
-		if parse == nil {
-			parse = firstNonEmptyLine
-		}
-		line := commandVersionLine(ctx, dep.Path, spec.VersionArgs...)
-		dep.Version = strings.TrimSpace(parse(line))
-	}
 	return dep
 }
 func firstLookPath(names ...string) (string, bool) {
@@ -127,10 +151,11 @@ func detectFirefoxVersion() string {
 	if !ok {
 		return ""
 	}
-	return firefoxVersionFromLine(commandVersionLine(context.Background(), bin, "--version"))
+	line, _ := commandVersionLine(context.Background(), bin, "--version")
+	return firefoxVersionFromLine(line)
 }
 func firefoxVersionFromLine(line string) string {
-	for _, field := range strings.Fields(strings.TrimSpace(line)) {
+	for field := range strings.FieldsSeq(strings.TrimSpace(line)) {
 		field = strings.Trim(field, " \t\r\n,;:()[]{}\"'")
 		if field == "" || field[0] < '0' || field[0] > '9' {
 			continue
@@ -153,12 +178,25 @@ func startYTDLPMergedOutputCommand(ctx context.Context, timeout time.Duration, d
 	}
 	return startMergedOutputCommand(ctx, timeout, bin, ytdlpCommandArgsFor(deps, args)...)
 }
-func commandVersionLine(ctx context.Context, bin string, args ...string) string {
+func commandVersionLine(ctx context.Context, bin string, args ...string) (string, error) {
 	if strings.TrimSpace(bin) == "" {
-		return ""
+		return "", errors.New("version probe path is empty")
 	}
-	out, _ := commandCombinedOutput(ctx, versionProbeTimeout, bin, args...)
-	return firstNonEmptyLine(string(out))
+	out, err := commandCombinedOutput(ctx, versionProbeTimeout, bin, args...)
+	return firstNonEmptyLine(string(out)), err
+}
+
+func probeVersion(ctx context.Context, bin string, args ...string) string {
+	for range versionProbeAttempts {
+		line, err := commandVersionLine(ctx, bin, args...)
+		if line != "" {
+			return line
+		}
+		if !errors.Is(err, context.DeadlineExceeded) || (ctx != nil && ctx.Err() != nil) {
+			return ""
+		}
+	}
+	return ""
 }
 func firstNonEmptyLine(text string) string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")

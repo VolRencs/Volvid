@@ -1,6 +1,9 @@
 package core
 
-import "encoding/json"
+import (
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
+)
 
 type MediaProbe struct {
 	Duration    int
@@ -31,8 +34,8 @@ type MediaFormat struct {
 	FilesizeApprox int64  `json:"filesize_approx"`
 }
 
-// UnmarshalJSON tolerates null in yt-dlp string/number fields.
-func (f *MediaFormat) UnmarshalJSON(data []byte) error {
+// UnmarshalJSONFrom tolerates null in yt-dlp string/number fields.
+func (f *MediaFormat) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	var aux struct {
 		Height         any `json:"height"`
 		VCodec         any `json:"vcodec"`
@@ -41,7 +44,7 @@ func (f *MediaFormat) UnmarshalJSON(data []byte) error {
 		Filesize       any `json:"filesize"`
 		FilesizeApprox any `json:"filesize_approx"`
 	}
-	if err := json.Unmarshal(data, &aux); err != nil {
+	if err := jsonv2.UnmarshalDecode(dec, &aux); err != nil {
 		return err
 	}
 	*f = MediaFormat{

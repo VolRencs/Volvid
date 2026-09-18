@@ -2,7 +2,8 @@ package adapters
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -13,10 +14,10 @@ import (
 )
 
 type probePayload struct {
-	Duration      any                        `json:"duration"`
-	Formats       []core.MediaFormat         `json:"formats"`
-	Subtitles     map[string]json.RawMessage `json:"subtitles"`
-	AutomaticCaps map[string]json.RawMessage `json:"automatic_captions"`
+	Duration      any                       `json:"duration"`
+	Formats       []core.MediaFormat        `json:"formats"`
+	Subtitles     map[string]jsontext.Value `json:"subtitles"`
+	AutomaticCaps map[string]jsontext.Value `json:"automatic_captions"`
 }
 
 var ErrMediaDurationUnavailable = errors.New("media duration unavailable")
@@ -76,7 +77,7 @@ func probeMediaUncached(ctx context.Context, deps core.CheckDepsResult, target c
 	}
 
 	var payload probePayload
-	if err := json.Unmarshal(out, &payload); err != nil {
+	if err := jsonv2.Unmarshal(out, &payload); err != nil {
 		return nil, err
 	}
 
@@ -136,7 +137,7 @@ func cloneMediaProbe(probe *core.MediaProbe) *core.MediaProbe {
 }
 
 // sortedUniqueLangs returns trimmed non-empty map keys, sorted and deduped.
-func sortedUniqueLangs(m map[string]json.RawMessage) []string {
+func sortedUniqueLangs(m map[string]jsontext.Value) []string {
 	langs := make([]string, 0, len(m))
 	for _, lang := range slices.Sorted(maps.Keys(m)) {
 		if lang = strings.TrimSpace(lang); lang != "" {
@@ -172,7 +173,7 @@ func audioTracksFromFormats(formats []core.MediaFormat) []core.AudioTrack {
 
 // subtitleTracksFromPayload merges manual subtitles and automatic captions
 // into a sorted track list (manual first, then auto, both by language).
-func subtitleTracksFromPayload(manual, auto map[string]json.RawMessage) []core.SubtitleTrack {
+func subtitleTracksFromPayload(manual, auto map[string]jsontext.Value) []core.SubtitleTrack {
 	manualLangs := sortedUniqueLangs(manual)
 	tracks := make([]core.SubtitleTrack, 0, len(manualLangs)+len(auto))
 	for _, lang := range manualLangs {
