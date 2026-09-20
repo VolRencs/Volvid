@@ -29,7 +29,7 @@
 
 ## About
 
-![youtube downloader screenshot](docs/assets/tui.png)
+![youtube downloader screenshot](docs/screenshots/tui.png)
 
 Volvid guides you through update check → dependencies → URL or search → playlist → fragment → profile → audio tracks → subtitles → download → summary. System binaries are preferred; missing ones can be installed as managed copies under the app data dir. `node` is optional (JS runtime). Browser cookies are auto-detected on Windows and Linux. UI language is English/Russian, toggle with `Tab`.
 
@@ -127,7 +127,8 @@ internal/adapters/ I/O: http/process/request/playlist/ytdlp_scan/probe/quality_s
                   pickers (folder_picker_*)
 scripts/          build-linux-downloader.sh, build-windows-downloader.sh, go-env.sh
 docs/             GitHub Pages site: index.html, style.css, script.js
-docs/assets/      logo.svg, tui.png, icon.ico
+docs/assets/      logo.svg, icon.svg, icon.ico
+docs/screenshots/ tui.png
 ```
 
 ```text
