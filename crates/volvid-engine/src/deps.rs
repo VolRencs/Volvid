@@ -1,0 +1,308 @@
+use std::path::Path;
+use std::time::Duration;
+
+use tokio_util::sync::CancellationToken;
+use volvid_core::{
+    BrowserCookiesInfo, CheckDepsResult, DependencyInfo, DependencySource, JSRuntimeInfo, Locale,
+    STATUS_ACTIVE, STATUS_NOT_FOUND,
+};
+
+use crate::cookies::detect_browser_cookies;
+use crate::paths::{AppPaths, clean_abs};
+use crate::process::command_output;
+
+const VERSION_TIMEOUT: Duration = Duration::from_millis(1500);
+
+#[derive(Clone, Debug)]
+pub struct DepSpec {
+    pub key: &'static str,
+    pub name: &'static str,
+    pub required: bool,
+    pub downloadable: bool,
+    pub version_args: &'static [&'static str],
+    pub managed: fn(&AppPaths) -> std::path::PathBuf,
+}
+
+pub const YTDLP_SPEC: DepSpec = DepSpec {
+    key: "ytdlp",
+    name: "yt-dlp",
+    required: true,
+    downloadable: true,
+    version_args: &["--version"],
+    managed: AppPaths::ytdlp_bin,
+};
+
+pub const FFMPEG_SPEC: DepSpec = DepSpec {
+    key: "ffmpeg",
+    name: "ffmpeg",
+    required: true,
+    downloadable: true,
+    version_args: &["-version"],
+    managed: AppPaths::ffmpeg_bin,
+};
+
+pub const FFPROBE_SPEC: DepSpec = DepSpec {
+    key: "ffprobe",
+    name: "ffprobe",
+    required: false,
+    downloadable: false,
+    version_args: &["-version"],
+    managed: AppPaths::ffprobe_bin,
+};
+
+pub const NODE_SPEC: DepSpec = DepSpec {
+    key: "node",
+    name: "node",
+    required: false,
+    downloadable: true,
+    version_args: &["--version"],
+    managed: AppPaths::node_bin,
+};
+
+pub fn detect_deps(paths: &AppPaths) -> CheckDepsResult {
+    let ytdlp = detect_dependency(&YTDLP_SPEC, paths);
+    let ffmpeg = detect_dependency(&FFMPEG_SPEC, paths);
+    let node = detect_dependency(&NODE_SPEC, paths);
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    let cookies = if home.as_os_str().is_empty() {
+        BrowserCookiesInfo {
+            status: STATUS_NOT_FOUND.to_owned(),
+            ..BrowserCookiesInfo::default()
+        }
+    } else {
+        detect_browser_cookies(&home)
+    };
+    let runtime = if node.available {
+        JSRuntimeInfo {
+            status: STATUS_ACTIVE.to_owned(),
+            name: "node".to_owned(),
+            path: node.path.clone(),
+        }
+    } else {
+        JSRuntimeInfo {
+            status: STATUS_NOT_FOUND.to_owned(),
+            ..JSRuntimeInfo::default()
+        }
+    };
+    CheckDepsResult {
+        ytdlp,
+        ffmpeg,
+        node,
+        cookies,
+        runtime,
+    }
+}
+
+pub fn detect_dependency(spec: &DepSpec, paths: &AppPaths) -> DependencyInfo {
+    let mut dep = DependencyInfo {
+        key: spec.key.to_owned(),
+        name: spec.name.to_owned(),
+        required: spec.required,
+        downloadable: spec.downloadable,
+        source: DependencySource::Missing,
+        ..DependencyInfo::default()
+    };
+    if let Ok(path) = which::which(spec.name) {
+        dep.path = clean_abs(path).to_string_lossy().into_owned();
+        dep.source = DependencySource::System;
+        dep.available = true;
+    } else {
+        let managed = (spec.managed)(paths);
+        if managed.is_file() {
+            dep.path = managed.to_string_lossy().into_owned();
+            dep.source = DependencySource::Managed;
+            dep.available = true;
+        }
+    }
+    dep
+}
+
+pub async fn enrich_deps(
+    deps: CheckDepsResult,
+    cancel: Option<CancellationToken>,
+) -> CheckDepsResult {
+    let mut result = deps;
+    let ytdlp_path = result.ytdlp.path.clone();
+    let ytdlp_args: Vec<String> = YTDLP_SPEC
+        .version_args
+        .iter()
+        .map(|arg| (*arg).to_owned())
+        .collect();
+    let ffmpeg_path = result.ffmpeg.path.clone();
+    let ffmpeg_args: Vec<String> = FFMPEG_SPEC
+        .version_args
+        .iter()
+        .map(|arg| (*arg).to_owned())
+        .collect();
+    let node_path = result.node.path.clone();
+    let node_args: Vec<String> = NODE_SPEC
+        .version_args
+        .iter()
+        .map(|arg| (*arg).to_owned())
+        .collect();
+    let ytdlp_ready =
+        result.ytdlp.available && result.ytdlp.version.is_empty() && !ytdlp_path.is_empty();
+    let ffmpeg_ready =
+        result.ffmpeg.available && result.ffmpeg.version.is_empty() && !ffmpeg_path.is_empty();
+    let node_ready =
+        result.node.available && result.node.version.is_empty() && !node_path.is_empty();
+    let ytdlp_cancel = cancel.clone();
+    let ffmpeg_cancel = cancel.clone();
+    let node_cancel = cancel;
+    let ytdlp_fut = async move {
+        if ytdlp_ready {
+            probe_version(&ytdlp_path, &ytdlp_args, ytdlp_cancel).await
+        } else {
+            String::new()
+        }
+    };
+    let ffmpeg_fut = async move {
+        if ffmpeg_ready {
+            probe_version(&ffmpeg_path, &ffmpeg_args, ffmpeg_cancel).await
+        } else {
+            String::new()
+        }
+    };
+    let node_fut = async move {
+        if node_ready {
+            probe_version(&node_path, &node_args, node_cancel).await
+        } else {
+            String::new()
+        }
+    };
+    let (ytdlp, ffmpeg, node) = tokio::join!(ytdlp_fut, ffmpeg_fut, node_fut);
+    if result.ytdlp.version.is_empty() {
+        result.ytdlp.version = ytdlp;
+    }
+    if result.ffmpeg.version.is_empty() {
+        result.ffmpeg.version = ffmpeg;
+    }
+    if result.node.version.is_empty() {
+        result.node.version = node;
+    }
+    result
+}
+
+pub async fn probe_version(
+    path: &str,
+    args: &[String],
+    cancel: Option<CancellationToken>,
+) -> String {
+    if path.trim().is_empty() {
+        return String::new();
+    }
+    for _ in 0..2 {
+        let output = command_output(path, args, Some(VERSION_TIMEOUT)).await;
+        if let Ok(output) = output {
+            if let Some(line) = first_non_empty_line(&String::from_utf8_lossy(&output.stdout)) {
+                return parse_version(&line, args);
+            }
+        }
+        if cancel.as_ref().is_some_and(|token| token.is_cancelled()) {
+            break;
+        }
+    }
+    String::new()
+}
+
+fn parse_version(line: &str, args: &[String]) -> String {
+    if args.first().is_some_and(|arg| arg == "-version") {
+        if let Some(rest) = line.to_ascii_lowercase().strip_prefix("ffmpeg version ") {
+            return rest
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .trim_matches(|c: char| " \t\r\n,;:()[]{}\"'".contains(c))
+                .to_owned();
+        }
+    }
+    line.trim().to_owned()
+}
+
+pub fn first_non_empty_line(text: &str) -> Option<String> {
+    text.replace("\r\n", "\n")
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(str::to_owned)
+}
+
+pub fn ytdlp_base_args(deps: &CheckDepsResult) -> Vec<String> {
+    let mut args = vec!["--ignore-config".to_owned(), "--no-warnings".to_owned()];
+    args.extend(volvid_core::FFmpegArgs(deps));
+    if deps.cookies.status == STATUS_ACTIVE {
+        let mut cookie_arg = deps.cookies.browser.trim().to_owned();
+        let profile = deps.cookies.ytdlp_profile.trim();
+        if !profile.is_empty() {
+            cookie_arg.push(':');
+            cookie_arg.push_str(profile);
+        }
+        if !cookie_arg.is_empty() {
+            args.push("--cookies-from-browser".to_owned());
+            args.push(cookie_arg);
+        }
+    }
+    if deps.runtime.status == STATUS_ACTIVE && !deps.runtime.path.trim().is_empty() {
+        args.push("--js-runtimes".to_owned());
+        args.push(format!("node:{}", deps.runtime.path.trim()));
+    }
+    args
+}
+
+pub fn ytdlp_command_args(deps: &CheckDepsResult, base: &[String]) -> Vec<String> {
+    let mut args = ytdlp_base_args(deps);
+    args.extend(base.iter().cloned());
+    args
+}
+
+pub fn ytdlp_bin(deps: &CheckDepsResult) -> Option<&str> {
+    let path = deps.ytdlp.path.trim();
+    (!path.is_empty()).then_some(path)
+}
+
+pub fn ffmpeg_bin(deps: &CheckDepsResult, paths: &AppPaths) -> String {
+    let path = deps.ffmpeg.path.trim();
+    if !path.is_empty() {
+        path.to_owned()
+    } else {
+        paths.ffmpeg_bin().to_string_lossy().into_owned()
+    }
+}
+
+pub fn path_is_file(path: &Path) -> bool {
+    path.is_file()
+}
+
+#[allow(dead_code)]
+pub fn locale_from_config(locale: Locale) -> &'static str {
+    locale.code()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_ffmpeg_version() {
+        assert_eq!(
+            parse_version(
+                "ffmpeg version 8.0.1 Copyright (c) 2000-2025",
+                &["-version".to_owned()]
+            ),
+            "8.0.1"
+        );
+    }
+
+    #[test]
+    fn builds_base_args_with_cookies() {
+        let mut deps = CheckDepsResult::default();
+        deps.cookies.status = STATUS_ACTIVE.to_owned();
+        deps.cookies.browser = "firefox".to_owned();
+        deps.cookies.ytdlp_profile = "/home/u/.mozilla/firefox/x.default".to_owned();
+        let args = ytdlp_base_args(&deps);
+        assert!(args.iter().any(|arg| arg == "--cookies-from-browser"));
+    }
+}

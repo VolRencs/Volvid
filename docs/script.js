@@ -26,9 +26,9 @@ idle(loadVersion);
 // RU / EN language switch for the whole site
 const I18N = {
   ru: {
-    'doc.title': 'Volvid — YouTube-загрузчик для терминала',
-    'hero.title': 'Скачивай видео и музыку с YouTube <span class="blue">прямо из терминала.</span>',
-    'hero.desc': 'Volvid — лёгкий TUI-загрузчик на yt-dlp и ffmpeg. Вставил ссылку, выбрал качество, получил файл — без браузера и лишних кликов.',
+    'doc.title': 'Volvid — YouTube-загрузчик для компьютера',
+    'hero.title': 'Скачивай видео и музыку с YouTube <span class="blue">прямо из приложения.</span>',
+    'hero.desc': 'Volvid — современный GUI-загрузчик на Rust, yt-dlp и ffmpeg. Вставил ссылку, выбрал формат, получил файл — без браузера и лишних кликов.',
     'hero.dl': 'Скачать', 'hero.dl2': 'Скачать',
     'hero.forWin': 'для Windows', 'hero.forLin': 'для Linux',
     'hero.github': 'Смотреть на GitHub',
@@ -61,14 +61,14 @@ const I18N = {
     'show.eyebrow': 'ПРОСТО И БЫСТРО',
     'show.title': 'Всё под контролем. <span class="blue">И ничего лишнего.</span>',
     'show.desc': 'Каждый шаг — в одном экране: ссылка, качество, загрузка. Ни окон, ни вкладок, ни переключений.',
-    'c1': 'Полное управление с клавиатуры', 'c2': 'Один лёгкий бинарник — без установки', 'c3': 'Аккуратный минималистичный TUI',
+    'c1': 'Полное управление с клавиатуры', 'c2': 'Один лёгкий бинарник — без установки', 'c3': 'Аккуратный современный GUI',
     'show.fmt': 'Форматы:',
     'foot.rel': 'Релизы', 'foot.src': 'Исходный код', 'foot.iss': 'Сообщить об ошибке',
     'foot.right': 'Открытый код &nbsp;•&nbsp; Лицензия GPL-3.0'
   },
   en: {
     'doc.title': 'Volvid — YouTube Downloader for the Terminal',
-    'hero.title': 'Download video & music from YouTube <span class="blue">right from the terminal.</span>',
+    'hero.title': 'Download video & music from YouTube <span class="blue">right from your desktop.</span>',
     'hero.desc': 'Volvid is a lightweight yt-dlp + ffmpeg downloader. Paste a link, pick a quality, get the file — no browser, no extra clicks.',
     'hero.dl': 'Download', 'hero.dl2': 'Download',
     'hero.forWin': 'for Windows', 'hero.forLin': 'for Linux',
@@ -102,7 +102,7 @@ const I18N = {
     'show.eyebrow': 'SIMPLE AND FAST',
     'show.title': 'Everything under control. <span class="blue">And nothing extra.</span>',
     'show.desc': 'Every step on one screen: link, quality, download. No windows, no tabs, no switching.',
-    'c1': 'Full keyboard control', 'c2': 'One lightweight binary, no install', 'c3': 'Clean minimalist TUI',
+    'c1': 'Full keyboard control', 'c2': 'One lightweight binary, no install', 'c3': 'Clean, modern GUI',
     'show.fmt': 'Formats:',
     'foot.rel': 'Releases', 'foot.src': 'Source code', 'foot.iss': 'Report an issue',
     'foot.right': 'Open source &nbsp;•&nbsp; GPL-3.0 License'

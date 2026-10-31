@@ -15,7 +15,7 @@ body:
     id: solution
     attributes:
       label: Proposed solution
-      description: How it should work (TUI screen, profile, option, behavior).
+      description: How it should work in the desktop UI (screen, option, behavior).
     validations:
       required: true
   - type: textarea
@@ -29,7 +29,7 @@ body:
       label: Affected area
       multiple: true
       options:
-        - TUI flow / navigation
+        - App flow / navigation
         - Video profiles
         - Audio profiles
         - Playlist

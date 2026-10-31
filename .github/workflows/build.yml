@@ -16,20 +16,21 @@ jobs:
         include:
           - os: windows-latest
             artifact: Volvid.exe
-            build_cmd: go install github.com/akavel/rsrc@v0.10.2 && ./scripts/build-windows-downloader.sh Volvid.exe
+            source: target/release/Volvid.exe
           - os: ubuntu-latest
             artifact: Volvid
-            build_cmd: ./scripts/build-linux-downloader.sh Volvid
+            source: target/release/Volvid
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          go-version: "1.27.1"
-      - name: version from tag
+          toolchain: "1.99.1"
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release -p volvid-gui
+      - name: Collect artifact
         shell: bash
-        run: echo "VOLVID_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-      - shell: bash
-        run: ${{ matrix.build_cmd }}
+        run: cp "${{ matrix.source }}" "${{ matrix.artifact }}"
       - uses: ncipollo/release-action@v1
         with:
           allowUpdates: true

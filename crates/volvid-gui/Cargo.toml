@@ -1,0 +1,40 @@
+[package]
+name = "volvid-gui"
+description = "Volvid desktop GUI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "Volvid"
+path = "src/main.rs"
+
+[features]
+default = []
+
+[dependencies]
+volvid-app = { workspace = true }
+volvid-core = { workspace = true }
+volvid-i18n = { workspace = true }
+volvid-engine = { workspace = true }
+
+arboard = { workspace = true }
+eframe = { workspace = true }
+egui = { workspace = true }
+egui_extras = { workspace = true }
+image = { workspace = true }
+jiff = { workspace = true }
+tracing = { workspace = true }
+tracing-appender = { workspace = true }
+tracing-subscriber = { workspace = true }
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
+
+[target.'cfg(unix)'.dependencies]
+eframe = { workspace = true, features = ["wayland"] }
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen"] }
+
+[dev-dependencies]
+egui_kittest = { workspace = true }
+insta = { workspace = true }

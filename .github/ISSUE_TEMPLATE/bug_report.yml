@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a bug in the Volvid TUI
+description: Report a bug in the Volvid desktop app
 title: "[bug]: "
 labels: [bug]
 body:
@@ -29,7 +29,7 @@ body:
         - Quality / profile selection
         - Fragment selection
         - Download progress
-        - Dependency management (Ctrl+U)
+        - Dependency management
         - Summary
         - Other
     validations:
@@ -46,11 +46,11 @@ body:
     id: logs
     attributes:
       label: Error text / screenshots
-      description: Volvid has no log file — paste the error text from the screen or attach a screenshot. Remove cookies and private paths!
+      description: Attach a screenshot and the relevant part of the log from the Settings → Logs screen. Remove cookies and private paths!
       render: text
   - type: input
     id: env
     attributes:
       label: Environment
-      description: Volvid version (update screen / release tag), OS, yt-dlp / ffmpeg / node versions and system vs managed (Ctrl+U screen), UI language.
+      description: Volvid version, OS and session type (Windows / Linux Wayland), yt-dlp / ffmpeg / node versions and system vs managed (Dependencies screen), UI language.
       placeholder: "Volvid x.y.z, Windows 11, yt-dlp 2026.x (managed), ffmpeg 7.x (system), EN"

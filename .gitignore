@@ -1,9 +1,9 @@
-# Build artifacts
+# Rust
+/target
+
+# Release binaries
 /Volvid
 /Volvid.exe
-*.syso
-*.test
-*.out
 
 # Self-update artifacts
 *.new
@@ -12,3 +12,5 @@
 
 # Local runtime data
 .volvid*
+.idea/
+.vscode/

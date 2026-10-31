@@ -1,0 +1,504 @@
+use std::path::PathBuf;
+
+use anyhow::Result;
+use volvid_core::{DownloadMode, DownloadRequest, ParsedTarget, TargetKind};
+use volvid_engine::{AppPaths, Theme};
+use volvid_i18n::{default_quality, fragment_error_text};
+
+use crate::backend::Backend;
+use crate::history::load_history;
+use crate::state::{
+    AppEvent, AppState, Draft, FragmentMode, JobStatus, JobView, MixedChoice, Route, SlotView,
+    ToastKind,
+};
+
+pub struct Controller {
+    pub state: AppState,
+    pub backend: Backend,
+    next_op: u64,
+}
+
+impl Controller {
+    pub fn new() -> Result<Self> {
+        let backend = Backend::new()?;
+        let config = backend.config();
+        let paths = backend.paths().clone();
+        let history = load_history(&paths);
+        let state = AppState::new(config, &paths, history);
+        let controller = Self {
+            state,
+            backend,
+            next_op: 1,
+        };
+        controller.backend.startup();
+        Ok(controller)
+    }
+
+    pub fn paths(&self) -> &AppPaths {
+        self.backend.paths()
+    }
+
+    pub fn app_version(&self) -> &'static str {
+        self.backend.app_version()
+    }
+
+    pub fn poll(&mut self) {
+        let events = self.backend.drain_events();
+        let mut refresh_deps = false;
+        let mut save_history = false;
+        let mut save_config = false;
+        for event in events {
+            match &event {
+                AppEvent::InstallFinished { result, .. } if result.is_ok() => {
+                    refresh_deps = true;
+                }
+                AppEvent::DownloadFinished { .. } => save_history = true,
+                AppEvent::FolderPicked(Ok(Some(_))) => save_config = true,
+                _ => {}
+            }
+            self.state.apply(event);
+        }
+        if refresh_deps {
+            self.backend.refresh_deps();
+        }
+        if save_history {
+            let _ = self.backend.save_history(&self.state.history);
+        }
+        if save_config {
+            self.backend.save_config(self.state.config.clone());
+        }
+    }
+
+    fn next_op(&mut self) -> u64 {
+        self.next_op += 1;
+        self.next_op
+    }
+
+    pub fn analyze_url(&mut self) {
+        let raw = self.state.url.trim().to_owned();
+        if raw.is_empty() {
+            self.state.url_error = Some(self.state.s().empty_url.to_owned());
+            return;
+        }
+        let target = match volvid_core::parse_target(&raw) {
+            Ok(target) => target,
+            Err(err) => {
+                self.state.url_error = Some(format!("{}: {err}", self.state.s().invalid_url));
+                return;
+            }
+        };
+        self.state.url = raw.clone();
+        self.state.url_error = None;
+        self.state.target = Some(target.clone());
+        self.state.force_single = false;
+        let op = self.next_op();
+        self.state.op_id = op;
+        match target.kind {
+            TargetKind::Mixed => {
+                self.state.mixed_choice = Some(MixedChoice { target, url: raw });
+            }
+            TargetKind::Playlist => {
+                self.state.playlist_loading = true;
+                self.state.playlist = None;
+                self.state.selected_entries.clear();
+                self.state.route = Route::Playlist;
+                self.backend.fetch_playlist(raw, self.state.locale, op);
+            }
+            TargetKind::Video => {
+                self.start_configure(Some(target), false);
+            }
+            TargetKind::Unknown => {
+                self.state.url_error = Some(self.state.s().unsupported_url.to_owned());
+            }
+        }
+    }
+
+    pub fn choose_mixed(&mut self, video_only: bool) {
+        let Some(choice) = self.state.mixed_choice.take() else {
+            return;
+        };
+        self.state.force_single = video_only;
+        if video_only {
+            self.start_configure(Some(choice.target), true);
+        } else {
+            let op = self.next_op();
+            self.state.op_id = op;
+            self.state.playlist_loading = true;
+            self.state.route = Route::Playlist;
+            self.backend
+                .fetch_playlist(choice.url, self.state.locale, op);
+        }
+    }
+
+    pub fn start_configure(&mut self, target: Option<ParsedTarget>, force_single: bool) {
+        let Some(target) = target.or_else(|| self.state.target.clone()) else {
+            return;
+        };
+        let op = self.next_op();
+        self.state.op_id = op;
+        self.state.target = Some(target.clone());
+        self.state.force_single = force_single;
+        self.state.route = Route::Configure;
+        self.state.draft = Draft {
+            workers: self.state.config.playlist_workers,
+            ..Draft::default()
+        };
+        let defaults = default_quality(self.state.locale);
+        self.state.draft.quality = defaults.first().cloned();
+        self.state.quality_choices = defaults;
+        self.state.media_duration = 0;
+        self.state.media_title.clear();
+        self.state.media_thumbnail.clear();
+        self.state.thumbnail_bytes.clear();
+        self.state.thumbnail_error = None;
+        self.state.audio_tracks.clear();
+        self.state.sub_tracks.clear();
+        self.state.tracks_error = None;
+        self.state.quality_error = None;
+        self.state.probe_loading = true;
+        self.state.quality_loading = true;
+
+        let selected = self.state.selected_playlist_entries();
+        let (probe_url, quality_urls) = if target.is_playlist() && !force_single {
+            let Some(first) = selected.first() else {
+                self.state.probe_loading = false;
+                self.state.quality_loading = false;
+                self.state
+                    .toast(self.state.s().no_selection, ToastKind::Warn);
+                return;
+            };
+            (
+                first.url.clone(),
+                selected.iter().map(|entry| entry.url.clone()).collect(),
+            )
+        } else {
+            let url = target.download_url(force_single);
+            (url.clone(), vec![url])
+        };
+        self.backend.load_media(target, probe_url, quality_urls, op);
+    }
+
+    pub fn continue_playlist(&mut self) {
+        if self.state.selected_entries.is_empty() {
+            self.state
+                .toast(self.state.s().no_selection, ToastKind::Warn);
+            return;
+        }
+        let target = self.state.target.clone();
+        self.start_configure(target, false);
+    }
+
+    pub fn search(&mut self) {
+        let query = self.state.search_query.trim().to_owned();
+        if query.is_empty() {
+            self.state.search_error = Some(self.state.s().query_empty.to_owned());
+            return;
+        }
+        self.state.search_loading = true;
+        self.state.search_error = None;
+        self.backend.search(query);
+    }
+
+    pub fn select_search_result(&mut self, index: usize) {
+        let Some(result) = self.state.search_results.get(index).cloned() else {
+            return;
+        };
+        self.state.search_modal = false;
+        self.state.url = result.url.clone();
+        self.analyze_url();
+    }
+
+    pub fn toggle_playlist(&mut self, index: usize) {
+        self.state.toggle_playlist_entry(index);
+    }
+
+    pub fn select_all_playlist(&mut self) {
+        self.state.select_all_playlist();
+    }
+
+    pub fn clear_playlist(&mut self) {
+        self.state.clear_playlist_selection();
+    }
+
+    pub fn apply_playlist_range(&mut self) {
+        let raw = self.state.range_input.trim();
+        if raw.is_empty() {
+            return;
+        }
+        match volvid_core::parse_selection(raw, self.state.playlist_entries().len()) {
+            Ok(indices) => {
+                self.state.selected_entries = indices.into_iter().collect();
+                self.state.range_error = None;
+            }
+            Err(err) => {
+                self.state.range_error =
+                    Some(volvid_i18n::selection_error_text(err, self.state.locale));
+            }
+        }
+    }
+
+    pub fn set_mode(&mut self, mode: DownloadMode) {
+        self.state.draft.mode = mode;
+        if mode != DownloadMode::Video {
+            self.state.draft.fragment_mode = FragmentMode::None;
+        }
+    }
+
+    pub fn start_download(&mut self) {
+        let Some(target) = self.state.target.clone() else {
+            return;
+        };
+        let s = self.state.s();
+        if !self.state.deps.ytdlp.available {
+            self.state.route = Route::Settings;
+            self.state.toast(s.missing_ytdlp, ToastKind::Error);
+            return;
+        }
+        let fragment = match self
+            .state
+            .draft
+            .fragment(Some(&target), self.state.media_duration)
+        {
+            Ok(fragment) => fragment,
+            Err(err) => {
+                self.state.toast(
+                    fragment_error_text(err, self.state.media_duration, self.state.locale),
+                    ToastKind::Error,
+                );
+                return;
+            }
+        };
+        let profile = self.state.draft.profile(self.state.locale);
+        if profile.needs_ffmpeg(fragment.as_ref()) && !self.state.deps.ffmpeg.available {
+            self.state.route = Route::Settings;
+            self.state.toast(s.missing_ffmpeg, ToastKind::Error);
+            return;
+        }
+
+        let entries = if target.is_playlist() && !self.state.force_single {
+            self.state.selected_playlist_entries()
+        } else {
+            Vec::new()
+        };
+        if target.is_playlist() && !self.state.force_single && entries.is_empty() {
+            self.state.toast(s.no_selection, ToastKind::Warn);
+            return;
+        }
+        let request = DownloadRequest {
+            target: target.clone(),
+            profile,
+            fragment,
+            media_duration: self.state.media_duration,
+            force_single: self.state.force_single,
+            playlist_info: if target.is_playlist() && !self.state.force_single {
+                self.state.playlist.clone()
+            } else {
+                None
+            },
+            entries: entries.clone(),
+            workers: self.state.draft.workers.clamp(1, 8),
+            output_dir: self.state.downloads_dir.to_string_lossy().into_owned(),
+            locale: self.state.locale,
+        };
+        if let Err(err) = volvid_engine::download::validate_request(&request, &self.state.deps) {
+            self.state.toast(err.to_string(), ToastKind::Error);
+            return;
+        }
+
+        let detail = match request.profile.mode {
+            DownloadMode::Video => format!(
+                "{} · {}",
+                s.mode_video,
+                request.profile.video_container.to_uppercase()
+            ),
+            DownloadMode::Audio => format!(
+                "{} · {}",
+                s.mode_audio,
+                request.profile.audio_format.to_uppercase()
+            ),
+            DownloadMode::Thumbnail => s.mode_thumbnail.to_owned(),
+        };
+        let is_playlist = request.uses_playlist();
+        let title = if is_playlist {
+            self.state
+                .playlist
+                .as_ref()
+                .map(|playlist| playlist.title.clone())
+                .unwrap_or_else(|| s.playlist_title.to_owned())
+        } else if !self.state.media_title.trim().is_empty() {
+            self.state.media_title.clone()
+        } else {
+            target.canonical_url.clone()
+        };
+        let url = target.download_url(self.state.force_single);
+        let workers = request.workers;
+        self.enqueue_request(
+            request,
+            title,
+            url,
+            is_playlist,
+            workers,
+            detail,
+            entries.len(),
+        );
+    }
+
+    fn enqueue_request(
+        &mut self,
+        request: DownloadRequest,
+        title: String,
+        url: String,
+        is_playlist: bool,
+        workers: usize,
+        detail: String,
+        entries: usize,
+    ) {
+        let job_id = self.backend.start_download(
+            request.clone(),
+            self.state.deps.clone(),
+            title.clone(),
+            url.clone(),
+            is_playlist,
+            workers,
+        );
+        let slots = if is_playlist {
+            (0..workers).map(|_| SlotView::default()).collect()
+        } else {
+            vec![SlotView::default()]
+        };
+        self.state.jobs.push(JobView {
+            id: job_id,
+            title,
+            url,
+            output_dir: PathBuf::from(&request.output_dir),
+            mode: request.profile.mode,
+            detail,
+            request: Some(request),
+            is_playlist,
+            total: if is_playlist { entries } else { 0 },
+            done: 0,
+            failed: 0,
+            slots,
+            status: JobStatus::Active,
+            error: None,
+            started_at: std::time::Instant::now(),
+            elapsed: std::time::Duration::ZERO,
+            recorded: false,
+        });
+        self.state.route = Route::Downloads;
+        self.state
+            .toast(self.state.s().downloading, ToastKind::Info);
+    }
+
+    pub fn retry_job(&mut self, job_id: u64) {
+        let Some(job) = self.state.jobs.iter().find(|job| job.id == job_id) else {
+            return;
+        };
+        let Some(request) = job.request.clone() else {
+            return;
+        };
+        let title = job.title.clone();
+        let url = job.url.clone();
+        let is_playlist = job.is_playlist;
+        let workers = job.slots.len().max(1);
+        let detail = job.detail.clone();
+        let entries = job.total;
+        self.enqueue_request(request, title, url, is_playlist, workers, detail, entries);
+    }
+
+    pub fn clear_finished_jobs(&mut self) {
+        self.state
+            .jobs
+            .retain(|job| job.status == JobStatus::Active);
+    }
+
+    pub fn stop_all_jobs(&mut self) {
+        let ids: Vec<u64> = self
+            .state
+            .jobs
+            .iter()
+            .filter(|job| job.status == JobStatus::Active)
+            .map(|job| job.id)
+            .collect();
+        for id in ids {
+            self.cancel_job(id);
+        }
+    }
+
+    pub fn cancel_job(&mut self, job_id: u64) {
+        self.backend.cancel_download(job_id);
+        if let Some(job) = self.state.jobs.iter_mut().find(|job| job.id == job_id) {
+            job.status = JobStatus::Cancelled;
+        }
+    }
+
+    pub fn pick_folder(&mut self) {
+        self.backend
+            .pick_folder(Some(self.state.downloads_dir.clone()));
+    }
+
+    pub fn open_folder(&self, path: PathBuf) {
+        self.backend.open_folder(path);
+    }
+
+    pub fn install_dependency(&mut self, key: &str) {
+        self.state.installing_dep = Some(key.to_owned());
+        self.backend
+            .install_dependency(key.to_owned(), self.state.locale);
+    }
+
+    pub fn apply_update(&mut self) {
+        let Some(info) = self.state.update.clone() else {
+            return;
+        };
+        self.state.updating = true;
+        self.backend.apply_update(info, self.state.locale);
+    }
+
+    pub fn check_updates(&mut self) {
+        self.state.update_checking = true;
+        self.backend.check_update();
+    }
+
+    pub fn set_locale(&mut self, locale: volvid_core::Locale) {
+        self.state.locale = locale;
+        self.state.config.locale = locale;
+        self.backend.save_config(self.state.config.clone());
+    }
+
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.state.config.theme = theme;
+        self.backend.save_config(self.state.config.clone());
+    }
+
+    pub fn set_playlist_workers(&mut self, workers: usize) {
+        self.state.config.playlist_workers = workers.clamp(1, 8);
+        self.state.draft.workers = self.state.config.playlist_workers;
+        self.backend.save_config(self.state.config.clone());
+    }
+
+    pub fn set_downloads_dir(&mut self, path: PathBuf) {
+        self.state.downloads_dir = path.clone();
+        self.state.config.set_downloads_dir(path);
+        self.backend.save_config(self.state.config.clone());
+    }
+
+    pub fn save_config(&mut self) {
+        self.backend.save_config(self.state.config.clone());
+    }
+
+    pub fn clear_history(&mut self) {
+        self.state.history.clear();
+        let _ = self.backend.clear_history();
+    }
+
+    pub fn back_home(&mut self) {
+        self.state.route = Route::Home;
+        self.state.mixed_choice = None;
+        self.state.url_error = None;
+    }
+
+    pub fn set_route(&mut self, route: Route) {
+        self.state.route = route;
+    }
+}

@@ -1,0 +1,70 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/volvid-core",
+    "crates/volvid-i18n",
+    "crates/volvid-engine",
+    "crates/volvid-app",
+    "crates/volvid-gui",
+]
+
+[workspace.package]
+version = "8.0.0"
+edition = "2024"
+rust-version = "1.99"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/VolRencs/Volvid"
+authors = ["VolRen"]
+
+[workspace.dependencies]
+volvid-core = { path = "crates/volvid-core" }
+volvid-i18n = { path = "crates/volvid-i18n" }
+volvid-engine = { path = "crates/volvid-engine" }
+volvid-app = { path = "crates/volvid-app" }
+
+anyhow = "1.0.104"
+arboard = "3.7.0"
+assert_cmd = "2.2.2"
+directories = "6.0.0"
+eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "links", "persistence", "system_fonts", "wgpu"] }
+egui = "0.37.0"
+egui_extras = { version = "0.37.0", features = ["image", "svg"] }
+egui_kittest = "0.37.0"
+futures-util = "0.3.34"
+hex = "0.4.3"
+image = { version = "0.25.10", default-features = false, features = ["png", "webp"] }
+insta = "1.49.0"
+jiff = "0.2.38"
+proptest = "1.12.0"
+process-wrap = { version = "10.0.1", features = ["tokio1"] }
+reqwest = { version = "0.13.5", features = ["json", "stream", "rustls"] }
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "common-controls-v6"] }
+self-replace = "1.5.1"
+semver = "1.0.28"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+tar = "0.4.46"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync", "fs", "signal"] }
+tokio-util = { version = "0.7.20", features = ["rt"] }
+toml = "1.1.8"
+tracing = "0.1.44"
+tracing-appender = "0.2.5"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+url = "2.5.8"
+which = "8.0.6"
+xz2 = "0.1.7"
+zip = "9.2.0"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "symbols"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

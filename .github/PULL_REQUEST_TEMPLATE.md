@@ -8,14 +8,15 @@
 
 ## How it was verified
 
-- [ ] `go vet ./...`
-- [ ] `go test -race ./...`
-- [ ] Build: `scripts/build-linux-downloader.sh` / `scripts/build-windows-downloader.sh`
-- [ ] Manual check in the TUI: <!-- screens walked through, language EN/RU -->
+- [ ] `cargo fmt --all -- --check`
+- [ ] `cargo clippy --workspace --all-targets -- -D warnings`
+- [ ] `cargo test --workspace`
+- [ ] Build: `cargo build --release -p volvid-gui`
+- [ ] Manual check in the GUI: <!-- screens walked through, language EN/RU -->
 
 ## Checklist
 
-- [ ] UI strings added in both RU and EN (`internal/i18n/`)
-- [ ] `internal/core` stays pure (no I/O)
+- [ ] UI strings added in both RU and EN (`crates/volvid-i18n/`)
+- [ ] `crates/volvid-core` stays pure (no I/O)
 - [ ] No binaries, cookies, tokens, or private paths committed
 - [ ] Base branch is `Dev`

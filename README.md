@@ -4,173 +4,156 @@
 
 <img src="docs/assets/logo.svg" alt="VOLVID" height="87">
 
-**Keyboard-driven TUI for downloading YouTube video, audio and thumbnails — via yt-dlp + ffmpeg.**
+**A fast, modern YouTube downloader for the desktop — built with Rust, egui and wgpu.**
 
-[![Go](https://img.shields.io/badge/Go-1.27.1%2B-00ADD8?style=flat-square&logo=go)](go.mod)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20amd64%20%7C%20Linux%20amd64-lightgrey?style=flat-square)](#platforms)
+[![Rust](https://img.shields.io/badge/Rust-1.99%2B-000000?style=flat-square&logo=rust)](rust-toolchain.toml)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20Wayland-5CC8E8?style=flat-square)](#platforms)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
+
+[![GUI](docs/screenshots/gui.png)](docs/screenshots/gui.png)
 
 </div>
 
 ---
 
-## Contents
-
-- [About](#about)
-- [Quick Start](#quick-start)
-- [TUI Flow](#tui-flow)
-- [Controls](#controls)
-- [Runtime Paths](#runtime-paths)
-- [Architecture](#architecture)
-- [Platforms](#platforms)
-- [Continuous Integration](#continuous-integration)
-- [Troubleshooting](#troubleshooting)
-- [Dependencies](#dependencies)
-
 ## About
 
-![youtube downloader screenshot](docs/screenshots/tui.png)
+Volvid is a graphical YouTube downloader powered by **yt-dlp** and **ffmpeg**.
+It checks dependencies, resolves video metadata and thumbnails, scans real
+quality options, and downloads video, audio or thumbnails — including playlists,
+fragments, dubbed audio tracks and embedded subtitles.
 
-Volvid guides you through update check → dependencies → URL or search → playlist → fragment → profile → audio tracks → subtitles → download → summary. System binaries are preferred; missing ones can be installed as managed copies under the app data dir. `node` is optional (JS runtime). Browser cookies are auto-detected on Windows and Linux. UI language is English/Russian, toggle with `Tab`.
+The v8 release is a complete rewrite in Rust. The previous Go/TUI version has
+been removed; the new app is a native GPU-rendered desktop application.
 
-## Quick Start
+## Features
 
-### Windows (amd64)
+- **Modern GUI** — egui 0.37 + wgpu, dark/light themes, custom coral/cyan palette.
+- **Video preview** — YouTube thumbnails are fetched and shown on the download screen.
+- **Quality scan** — real heights, availability and estimated sizes from `yt-dlp`.
+- **Formats** — Original MP4, H.264, H.265, VP9, AV1, MKV copy; MP3 320/192, M4A, Opus, FLAC.
+- **Playlists** — virtualized list, filter, select all/none, manual ranges and parallel workers.
+- **Tracks** — dubbed audio languages and subtitles embedded into the container.
+- **Fragments** — `1:00-2:30`, `1:00-`, `1:00+`, and timestamps from the URL.
+- **Dependency manager** — detects and installs managed yt-dlp, ffmpeg and node.
+- **Browser cookies** — auto-detects Firefox, Chrome, Chromium, Brave, Vivaldi and Opera profiles.
+- **Self-update** — GitHub release check and in-place binary replacement.
+- **Download queue** — progress, speed, cancellation and session history.
+- **English / Russian** — switch language instantly from the UI.
+- **Wayland-native Linux** — no X11 build; XWayland is not used.
 
-Download `Volvid.exe` from the [latest release](https://github.com/VolRencs/Volvid/releases/latest) and run it.
+## Quick start
 
-### Linux (amd64)
+### Requirements
 
-```bash
-curl -L https://github.com/VolRencs/Volvid/releases/latest/download/Volvid -o Volvid
-chmod +x Volvid
-./Volvid
-```
+- **Rust 1.99.1+** for building from source.
+- `yt-dlp` and `ffmpeg` are required at runtime. Volvid can install managed copies
+  from the dependency screen if they are missing. `node` is optional (JS runtime).
 
-### Build from source
-
-Requires **Go 1.27.1+** (`go.mod`; CI uses `1.27.1`).
+### Build and run
 
 ```bash
 git clone https://github.com/VolRencs/Volvid
 cd Volvid
-go build -trimpath -buildvcs=false -ldflags="-s -w" -o Volvid ./cmd/downloader
-./Volvid
+cargo build --release -p volvid-gui
+./target/release/Volvid
 ```
 
-Release builds inject the version when `VOLVID_VERSION` is set: `-X volvid/internal/adapters.Version=$VOLVID_VERSION` (see `scripts/build-linux-downloader.sh` and `scripts/build-windows-downloader.sh`).
-
-### Build Windows .exe with icon
-
-Icon source: `docs/assets/icon.ico`.
+Or pass a URL directly:
 
 ```bash
-go install github.com/akavel/rsrc@v0.10.2
-./scripts/build-windows-downloader.sh Volvid.exe
+./target/release/Volvid 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
 ```
 
-## TUI Flow
+### Linux
 
-1. Update + dependency check (`yt-dlp`, `ffmpeg` required; `node` optional).
-2. Paste a YouTube link, or press `Ctrl+G` to search.
-3. For playlists pick entries with `Space`, `a`, or `/` (manual ranges).
-4. Choose Video / Audio / Thumbnail.
-5. Video: quality scan (`Best`/`Economy`/height) → output (`Original`, `H264`, `H265`, `VP9`, `AV1`, `MKV-copy`). Audio: `MP3 320k`, `MP3 192k`, `M4A Best`, `Opus Best`, `FLAC`.
-6. Video with dubs: pick audio tracks checklist (`Space`, `A` for all) — shown only when 2+ languages exist; then pick subtitles to embed (`Space` multi-select, first row skips). Sidecar `.srt` files are removed, tracks stay inside the container with language tags.
-7. Optional fragment for single video/audio (video/audio only): `1:00-2:30`, open-ended `start-` / `start+`, or URL timestamp (`t`/`start`).
-8. Playlist downloads ask for worker count; watch progress (`Esc` cancels). Summary keeps session success/failure history.
+Volvid targets **Wayland only**. Build and run inside a Wayland session:
 
-## Controls
+```bash
+cargo run --release -p volvid-gui
+```
 
-| Key | Scope | Action |
-|-----|-------|--------|
-| `↑` / `↓` | menus, playlist | Move |
-| `1-9` | menus | Jump to item and activate |
-| `Enter` | menus, inputs | Continue / confirm |
-| `Space` | playlist, subtitles, audio tracks (not in `/`-input) | Toggle entry |
-| `a` / `а` | playlist, subtitles, audio tracks | Select all / clear all |
-| `/` then `Enter` / `Esc` | playlist | Manual indices / cancel |
-| `Ctrl+G` | target screen | YouTube search |
-| `Ctrl+U` | when not busy/updating | Dependency management |
-| `Ctrl+O` (`Ctrl+Щ`) | target screen | Choose downloads folder |
-| `O` (`o`/`щ`/`Щ`; on target screen only `Shift`) | target + summary (if downloads exist) | Open downloads folder |
-| `Esc` | everywhere (context) | Back / cancel / leave input |
-| `Tab` | everywhere | Switch language EN↔RU |
-| any key | update-done screen | Exit |
+### Windows
 
-## Runtime Paths
+```powershell
+cargo build --release -p volvid-gui
+.\target\release\Volvid.exe
+```
 
-Defaults use standard user dirs; overrides via env:
+## Screenshot
 
-| Variable | Role | Default |
-|----------|------|---------|
-| `VOLVID_CONFIG_DIR` | config (locale, saved folder) | `UserConfigDir/Volvid` |
-| `VOLVID_DATA_DIR` | app data | `%LOCALAPPDATA%/Volvid` (win), `$XDG_DATA_HOME` or `~/.local/share/Volvid` (linux) |
-| `VOLVID_DEPS_DIR` | managed `yt-dlp`/`ffmpeg`/`node` | `DataDir/deps` |
-| `VOLVID_DOWNLOADS_DIR` | lock download location (disables picker) | system `Downloads`, saved choice in `ConfigDir/.volvid_downloads_dir` |
-
-Also: `VOLVID_FFMPEG_SHA256` (pin ffmpeg), `VOLVID_VERSION` (release version injection, both build scripts), `VOLVID_GO_CACHE_ROOT`/`GOCACHE`/`GOMODCACHE` (build cache, `scripts/go-env.sh`).
+![Volvid home](docs/screenshots/gui.png)
 
 ## Architecture
 
 ```text
-cmd/downloader/   composition root: adapters.NewEnv + tui.New(env, ctx)
-tui/              Bubble Tea UI: screen.go (state machine), menu/flow/keys/bindings,
-                  view*.go + deps_*.go (render), checklist.go (track pickers),
-                  appapi.go (seam), *_state.go
-internal/core/    pure domain, no I/O: target/fragment/clock/profile/deps/probe/
-                  decode/sanitize/session
-internal/i18n/    UIStrings + locale formatting + profile factories
-internal/services/ use-cases: PlanDownload (validation), LaunchProgress (worker)
-internal/adapters/ I/O: http/process/request/playlist/ytdlp_scan/probe/quality_scan/
-                  release/deps*/download_* + platform paths (downloads_dir_*) and
-                  pickers (folder_picker_*)
-scripts/          build-linux-downloader.sh, build-windows-downloader.sh, go-env.sh
-docs/             GitHub Pages site: index.html, style.css, script.js
-docs/assets/      logo.svg, icon.svg, icon.ico
-docs/screenshots/ tui.png
+crates/
+  volvid-core/      pure domain: URL/fragment parsing, profiles, quality, deps, session
+  volvid-i18n/      EN/RU strings and formatting
+  volvid-engine/    yt-dlp, ffmpeg, HTTP, dependency installs, cookies, updates, config
+  volvid-app/       UI-independent state machine, command/event flow, download queue
+  volvid-gui/       eframe/egui app, theme, pages, SVG icons and thumbnail preview
+assets/
+  fonts/            Noto Sans with Cyrillic
+  icons/            application icon, logo variants, SVG action icons
+docs/               GitHub Pages site and screenshots
 ```
 
-```text
-cmd/downloader -> tui -> AppAPI (interface)
-tui -> core + i18n (pure, no adapters except constructors)
-adapters -> core + i18n
-services -> core
-Production: tui.New(env, ctx) wraps newAppAPI(env). Tests: tui.NewWithDeps(ctx, stubAPI).
+The GUI never calls `yt-dlp` or `ffmpeg` directly. User actions become
+`AppEvent`s; the engine runs on a Tokio runtime and reports progress back to
+the UI-independent state machine.
+
+## Runtime paths
+
+| Variable | Role | Default |
+|----------|------|---------|
+| `VOLVID_CONFIG_DIR` | config | `UserConfigDir/Volvid` |
+| `VOLVID_DATA_DIR` | app data | `%LOCALAPPDATA%/Volvid` / `$XDG_DATA_HOME/Volvid` |
+| `VOLVID_DEPS_DIR` | managed binaries | `DataDir/deps` |
+| `VOLVID_DOWNLOADS_DIR` | fixed download directory | system Downloads |
+| `VOLVID_FFMPEG_SHA256` | pin ffmpeg archive checksum | unset |
+
+Configuration is stored in `config.toml`; download history is stored in
+`history.json`. The old `.volvid_locale` and `.volvid_downloads_dir` files are
+imported once on first launch.
+
+## Development
+
+```bash
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo run -p volvid-gui
 ```
+
+Useful environment variables for development:
+
+- `VOLVID_TEST_FRONT=1` keeps the window above other windows (useful for screenshots).
+- `RUST_LOG=volvid_gui=debug,volvid_app=debug` enables UI/state logs.
+
+### Project tooling
+
+- `cargo nextest` for fast test runs (optional).
+- `cargo deny check` / `cargo audit` for dependency policy (recommended in CI).
+- `egui_kittest` for headless UI tests.
 
 ## Platforms
 
-| OS | Arch | yt-dlp / ffmpeg / node | App update |
-|----|------|------------------------|------------|
-| Windows | amd64 | system or managed | `*.update.bat` replaces binary after exit |
-| Linux | amd64 | system or managed | binary replace |
+| OS | Arch | Status |
+|----|------|--------|
+| Windows 10/11 | x86_64 | supported |
+| Linux (Wayland) | x86_64 | supported |
+| Linux (X11) | x86_64 | not supported |
 
-## Continuous Integration
-
-`checks.yml` (push/PR to `Dev`): `go vet`, `gofmt -l`, `staticcheck`, `go test -race`, build matrix `ubuntu-latest` + `windows-latest` via the two scripts. `build.yml` (on release `published`): version from tag (`VOLVID_VERSION=${GITHUB_REF_NAME#v}`), builds `Volvid.exe` / `Volvid`, uploads with `ncipollo/release-action@v1` (no signing).
-
-## Troubleshooting
-
-**yt-dlp fails to download** — check GitHub access, or install `yt-dlp` system-wide / via dependency screen (`Ctrl+U`).
-
-**“Sign in to confirm you’re not a bot”** — open `Ctrl+U`, check cookies + JS runtime; needs a supported browser profile on the same machine.
-
-**HD merge / audio conversion fails** — needs `ffmpeg` (system or `Ctrl+U`).
-
-**Folder picker won’t open** — unsupported desktop integration; set `VOLVID_DOWNLOADS_DIR` directly.
-
-**Update applied but old version runs (Windows)** — the `.bat` swaps the binary after you close the app; restart once.
-
-## Dependencies
-
-| Component | License |
-|-----------|---------|
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Unlicense |
-| [ffmpeg](https://ffmpeg.org) | LGPL/GPL |
-| [Bubble Tea v2](https://charm.land/bubbletea/v2) | MIT |
-| [Lip Gloss v2](https://charm.land/lipgloss/v2) | MIT |
-| [godbus/dbus](https://github.com/godbus/dbus) | BSD-2-Clause |
+## License
 
 Licensed under **GPL-3.0** — see [`LICENSE`](LICENSE).
 Copyright (C) 2026 VolRen.
+
+External tools:
+
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — Unlicense
+- [ffmpeg](https://ffmpeg.org) — LGPL/GPL
+- [egui / eframe](https://github.com/emilk/egui) — MIT/Apache-2.0
+- [Tokio](https://tokio.rs) — MIT
+- [Noto Sans](https://fonts.google.com/noto) — OFL

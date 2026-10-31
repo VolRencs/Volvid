@@ -3,17 +3,18 @@
 @layer base{
   :root{
     color-scheme:dark;
-    --bg:oklch(.17 .028 255);
-    --card:oklch(.23 .032 255);
-    --text:oklch(.95 .008 250);
-    --muted:oklch(.76 .028 248);
-    --blue:oklch(.75 .125 242);
-    --blue2:oklch(.84 .1 236);
-    --red:oklch(.66 .2 25);
+    --bg:#0F1115;
+    --card:#171A21;
+    --text:#ECEEF2;
+    --muted:#A3AAB8;
+    --blue:#FF5A4F;
+    --blue2:#FF8A80;
+    --red:#FF5A4F;
+    --cyan:#5CC8E8;
     --radius:14px;
     --ring:color-mix(in oklab,var(--blue) 60%,transparent);
-    --border:color-mix(in oklab,var(--blue) 20%,transparent);
-    --border-strong:color-mix(in oklab,var(--blue) 38%,transparent);
+    --border:#2A2F3A;
+    --border-strong:#3A404D;
     --shadow:0 14px 40px oklch(.05 .03 255/.45);
     --mono:Consolas,'Cascadia Code',Menlo,monospace;
     --sans:Inter,system-ui,'Segoe UI',Roboto,Arial,sans-serif;
@@ -105,7 +106,7 @@
   .fmts-lbl{color:var(--muted);margin-right:2px}
   .fmt{font-family:var(--mono);font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:999px;background:color-mix(in oklab,var(--card) 70%,transparent);color:var(--blue2);transition:border-color .18s ease}
   .fmt:hover{border-color:var(--border-strong)}
-  /* APP PREVIEW — styled like the TUI */
+  /* APP PREVIEW — styled like the desktop app */
   .app{
     position:relative;
     --t-primary:#6FB3FF; --t-soft:#A9D2FF; --t-deep:#1E3F73; --t-ok:#57DBA4;
