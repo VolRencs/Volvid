@@ -24,7 +24,8 @@
 <meta name="twitter:title" content="Volvid — YouTube Downloader for Desktop">
 <meta name="twitter:description" content="Desktop YouTube downloader for video, audio and playlists. Built with Rust, egui and yt-dlp.">
 <meta name="twitter:image" content="https://raw.githubusercontent.com/VolRencs/Volvid/refs/heads/Dev/docs/screenshots/gui.png">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="preload" as="image" href="screenshots/gui.png?v=6" fetchpriority="high">
+<link rel="stylesheet" href="style.css?v=6">
 <script>
 (function(){var d=document.documentElement;var l;try{l=localStorage.getItem('volvid-lang')}catch(e){}if(l!=='ru'&&l!=='en')l=(navigator.language||'en').toLowerCase().startsWith('ru')?'ru':'en';d.lang=l;})();
 </script>
@@ -78,7 +79,7 @@
       <div class="shot-stage">
         <div class="shot-glow" aria-hidden="true"></div>
         <figure class="shot hero-shot">
-          <img src="screenshots/gui.png?v=5" width="1280" height="800" alt="Volvid desktop app — new download screen" fetchpriority="high">
+          <img src="screenshots/gui.png?v=6" width="1280" height="800" alt="Volvid desktop app — new download screen" fetchpriority="high" decoding="async">
           <span class="shot-sheen" aria-hidden="true"></span>
         </figure>
         <div class="shot-floor" aria-hidden="true"></div>
@@ -111,7 +112,7 @@
     <div class="shot-stage showcase-shot">
       <div class="shot-glow" aria-hidden="true"></div>
       <figure class="shot show-shot">
-        <img src="screenshots/playlist.png?v=5" width="1280" height="800" alt="Volvid playlist screen — filters, ranges and video selection" loading="lazy">
+        <img src="screenshots/playlist.png?v=6" width="1280" height="800" alt="Volvid playlist screen — filters, ranges and video selection" loading="lazy" decoding="async">
         <span class="shot-sheen" aria-hidden="true"></span>
       </figure>
       <div class="shot-floor" aria-hidden="true"></div>
@@ -151,6 +152,6 @@
   </div>
 </footer>
 
-<script src="script.js?v=5"></script>
+<script src="script.js?v=6"></script>
 </body>
 </html>

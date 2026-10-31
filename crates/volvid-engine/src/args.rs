@@ -184,8 +184,9 @@ pub fn format_label(format: &str, labels: &[String], index: usize) -> String {
 }
 
 pub fn single_output_template(output_dir: &std::path::Path) -> String {
-    output_dir
-        .join("%(title)s.%(ext)s")
+    let directory = output_dir.to_string_lossy().replace('%', "%%");
+    std::path::PathBuf::from(directory)
+        .join("%(title)s [%(id)s].%(ext)s")
         .to_string_lossy()
         .into_owned()
 }
@@ -194,8 +195,9 @@ pub fn playlist_output_template(
     output_dir: &std::path::Path,
     entry: &volvid_core::PlaylistEntry,
 ) -> String {
-    output_dir
-        .join(format!("{:03} - %(title)s.%(ext)s", entry.index))
+    let directory = output_dir.to_string_lossy().replace('%', "%%");
+    std::path::PathBuf::from(directory)
+        .join(format!("{:03} - %(title)s [%(id)s].%(ext)s", entry.index))
         .to_string_lossy()
         .into_owned()
 }
@@ -240,6 +242,13 @@ mod tests {
         );
         assert!(args.iter().any(|arg| arg == "--merge-output-format"));
         assert!(args.iter().any(|arg| arg == "--no-playlist"));
+    }
+
+    #[test]
+    fn output_template_keeps_video_id_and_escapes_percent() {
+        let template = single_output_template(std::path::Path::new("/tmp/100% hits"));
+        assert!(template.contains("%(id)s"));
+        assert!(template.contains("100%% hits"));
     }
 
     #[test]

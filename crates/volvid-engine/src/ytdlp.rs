@@ -167,6 +167,7 @@ pub async fn fetch_playlist(
 pub async fn search_youtube(
     deps: &CheckDepsResult,
     query: &str,
+    locale: volvid_core::Locale,
     cancel: Option<CancellationToken>,
 ) -> Result<Vec<SearchResult>> {
     let query = query.trim();
@@ -185,6 +186,7 @@ pub async fn search_youtube(
         ],
     );
     let mut results = Vec::new();
+    let title_fmt = volvid_i18n::strings(locale).video_title_fmt;
     let status = run_lines(bin, &args, Some(SEARCH_TIMEOUT), cancel, |line| {
         if !line.stdout || results.len() >= 5 {
             return;
@@ -192,7 +194,7 @@ pub async fn search_youtube(
         let Ok(value) = serde_json::from_str::<Value>(&line.text) else {
             return;
         };
-        if let Some(entry) = media_entry(&value, results.len() + 1, "Video %d") {
+        if let Some(entry) = media_entry(&value, results.len() + 1, title_fmt) {
             results.push(SearchResult {
                 title: entry.title,
                 url: entry.url,
@@ -206,6 +208,11 @@ pub async fn search_youtube(
         bail!("search returned no results (exit: {})", status);
     }
     Ok(results)
+}
+
+/// Builds quality choices from an already fetched probe (no second yt-dlp run).
+pub fn quality_choices_from_probe(probe: &MediaProbe) -> Result<Vec<QualityChoice>> {
+    Ok(build_choices(vec![video_quality_info(probe)?]))
 }
 
 pub async fn resolve_quality_choices(
@@ -552,6 +559,33 @@ mod tests {
         assert_eq!(choices[0].size_bytes, 100);
         assert_eq!(choices[1].size_bytes, 50);
         assert_eq!(choices[1].fmt_chain.len(), 1);
+    }
+
+    #[test]
+    fn builds_quality_from_probe_without_second_scan() {
+        let probe = MediaProbe {
+            duration: 10,
+            formats: vec![
+                MediaFormat {
+                    height: 720,
+                    vcodec: "avc1".to_owned(),
+                    acodec: "none".to_owned(),
+                    filesize: 100,
+                    ..MediaFormat::default()
+                },
+                MediaFormat {
+                    height: 0,
+                    vcodec: "none".to_owned(),
+                    acodec: "mp4a".to_owned(),
+                    filesize: 20,
+                    ..MediaFormat::default()
+                },
+            ],
+            ..MediaProbe::default()
+        };
+        let choices = quality_choices_from_probe(&probe).unwrap();
+        assert_eq!(choices[0].height, 720);
+        assert_eq!(choices[0].size_bytes, 120);
     }
 
     #[test]

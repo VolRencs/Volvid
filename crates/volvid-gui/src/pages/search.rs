@@ -16,7 +16,10 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
         .frame(theme::modal_frame(p))
         .backdrop_color(egui::Color32::from_black_alpha(150))
         .show(ctx, |ui| {
-            ui.set_width(600.0);
+            let width = theme::MODAL_WIDTH_LG
+                .min(ctx.content_rect().width() - 48.0)
+                .max(320.0);
+            ui.set_width(width);
             theme::modal_header(
                 ui,
                 p,
@@ -25,24 +28,28 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
                 s.search_prompt,
             );
             ui.add_space(16.0);
-            ui.horizontal(|ui| {
-                let response = ui.add_sized(
-                    [400.0, 42.0],
-                    egui::TextEdit::singleline(&mut app.controller.state.search_query)
-                        .hint_text(s.search_placeholder)
-                        .margin(egui::Margin::symmetric(10, 9)),
+            ui.horizontal_wrapped(|ui| {
+                let input_width = (width - 166.0 - 8.0).max(180.0);
+                let response = theme::text_input(
+                    ui,
+                    &mut app.controller.state.search_query,
+                    s.search_placeholder,
+                    input_width,
                 );
                 if response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
                     response.surrender_focus();
                     app.controller.search();
                 }
-                if primary_button_sized(ui, p, s.search_youtube, 154.0).clicked() {
+                if primary_button_sized(ui, p, s.search_youtube, 166.0).clicked() {
                     app.controller.search();
                 }
             });
             if let Some(error) = &error {
                 ui.add_space(4.0);
-                ui.label(RichText::new(error).color(p.danger).size(12.0));
+                ui.add(
+                    egui::Label::new(RichText::new(error).color(p.danger).size(theme::FONT_SMALL))
+                        .wrap(),
+                );
             }
             if loading {
                 ui.add_space(4.0);
@@ -57,24 +64,23 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
                         theme::muted(ui, p, s.no_results);
                     }
                     for (index, result) in app.controller.state.search_results.iter().enumerate() {
+                        let label = format!(
+                            "{}  ·  {}",
+                            result.title,
+                            volvid_core::format_duration(result.duration)
+                        );
                         let response = ui.add(
                             egui::Button::new(
-                                theme::strong_text(
-                                    format!(
-                                        "{}  ·  {}",
-                                        result.title,
-                                        volvid_core::format_duration(result.duration)
-                                    ),
-                                    13.0,
-                                )
-                                .color(p.text),
+                                theme::strong_text(&label, theme::FONT_MUTED).color(p.text),
                             )
                             .fill(p.card_hover)
                             .stroke(egui::Stroke::new(1.0, p.border))
-                            .corner_radius(egui::CornerRadius::same(9))
-                            .min_size(egui::vec2(600.0, 42.0)),
+                            .corner_radius(egui::CornerRadius::same(theme::ROW_RADIUS))
+                            .min_size(egui::vec2(ui.available_width(), theme::BUTTON_HEIGHT))
+                            .truncate(),
                         );
-                        theme::press_overlay(ui, &response, 9);
+                        theme::press_overlay(ui, &response, theme::ROW_RADIUS);
+                        let response = response.on_hover_text(&label);
                         if response.clicked() {
                             selected = Some(index);
                             close = true;

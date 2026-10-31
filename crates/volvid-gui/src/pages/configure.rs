@@ -39,17 +39,12 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
         }
         ui.add_space(4.0);
         ui.vertical(|ui| {
-            ui.label(
-                theme::strong_text(
-                    if title.is_empty() {
-                        s.configure_title.to_owned()
-                    } else {
-                        title.clone()
-                    },
-                    34.0,
-                )
-                .color(p.text),
-            );
+            let title = if title.is_empty() {
+                s.configure_title
+            } else {
+                title.as_str()
+            };
+            theme::page_title(ui, p, title);
             let mut meta = Vec::new();
             if duration > 0 {
                 meta.push(format!("{} {}", s.duration, format_duration(duration)));
@@ -110,7 +105,7 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
 
     match app.controller.state.draft.mode {
         DownloadMode::Video => {
-            theme::card_frame(p).show(ui, |ui| {
+            theme::card(ui, p, |ui| {
                 ui.horizontal(|ui| {
                     theme::section_title(ui, p, s.quality_title);
                     if app.controller.state.quality_loading {
@@ -139,11 +134,18 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
                     }
                 }
                 if let Some(error) = app.controller.state.quality_error.clone() {
-                    ui.label(RichText::new(error).color(p.warning).size(12.0));
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(error)
+                                .color(p.warning)
+                                .size(theme::FONT_SMALL),
+                        )
+                        .wrap(),
+                    );
                 }
             });
             ui.add_space(12.0);
-            theme::card_frame(p).show(ui, |ui| {
+            theme::card(ui, p, |ui| {
                 theme::section_title(ui, p, s.format_title);
                 ui.add_space(4.0);
                 let profiles = app.controller.state.draft.video_profiles(locale);
@@ -158,7 +160,7 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
             advanced(app, ui);
         }
         DownloadMode::Audio => {
-            theme::card_frame(p).show(ui, |ui| {
+            theme::card(ui, p, |ui| {
                 theme::section_title(ui, p, s.audio_title);
                 ui.add_space(4.0);
                 let profiles = app.controller.state.draft.audio_profiles(locale);
@@ -173,16 +175,16 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
             fragment(app, ui);
         }
         DownloadMode::Thumbnail => {
-            theme::card_frame(p).show(ui, |ui| {
+            theme::card(ui, p, |ui| {
                 theme::section_title(ui, p, s.thumbnail_title);
                 ui.add_space(4.0);
-                theme::muted(ui, p, "YouTube thumbnail in the best available resolution.");
+                theme::muted(ui, p, s.thumbnail_hint);
             });
         }
     }
 
-    ui.add_space(12.0);
-    theme::card_frame(p).show(ui, |ui| {
+    ui.add_space(theme::CARD_GAP);
+    theme::card(ui, p, |ui| {
         ui.horizontal(|ui| {
             theme::section_title(ui, p, s.output_folder);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -196,12 +198,8 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
             });
         });
         ui.add_space(4.0);
-        ui.label(
-            RichText::new(app.controller.state.downloads_dir.to_string_lossy())
-                .size(12.5)
-                .family(egui::FontFamily::Monospace)
-                .color(p.muted),
-        );
+        let path = app.controller.state.downloads_dir.to_string_lossy();
+        theme::text_chip(ui, p, &path, 12.5, ui.available_width(), false);
         let is_playlist = app
             .controller
             .state
@@ -213,8 +211,8 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
             ui.horizontal(|ui| {
                 theme::section_title(ui, p, s.workers);
                 ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                    theme::slider(ui, p, &mut app.controller.state.draft.workers, 1..=8, 200.0);
                     theme::value_box(ui, p, app.controller.state.draft.workers.to_string());
+                    theme::slider(ui, p, &mut app.controller.state.draft.workers, 1..=8, 200.0);
                 });
             });
         }
@@ -224,7 +222,7 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
 fn advanced(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let p = app.palette();
     let s = app.s();
-    theme::card_frame(p).show(ui, |ui| {
+    theme::card(ui, p, |ui| {
         egui::CollapsingHeader::new(theme::strong_text(s.advanced, 14.0).color(p.text))
             .default_open(true)
             .show(ui, |ui| {
@@ -249,7 +247,7 @@ fn advanced(app: &mut VolvidApp, ui: &mut egui::Ui) {
                     }
                     theme::muted(ui, p, s.audio_original_hint);
                 }
-                ui.add_space(8.0);
+                ui.add_space(theme::SECTION_GAP);
                 theme::section_title(ui, p, s.subtitles_title);
                 let subs = app.controller.state.sub_tracks.clone();
                 if subs.is_empty() {
@@ -286,8 +284,15 @@ fn fragment(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let s = app.s();
     let target = app.controller.state.target.clone();
     let duration = app.controller.state.media_duration;
+    if target
+        .as_ref()
+        .is_some_and(|target| target.is_playlist() && !app.controller.state.force_single)
+    {
+        theme::muted(ui, p, s.trim_playlist_unavailable);
+        return;
+    }
     let mut enabled = app.controller.state.draft.fragment_mode != FragmentMode::None;
-    theme::card_frame(p).show(ui, |ui| {
+    theme::card(ui, p, |ui| {
         if ui
             .checkbox(&mut enabled, theme::strong_text(s.trim_enable, 14.0))
             .changed()
@@ -334,19 +339,22 @@ fn fragment(app: &mut VolvidApp, ui: &mut egui::Ui) {
         );
         if app.controller.state.draft.fragment_mode == FragmentMode::Custom {
             ui.horizontal(|ui| {
-                ui.add_sized(
-                    [120.0, 34.0],
-                    egui::TextEdit::singleline(&mut app.controller.state.draft.custom_start)
-                        .hint_text("1:00"),
+                theme::text_input(
+                    ui,
+                    &mut app.controller.state.draft.custom_start,
+                    "1:00",
+                    120.0,
                 );
                 ui.label("—");
-                ui.add_sized(
-                    [120.0, 34.0],
-                    egui::TextEdit::singleline(&mut app.controller.state.draft.custom_end)
-                        .hint_text("2:30"),
+                theme::text_input(
+                    ui,
+                    &mut app.controller.state.draft.custom_end,
+                    "2:30",
+                    120.0,
                 );
-                theme::muted(ui, p, s.trim_hint);
             });
+            ui.add_space(4.0);
+            theme::muted(ui, p, s.trim_hint);
         }
         if let Err(error) = app
             .controller
@@ -354,14 +362,17 @@ fn fragment(app: &mut VolvidApp, ui: &mut egui::Ui) {
             .draft
             .fragment(target.as_ref(), duration)
         {
-            ui.label(
-                RichText::new(fragment_error_text(
-                    error,
-                    duration,
-                    app.controller.state.locale,
-                ))
-                .color(p.danger)
-                .size(12.0),
+            ui.add(
+                egui::Label::new(
+                    RichText::new(fragment_error_text(
+                        error,
+                        duration,
+                        app.controller.state.locale,
+                    ))
+                    .color(p.danger)
+                    .size(theme::FONT_SMALL),
+                )
+                .wrap(),
             );
         }
     });
@@ -372,15 +383,27 @@ fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let s = app.s();
     let locale = app.controller.state.locale;
     let preview = app.preview_texture().cloned();
-    let preview_error = app.preview_error().map(str::to_owned);
-    theme::card_frame(p).show(ui, |ui| {
+    let thumbnail_loading = app.controller.state.thumbnail_loading;
+    let thumbnail_error = app.controller.state.thumbnail_error;
+    theme::card(ui, p, |ui| {
         let width = ui.available_width();
         if let Some(texture) = preview {
-            let aspect = texture.size_vec2().y / texture.size_vec2().x.max(1.0);
-            let height = (width * aspect).clamp(120.0, 220.0);
-            ui.add(
-                egui::Image::new((texture.id(), egui::vec2(width, height)))
-                    .corner_radius(egui::CornerRadius::same(12)),
+            let size = texture.size_vec2();
+            let aspect = size.x.max(1.0) / size.y.max(1.0);
+            let mut height = width / aspect.max(0.01);
+            if height > 220.0 {
+                height = 220.0;
+            }
+            let image_width = (height * aspect).min(width);
+            ui.allocate_ui_with_layout(
+                egui::vec2(width, height),
+                Layout::left_to_right(Align::Center),
+                |ui| {
+                    ui.add(
+                        egui::Image::new((texture.id(), egui::vec2(image_width, height)))
+                            .corner_radius(egui::CornerRadius::same(12)),
+                    );
+                },
             );
             ui.add_space(12.0);
         } else {
@@ -394,7 +417,7 @@ fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
                         egui::vec2(width, 132.0),
                         Layout::centered_and_justified(egui::Direction::TopDown),
                         |ui| {
-                            if app.controller.state.probe_loading {
+                            if app.controller.state.probe_loading || thumbnail_loading {
                                 ui.add(egui::Spinner::new().size(24.0).color(p.accent));
                             } else {
                                 ui.label(
@@ -408,14 +431,21 @@ fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
                 });
             ui.add_space(12.0);
         }
-        if let Some(error) = &preview_error {
-            ui.label(RichText::new(error).color(p.warning).size(11.5));
+        if thumbnail_error {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(s.thumbnail_failed)
+                        .color(p.warning)
+                        .size(theme::FONT_SMALL),
+                )
+                .wrap(),
+            );
             ui.add_space(6.0);
         }
         theme::section_title(ui, p, s.configure_title);
         ui.add_space(6.0);
         let profile = app.controller.state.draft.profile(locale);
-        ui.label(theme::strong_text(&profile.label, 16.0).color(p.text));
+        ui.add(egui::Label::new(theme::strong_text(&profile.label, 16.0).color(p.text)).wrap());
         ui.add_space(4.0);
         let target = app.controller.state.target.clone();
         let fragment = app
@@ -467,7 +497,14 @@ fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
         }
         if !app.controller.state.deps.ytdlp.available {
             ui.add_space(6.0);
-            ui.label(RichText::new(s.missing_ytdlp).color(p.danger).size(12.0));
+            ui.add(
+                egui::Label::new(
+                    RichText::new(s.missing_ytdlp)
+                        .color(p.danger)
+                        .size(theme::FONT_SMALL),
+                )
+                .wrap(),
+            );
         }
     });
 }
@@ -530,7 +567,7 @@ fn estimate_size(app: &VolvidApp) -> i64 {
                     target.is_playlist() && !app.controller.state.force_single
                 });
             if is_playlist {
-                size * app.controller.state.selected_entries.len().max(1) as i64
+                size.saturating_mul(app.controller.state.selected_entries.len().max(1) as i64)
             } else {
                 size
             }

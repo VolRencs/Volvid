@@ -63,30 +63,51 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
     } else {
         for item in state.history.iter().rev().take(50) {
             let color = if item.ok { p.success } else { p.danger };
-            theme::card_frame(p).show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
+            let timestamp = format::timestamp(item.timestamp, state.locale);
+            let open_width =
+                theme::text_width(ui, s.open_folder, theme::semibold(theme::FONT_LABEL)) + 30.0;
+            let timestamp_width = theme::text_width(
+                ui,
+                &timestamp,
+                egui::FontId::proportional(theme::FONT_SMALL),
+            );
+            let actions_width = open_width + 8.0 + timestamp_width + 8.0;
+            theme::card(ui, p, |ui| {
                 ui.horizontal(|ui| {
                     theme::status_dot(ui, color);
-                    ui.vertical(|ui| {
-                        ui.add(
-                            egui::Label::new(theme::strong_text(&item.label, 15.0).color(p.text))
+                    theme::row_with_actions(
+                        ui,
+                        actions_width,
+                        |ui| {
+                            ui.add(
+                                egui::Label::new(
+                                    theme::strong_text(&item.label, theme::FONT_BODY).color(p.text),
+                                )
                                 .truncate(),
-                        );
-                        ui.add(
-                            egui::Label::new(RichText::new(&item.url).size(11.5).color(p.muted))
+                            );
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(&item.url)
+                                        .size(theme::FONT_SMALL)
+                                        .color(p.muted),
+                                )
                                 .truncate(),
-                        );
-                    });
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if secondary_button(ui, p, s.open_folder).clicked() {
-                            action = Some(SummaryAction::Open(item.output_dir.clone()));
-                        }
-                        ui.label(
-                            RichText::new(format::timestamp(item.timestamp))
-                                .size(11.5)
-                                .color(p.muted),
-                        );
-                    });
+                            );
+                        },
+                        |ui| {
+                            if secondary_button(ui, p, s.open_folder).clicked() {
+                                action = Some(SummaryAction::Open(item.output_dir.clone()));
+                            }
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(&timestamp)
+                                        .size(theme::FONT_SMALL)
+                                        .color(p.muted),
+                                )
+                                .truncate(),
+                            );
+                        },
+                    );
                 });
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
@@ -97,16 +118,11 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                     };
                     theme::badge(ui, p, mode, p.accent);
                     if item.items > 1 {
-                        theme::muted(
-                            ui,
-                            p,
-                            format!(
-                                "{}  ·  {} {}",
-                                s.job_items.replace("%d", &item.items.to_string()),
-                                item.failed,
-                                s.failed
-                            ),
-                        );
+                        let mut details = vec![s.job_items.replace("%d", &item.items.to_string())];
+                        if item.failed > 0 {
+                            details.push(s.failed_items.replace("%d", &item.failed.to_string()));
+                        }
+                        theme::muted(ui, p, details.join("  ·  "));
                     }
                 });
             });

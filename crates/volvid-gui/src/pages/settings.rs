@@ -16,24 +16,24 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
             if theme::segmented_button(
                 ui,
                 p,
-                "Русский",
-                app.controller.state.locale == volvid_core::Locale::Ru,
-                100.0,
-            )
-            .clicked()
-            {
-                app.controller.set_locale(volvid_core::Locale::Ru);
-            }
-            if theme::segmented_button(
-                ui,
-                p,
                 "English",
                 app.controller.state.locale == volvid_core::Locale::En,
-                100.0,
+                104.0,
             )
             .clicked()
             {
                 app.controller.set_locale(volvid_core::Locale::En);
+            }
+            if theme::segmented_button(
+                ui,
+                p,
+                "Русский",
+                app.controller.state.locale == volvid_core::Locale::Ru,
+                104.0,
+            )
+            .clicked()
+            {
+                app.controller.set_locale(volvid_core::Locale::Ru);
             }
         });
         ui.add_space(4.0);
@@ -44,14 +44,14 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                 (Theme::Dark, s.theme_dark),
                 (Theme::System, s.theme_system),
             ] {
-                if theme::segmented_button(ui, p, label, current == value, 100.0).clicked() {
+                if theme::segmented_button(ui, p, label, current == value, 104.0).clicked() {
                     app.controller.set_theme(value);
                 }
             }
         });
     });
 
-    ui.add_space(14.0);
+    ui.add_space(theme::CARD_GAP);
     settings_card(ui, p, s.paths, |ui| {
         path_row(
             app,
@@ -110,6 +110,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
         access_row(
             ui,
             p,
+            s,
             s.cookies,
             &deps.cookies.status,
             &cookies_detail(&deps.cookies),
@@ -117,6 +118,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
         access_row(
             ui,
             p,
+            s,
             s.js_runtime,
             &deps.runtime.status,
             &deps.runtime.name,
@@ -134,47 +136,67 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
         }
     });
     if refresh {
-        app.controller.backend.refresh_deps();
+        app.controller.refresh_deps();
     }
 
     ui.add_space(14.0);
     settings_card(ui, p, s.about, |ui| {
-        ui.horizontal(|ui| {
-            let label_width = if ui.available_width() >= 720.0 {
-                220.0
-            } else {
-                160.0
-            };
-            ui.allocate_ui_with_layout(
-                egui::vec2(label_width, 32.0),
-                Layout::left_to_right(Align::Center),
-                |ui| {
-                    ui.label(RichText::new(s.current_version).color(p.text).size(14.0));
-                },
-            );
-            ui.label(
-                RichText::new(app.controller.app_version())
-                    .color(p.text)
-                    .size(13.0),
-            );
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if app.controller.state.update_checking {
-                    theme::spinner(ui, p, s.checking);
-                } else if let Some(update) = &app.controller.state.update.clone() {
-                    if secondary_button(ui, p, s.install_update).clicked() {
-                        app.controller.state.update_modal = true;
-                    }
-                    theme::badge(
-                        ui,
-                        p,
-                        &format!("{} {}", s.latest_version, update.latest),
-                        p.warning,
-                    );
-                } else if secondary_button(ui, p, s.check_now).clicked() {
-                    app.controller.check_updates();
-                }
+        let update = app.controller.state.update.clone();
+        let checking = app.controller.state.update_checking;
+        if ui.available_width() < 700.0 {
+            ui.vertical(|ui| {
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(s.current_version)
+                            .color(p.text)
+                            .size(theme::FONT_LABEL),
+                    )
+                    .truncate(),
+                );
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(app.controller.app_version())
+                            .color(p.text)
+                            .size(theme::FONT_MUTED),
+                    )
+                    .truncate(),
+                );
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| {
+                    about_actions(ui, p, s, app, checking, update.as_ref());
+                });
             });
-        });
+        } else {
+            ui.horizontal(|ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(theme::SETTINGS_LABEL_W, 32.0),
+                    Layout::left_to_right(Align::Center),
+                    |ui| {
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(s.current_version)
+                                    .color(p.text)
+                                    .size(theme::FONT_LABEL),
+                            )
+                            .truncate(),
+                        );
+                    },
+                );
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(app.controller.app_version())
+                            .color(p.text)
+                            .size(theme::FONT_MUTED),
+                    )
+                    .truncate(),
+                );
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                        about_actions(ui, p, s, app, checking, update.as_ref());
+                    });
+                });
+            });
+        }
         ui.add_space(4.0);
         setting_row(ui, p, s.history_title, |ui| {
             if secondary_button(ui, p, s.clear_history).clicked() {
@@ -184,14 +206,38 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
     });
 }
 
+fn about_actions(
+    ui: &mut egui::Ui,
+    p: &crate::theme::Palette,
+    s: &volvid_i18n::Strings,
+    app: &mut VolvidApp,
+    checking: bool,
+    update: Option<&volvid_core::UpdateInfo>,
+) {
+    if checking {
+        theme::spinner(ui, p, s.checking);
+    } else if let Some(update) = update {
+        if secondary_button(ui, p, s.install_update).clicked() {
+            app.controller.state.update_modal = true;
+        }
+        theme::badge(
+            ui,
+            p,
+            &format!("{} {}", s.latest_version, update.latest),
+            p.warning,
+        );
+    } else if secondary_button(ui, p, s.check_now).clicked() {
+        app.controller.check_updates();
+    }
+}
+
 fn settings_card(
     ui: &mut egui::Ui,
     p: &crate::theme::Palette,
     title: &str,
     add_contents: impl FnOnce(&mut egui::Ui),
 ) {
-    theme::card_frame(p).show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
+    theme::card(ui, p, |ui| {
         theme::section_title(ui, p, title);
         ui.add_space(10.0);
         add_contents(ui);
@@ -200,31 +246,45 @@ fn settings_card(
 
 fn setting_row(
     ui: &mut egui::Ui,
-    _p: &crate::theme::Palette,
+    p: &crate::theme::Palette,
     label: &str,
     add_contents: impl FnOnce(&mut egui::Ui),
 ) {
-    ui.horizontal(|ui| {
-        let label_width = if ui.available_width() >= 720.0 {
-            220.0
-        } else {
-            160.0
-        };
-        ui.allocate_ui_with_layout(
-            egui::vec2(label_width, 32.0),
-            Layout::left_to_right(Align::Center),
-            |ui| {
-                ui.label(
-                    RichText::new(label)
-                        .color(ui.visuals().text_color())
-                        .size(14.0),
-                );
-            },
-        );
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            add_contents(ui);
+    let narrow = ui.available_width() < theme::SETTINGS_BREAKPOINT;
+    if narrow {
+        ui.vertical(|ui| {
+            ui.add(
+                egui::Label::new(RichText::new(label).color(p.text).size(theme::FONT_LABEL))
+                    .truncate(),
+            );
+            ui.horizontal_wrapped(|ui| add_contents(ui));
         });
-    });
+    } else {
+        ui.horizontal(|ui| {
+            let label_width = if ui.available_width() >= 720.0 {
+                theme::SETTINGS_LABEL_W
+            } else {
+                theme::SETTINGS_LABEL_W_NARROW
+            };
+            ui.allocate_ui_with_layout(
+                egui::vec2(label_width, 32.0),
+                Layout::left_to_right(Align::Center),
+                |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(label).color(p.text).size(theme::FONT_LABEL),
+                        )
+                        .truncate(),
+                    );
+                },
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    add_contents(ui);
+                });
+            });
+        });
+    }
 }
 
 fn path_row(
@@ -240,10 +300,15 @@ fn path_row(
     if wide {
         ui.horizontal(|ui| {
             ui.allocate_ui_with_layout(
-                egui::vec2(220.0, 32.0),
+                egui::vec2(theme::SETTINGS_LABEL_W, 32.0),
                 Layout::left_to_right(Align::Center),
                 |ui| {
-                    ui.label(RichText::new(label).color(p.text).size(14.0));
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(label).color(p.text).size(theme::FONT_LABEL),
+                        )
+                        .truncate(),
+                    );
                 },
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -282,6 +347,10 @@ fn path_box(ui: &mut egui::Ui, p: &crate::theme::Palette, path: &std::path::Path
     theme::text_chip(ui, p, &text, 12.0, width, false);
 }
 
+fn badge_width(ui: &egui::Ui, text: &str) -> f32 {
+    theme::text_width(ui, text, theme::semibold(12.0)) + 22.0
+}
+
 fn dependency_row(
     app: &mut VolvidApp,
     ui: &mut egui::Ui,
@@ -298,59 +367,82 @@ fn dependency_row(
     } else {
         p.muted
     };
-    ui.horizontal(|ui| {
-        theme::status_dot(ui, color);
-        ui.label(theme::strong_text(&dep.name, 14.0).color(p.text))
-            .on_hover_text(&dep.path);
-        ui.label(
-            RichText::new(if dep.version.is_empty() {
-                if app.controller.state.deps_checking {
-                    s.dep_checking
-                } else if dep.available {
-                    s.dep_available
-                } else {
-                    s.dep_missing
-                }
+    let role_text = if dep.required {
+        s.dep_required
+    } else {
+        s.dep_optional
+    };
+    let source = match dep.source {
+        volvid_core::DependencySource::System => s.dep_system,
+        volvid_core::DependencySource::Managed => s.dep_managed,
+        volvid_core::DependencySource::Missing => "",
+    };
+    let install_label = (dep.downloadable
+        && (!dep.available || dep.source == volvid_core::DependencySource::Managed))
+        .then(|| {
+            if dep.available {
+                format!("{} {}", s.dep_update, dep.name)
             } else {
-                &dep.version
-            })
-            .size(11.5)
-            .color(p.muted),
-        );
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let role_color = if dep.required { p.selection } else { p.muted };
-            theme::badge(
-                ui,
-                p,
-                if dep.required {
-                    s.dep_required
-                } else {
-                    s.dep_optional
-                },
-                role_color,
+                format!("{} {}", s.dep_install, dep.name)
+            }
+        });
+    let mut actions_width = badge_width(ui, role_text) + 8.0;
+    if !source.is_empty() {
+        actions_width += badge_width(ui, source) + 8.0;
+    }
+    if let Some(label) = &install_label {
+        actions_width += theme::text_width(ui, label, theme::semibold(theme::FONT_LABEL)) + 30.0;
+    }
+    let version = if dep.version.is_empty() {
+        if app.controller.state.deps_checking {
+            s.dep_checking
+        } else if dep.available {
+            s.dep_available
+        } else {
+            s.dep_missing
+        }
+    } else {
+        dep.version.as_str()
+    };
+    let busy = installing.is_some();
+    theme::row_with_actions_inline(
+        ui,
+        actions_width,
+        |ui| {
+            theme::status_dot(ui, color);
+            ui.add(
+                egui::Label::new(theme::strong_text(&dep.name, theme::FONT_LABEL).color(p.text))
+                    .truncate(),
+            )
+            .on_hover_text(&dep.path);
+            ui.add(
+                egui::Label::new(
+                    RichText::new(version)
+                        .size(theme::FONT_SMALL)
+                        .color(p.muted),
+                )
+                .truncate(),
             );
-            let source = match dep.source {
-                volvid_core::DependencySource::System => s.dep_system,
-                volvid_core::DependencySource::Managed => s.dep_managed,
-                volvid_core::DependencySource::Missing => "",
-            };
+        },
+        |ui| {
+            if let Some(label) = &install_label {
+                ui.add_enabled_ui(!busy, |ui| {
+                    if secondary_button(ui, p, label).clicked() {
+                        app.controller.install_dependency(&dep.key);
+                    }
+                });
+            }
             if !source.is_empty() {
                 theme::badge(ui, p, source, p.muted);
             }
-            if dep.downloadable
-                && (!dep.available || dep.source == volvid_core::DependencySource::Managed)
-            {
-                let label = if dep.available {
-                    format!("{} {}", s.dep_update, dep.name)
-                } else {
-                    format!("{} {}", s.dep_install, dep.name)
-                };
-                if secondary_button(ui, p, &label).clicked() {
-                    app.controller.install_dependency(&dep.key);
-                }
-            }
-        });
-    });
+            theme::badge(
+                ui,
+                p,
+                role_text,
+                if dep.required { p.selection } else { p.muted },
+            );
+        },
+    );
     if installing == Some(dep.key.as_str())
         && let Some(progress) = progress
     {
@@ -367,23 +459,41 @@ fn dependency_row(
 fn access_row(
     ui: &mut egui::Ui,
     p: &crate::theme::Palette,
+    s: &volvid_i18n::Strings,
     label: &str,
     status: &str,
     detail: &str,
 ) {
-    let color = if status == "active" {
+    let color = if status == volvid_core::STATUS_ACTIVE {
         p.success
     } else {
         p.muted
     };
-    ui.horizontal(|ui| {
-        theme::status_dot(ui, color);
-        ui.label(theme::strong_text(label, 13.5).color(p.text));
-        ui.label(RichText::new(detail).size(11.5).color(p.muted));
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+    let status = match status {
+        volvid_core::STATUS_ACTIVE => s.status_active,
+        volvid_core::STATUS_NOT_FOUND => s.status_not_found,
+        volvid_core::STATUS_NO_PROFILE => s.status_no_profile,
+        other => other,
+    };
+    let actions_width = badge_width(ui, status) + 8.0;
+    theme::row_with_actions_inline(
+        ui,
+        actions_width,
+        |ui| {
+            theme::status_dot(ui, color);
+            ui.add(
+                egui::Label::new(theme::strong_text(label, theme::FONT_LABEL).color(p.text))
+                    .truncate(),
+            );
+            ui.add(
+                egui::Label::new(RichText::new(detail).size(theme::FONT_SMALL).color(p.muted))
+                    .truncate(),
+            );
+        },
+        |ui| {
             theme::badge(ui, p, status, color);
-        });
-    });
+        },
+    );
 }
 
 fn cookies_detail(cookies: &volvid_core::BrowserCookiesInfo) -> String {

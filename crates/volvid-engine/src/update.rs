@@ -85,6 +85,14 @@ pub async fn apply_update(
     if info.download_url.trim().is_empty() {
         bail!("update info is empty");
     }
+    let asset_name = if cfg!(windows) {
+        "Volvid.exe"
+    } else {
+        "Volvid"
+    };
+    if !valid_update_url(&info.download_url, asset_name) {
+        bail!("invalid update URL");
+    }
     let exe = std::env::current_exe().context("locate executable")?;
     let tmp = exe.with_extension("new");
     let result = download_file(

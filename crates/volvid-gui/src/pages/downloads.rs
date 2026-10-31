@@ -41,56 +41,38 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let has_finished = state.jobs.iter().any(|job| !job.status.is_pending());
     let mut action = None;
 
-    ui.horizontal(|ui| {
+    let mut parts = vec![s.downloading_count.replace("%d", &running.to_string())];
+    if queued > 0 {
+        parts.push(s.waiting_count.replace("%d", &queued.to_string()));
+    }
+    if paused > 0 {
+        parts.push(s.paused_count.replace("%d", &paused.to_string()));
+    }
+    if failed > 0 {
+        parts.push(s.errors_count.replace("%d", &failed.to_string()));
+    }
+    let stats = parts.join("  ·  ");
+
+    if ui.available_width() < 760.0 {
         ui.vertical(|ui| {
             theme::title(ui, p, s.queue);
-            let mut parts = vec![s.downloading_count.replace("%d", &running.to_string())];
-            if queued > 0 {
-                parts.push(s.waiting_count.replace("%d", &queued.to_string()));
-            }
-            if paused > 0 {
-                parts.push(format!("{} {}", s.paused, paused));
-            }
-            if failed > 0 {
-                parts.push(s.errors_count.replace("%d", &failed.to_string()));
-            }
-            theme::muted(ui, p, parts.join("  ·  "));
+            theme::muted(ui, p, stats.clone());
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                queue_actions(ui, p, s, has_finished, has_pending, paused, &mut action);
+            });
         });
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let clear = ui
-                .add_enabled_ui(has_finished, |ui| {
-                    secondary_button_ex(
-                        ui,
-                        p,
-                        s.clear_finished,
-                        egui::vec2(0.0, theme::BUTTON_HEIGHT),
-                    )
-                })
-                .inner
-                .clicked();
-            if clear {
-                action = Some(QueueAction::ClearFinished);
-            }
-            let pause_label = if paused > 0 && !has_pending {
-                s.resume_all
-            } else {
-                s.pause_all
-            };
-            let pause = ui
-                .add_enabled_ui(has_pending || paused > 0, |ui| {
-                    secondary_button_ex(ui, p, pause_label, egui::vec2(0.0, theme::BUTTON_HEIGHT))
-                })
-                .inner
-                .clicked();
-            if pause {
-                action = Some(if has_pending {
-                    QueueAction::PauseAll
-                } else {
-                    QueueAction::ResumeAll
-                });
-            }
+    } else {
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                theme::title(ui, p, s.queue);
+                theme::muted(ui, p, stats);
+            });
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                queue_actions(ui, p, s, has_finished, has_pending, paused, &mut action);
+            });
         });
-    });
+    }
     ui.add_space(16.0);
 
     if state.jobs.is_empty() {
@@ -148,7 +130,14 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                                     .on_hover_text(text);
                                 } else {
                                     let label = status_label(job, s, status_color);
-                                    ui.label(RichText::new(label).color(status_color).size(11.5));
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(&label)
+                                                .color(status_color)
+                                                .size(theme::FONT_SMALL),
+                                        )
+                                        .truncate(),
+                                    );
                                 }
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                     let meta = job_meta(job, s, state.locale);
@@ -164,7 +153,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                             });
                         },
                     );
-                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.add_space(12.0);
                         match job.status {
                             JobStatus::Active => {
@@ -254,7 +243,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                                 {
                                     action = Some(QueueAction::Dismiss(job.id));
                                 }
-                                if secondary_button_sized(ui, p, s.retry, 104.0).clicked() {
+                                if secondary_button_sized(ui, p, s.retry, 110.0).clicked() {
                                     action = Some(QueueAction::Retry(job.id));
                                 }
                             }
@@ -271,7 +260,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                                 {
                                     action = Some(QueueAction::Dismiss(job.id));
                                 }
-                                if secondary_button_sized(ui, p, s.open_folder, 118.0).clicked() {
+                                if secondary_button_sized(ui, p, s.open_folder, 136.0).clicked() {
                                     action = Some(QueueAction::Open(job.output_dir.clone()));
                                 }
                             }
@@ -298,11 +287,54 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
     }
 }
 
+fn queue_actions(
+    ui: &mut egui::Ui,
+    p: &crate::theme::Palette,
+    s: &volvid_i18n::Strings,
+    has_finished: bool,
+    has_pending: bool,
+    paused: usize,
+    action: &mut Option<QueueAction>,
+) {
+    let clear = ui
+        .add_enabled_ui(has_finished, |ui| {
+            secondary_button_ex(
+                ui,
+                p,
+                s.clear_finished,
+                egui::vec2(0.0, theme::BUTTON_HEIGHT),
+            )
+        })
+        .inner
+        .clicked();
+    if clear {
+        *action = Some(QueueAction::ClearFinished);
+    }
+    let pause_label = if paused > 0 && !has_pending {
+        s.resume_all
+    } else {
+        s.pause_all
+    };
+    let pause = ui
+        .add_enabled_ui(has_pending || paused > 0, |ui| {
+            secondary_button_ex(ui, p, pause_label, egui::vec2(0.0, theme::BUTTON_HEIGHT))
+        })
+        .inner
+        .clicked();
+    if pause {
+        *action = Some(if has_pending {
+            QueueAction::PauseAll
+        } else {
+            QueueAction::ResumeAll
+        });
+    }
+}
+
 fn action_width(status: JobStatus) -> f32 {
     match status {
         JobStatus::Active | JobStatus::Paused => 108.0,
-        JobStatus::Failed => 166.0,
-        JobStatus::Completed => 184.0,
+        JobStatus::Failed => 170.0,
+        JobStatus::Completed => 198.0,
         JobStatus::Queued | JobStatus::Cancelled => 58.0,
     }
 }

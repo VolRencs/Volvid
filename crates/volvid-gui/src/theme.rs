@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use eframe::CreationContext;
 use egui::{
-    Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Margin, RichText, Stroke,
-    TextStyle, Visuals,
+    Align, Atom, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Layout,
+    Margin, RichText, Stroke, TextStyle, Vec2, Visuals,
 };
 use volvid_engine::Theme as ConfigTheme;
 
@@ -12,8 +12,30 @@ const FONT_SEMIBOLD: &str = "onest-semibold";
 const SEMIBOLD_FAMILY: &str = "onest-semibold-family";
 
 pub const BUTTON_HEIGHT: f32 = 42.0;
+pub const INPUT_HEIGHT: f32 = 42.0;
 pub const BUTTON_RADIUS: u8 = 10;
 pub const CONTROL_HEIGHT: f32 = 42.0;
+pub const CARD_RADIUS: u8 = 14;
+pub const ROW_RADIUS: u8 = 8;
+pub const CARD_PADDING: i8 = 18;
+pub const PAGE_MARGIN_X: i8 = 42;
+pub const PAGE_MARGIN_Y: i8 = 22;
+pub const CARD_GAP: f32 = 14.0;
+pub const SECTION_GAP: f32 = 8.0;
+pub const PAGE_HEADER_GAP: f32 = 16.0;
+pub const FONT_PAGE_TITLE: f32 = 36.0;
+pub const FONT_SECTION: f32 = 12.5;
+pub const FONT_BODY: f32 = 15.0;
+pub const FONT_LABEL: f32 = 14.0;
+pub const FONT_MUTED: f32 = 13.0;
+pub const FONT_SMALL: f32 = 11.5;
+pub const FONT_TINY: f32 = 10.5;
+pub const SETTINGS_LABEL_W: f32 = 220.0;
+pub const SETTINGS_LABEL_W_NARROW: f32 = 180.0;
+pub const SETTINGS_BREAKPOINT: f32 = 720.0;
+pub const MODAL_WIDTH_LG: f32 = 600.0;
+pub const MODAL_WIDTH_MD: f32 = 512.0;
+pub const MODAL_WIDTH_SM: f32 = 480.0;
 
 pub struct Palette {
     pub bg: Color32,
@@ -99,7 +121,7 @@ pub fn strong_text(text: impl Into<String>, size: f32) -> RichText {
 }
 
 pub fn title(ui: &mut egui::Ui, p: &Palette, text: &str) {
-    ui.label(strong_text(text, 36.0).color(p.text));
+    ui.label(strong_text(text, FONT_PAGE_TITLE).color(p.text));
 }
 
 pub fn install_fonts(ctx: &egui::Context) {
@@ -225,16 +247,77 @@ pub fn card_frame(p: &Palette) -> egui::Frame {
     egui::Frame::new()
         .fill(p.card)
         .stroke(Stroke::new(1.0, p.border))
-        .corner_radius(CornerRadius::same(14))
-        .inner_margin(Margin::same(18))
+        .corner_radius(CornerRadius::same(CARD_RADIUS))
+        .inner_margin(Margin::same(CARD_PADDING))
+}
+
+pub fn card(ui: &mut egui::Ui, p: &Palette, add_contents: impl FnOnce(&mut egui::Ui)) {
+    card_frame(p).show(ui, |ui| {
+        ui.set_min_width(ui.available_width());
+        add_contents(ui);
+    });
 }
 
 pub fn section_title(ui: &mut egui::Ui, p: &Palette, text: &str) {
-    ui.label(strong_text(text, 12.5).color(p.muted));
+    ui.add(egui::Label::new(strong_text(text, FONT_SECTION).color(p.muted)).truncate());
 }
 
 pub fn muted(ui: &mut egui::Ui, p: &Palette, text: impl Into<String>) {
-    ui.label(RichText::new(text.into()).color(p.muted).size(13.0));
+    ui.add(egui::Label::new(RichText::new(text.into()).color(p.muted).size(FONT_MUTED)).wrap());
+}
+
+pub fn muted_inline(ui: &mut egui::Ui, p: &Palette, text: impl Into<String>) {
+    ui.add(egui::Label::new(RichText::new(text.into()).color(p.muted).size(FONT_MUTED)).truncate());
+}
+
+pub fn page_title(ui: &mut egui::Ui, p: &Palette, text: &str) {
+    ui.add(egui::Label::new(strong_text(text, FONT_PAGE_TITLE).color(p.text)).truncate());
+}
+
+pub fn text_input(ui: &mut egui::Ui, buf: &mut String, hint: &str, width: f32) -> egui::Response {
+    ui.add_sized(
+        [width, INPUT_HEIGHT],
+        egui::TextEdit::singleline(buf)
+            .hint_text(hint)
+            .margin(Margin::symmetric(12, 11))
+            .align(egui::Align2::LEFT_CENTER),
+    )
+}
+
+/// Lays out a text column and a right-aligned action column without overlap.
+pub fn row_with_actions(
+    ui: &mut egui::Ui,
+    actions_width: f32,
+    add_text: impl FnOnce(&mut egui::Ui),
+    add_actions: impl FnOnce(&mut egui::Ui),
+) {
+    ui.horizontal(|ui| {
+        let text_width = (ui.available_width() - actions_width - 8.0).max(80.0);
+        ui.allocate_ui_with_layout(
+            Vec2::new(text_width, 0.0),
+            Layout::top_down(Align::LEFT),
+            add_text,
+        );
+        ui.with_layout(Layout::right_to_left(Align::Center), add_actions);
+    });
+}
+
+/// Like [`row_with_actions`], but keeps the text column on one line.
+pub fn row_with_actions_inline(
+    ui: &mut egui::Ui,
+    actions_width: f32,
+    add_text: impl FnOnce(&mut egui::Ui),
+    add_actions: impl FnOnce(&mut egui::Ui),
+) {
+    ui.horizontal(|ui| {
+        let text_width = (ui.available_width() - actions_width - 8.0).max(80.0);
+        ui.allocate_ui_with_layout(
+            Vec2::new(text_width, 0.0),
+            Layout::left_to_right(Align::Center),
+            add_text,
+        );
+        ui.with_layout(Layout::right_to_left(Align::Center), add_actions);
+    });
 }
 
 pub fn status_dot(ui: &mut egui::Ui, color: Color32) {
@@ -244,14 +327,36 @@ pub fn status_dot(ui: &mut egui::Ui, color: Color32) {
 }
 
 pub fn badge(ui: &mut egui::Ui, _p: &Palette, text: &str, color: Color32) {
-    egui::Frame::new()
+    badge_sized(ui, text, color, 260.0);
+}
+
+pub fn badge_sized(ui: &mut egui::Ui, text: &str, color: Color32, max_width: f32) {
+    let response = egui::Frame::new()
         .fill(color.gamma_multiply(0.15))
         .stroke(Stroke::new(1.0, color.gamma_multiply(0.45)))
         .corner_radius(CornerRadius::same(255))
         .inner_margin(Margin::symmetric(10, 4))
         .show(ui, |ui| {
-            ui.label(strong_text(text, 12.0).color(color));
-        });
+            ui.set_max_width((max_width - 22.0).max(24.0));
+            ui.add(egui::Label::new(strong_text(text, 12.0).color(color)).truncate());
+        })
+        .response;
+    response.on_hover_text(text);
+}
+
+fn add_auto_button(ui: &mut egui::Ui, button: egui::Button<'_>) -> egui::Response {
+    ui.horizontal(|ui| ui.add(button.truncate())).inner
+}
+
+fn add_fixed_button(
+    ui: &mut egui::Ui,
+    size: egui::Vec2,
+    button: egui::Button<'_>,
+) -> egui::Response {
+    ui.allocate_ui_with_layout(size, Layout::left_to_right(Align::Center), |ui| {
+        ui.add(button.min_size(size).truncate())
+    })
+    .inner
 }
 
 pub fn primary_button(ui: &mut egui::Ui, p: &Palette, text: &str) -> egui::Response {
@@ -273,12 +378,28 @@ pub fn primary_button_ex(
     text: &str,
     size: egui::Vec2,
 ) -> egui::Response {
-    let button = egui::Button::new(strong_text(text, 14.0).color(p.on_accent))
-        .fill(p.accent)
-        .stroke(Stroke::NONE)
-        .corner_radius(CornerRadius::same(BUTTON_RADIUS))
-        .min_size(size);
-    let response = ui.add(button);
+    let response = if size.x > 0.0 {
+        add_fixed_button(
+            ui,
+            size,
+            egui::Button::new((
+                Atom::grow(),
+                strong_text(text, FONT_LABEL).color(p.on_accent),
+                Atom::grow(),
+            ))
+            .fill(p.accent)
+            .stroke(Stroke::NONE)
+            .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
+        )
+    } else {
+        add_auto_button(
+            ui,
+            egui::Button::new(strong_text(text, FONT_LABEL).color(p.on_accent))
+                .fill(p.accent)
+                .stroke(Stroke::NONE)
+                .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
+        )
+    };
     press_overlay(ui, &response, BUTTON_RADIUS);
     response
 }
@@ -298,14 +419,28 @@ pub fn primary_button_fill(
     };
     let painter = ui.painter();
     painter.rect_filled(rect, CornerRadius::same(BUTTON_RADIUS), fill);
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        text,
-        semibold(14.0),
-        p.on_accent,
-    );
-    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    let galley = egui::WidgetText::from(strong_text(text, FONT_LABEL).color(p.on_accent))
+        .into_galley(
+            ui,
+            Some(egui::TextWrapMode::Truncate),
+            (rect.width() - 24.0).max(1.0),
+            egui::TextStyle::Button,
+        );
+    painter.galley(rect.center() - galley.size() / 2.0, galley, p.on_accent);
+    if response.has_focus() {
+        painter.rect_stroke(
+            rect,
+            CornerRadius::same(BUTTON_RADIUS),
+            Stroke::new(2.0, p.selection),
+            egui::StrokeKind::Inside,
+        );
+    }
+    let enabled = ui.is_enabled();
+    let label = text.to_owned();
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &label));
+    response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(text)
 }
 
 pub fn secondary_button(ui: &mut egui::Ui, p: &Palette, text: &str) -> egui::Response {
@@ -327,13 +462,28 @@ pub fn secondary_button_ex(
     text: &str,
     size: egui::Vec2,
 ) -> egui::Response {
-    let response = ui.add(
-        egui::Button::new(strong_text(text, 14.0).color(p.text))
+    let response = if size.x > 0.0 {
+        add_fixed_button(
+            ui,
+            size,
+            egui::Button::new((
+                Atom::grow(),
+                strong_text(text, FONT_LABEL).color(p.text),
+                Atom::grow(),
+            ))
             .fill(p.card_hover)
             .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(CornerRadius::same(BUTTON_RADIUS))
-            .min_size(size),
-    );
+            .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
+        )
+    } else {
+        add_auto_button(
+            ui,
+            egui::Button::new(strong_text(text, FONT_LABEL).color(p.text))
+                .fill(p.card_hover)
+                .stroke(Stroke::new(1.0, p.border))
+                .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
+        )
+    };
     press_overlay(ui, &response, BUTTON_RADIUS);
     response
 }
@@ -347,13 +497,13 @@ pub fn secondary_icon_button(
     let image = egui::Image::new(icon)
         .fit_to_exact_size(egui::vec2(15.0, 15.0))
         .tint(p.muted);
-    let response = ui.add(
+    let response = add_auto_button(
+        ui,
         egui::Button::new((image, strong_text(text, 13.5).color(p.text)))
             .image_tint_follows_text_color(true)
             .fill(p.card_hover)
             .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(CornerRadius::same(BUTTON_RADIUS))
-            .min_size(egui::vec2(0.0, BUTTON_HEIGHT)),
+            .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
     );
     press_overlay(ui, &response, BUTTON_RADIUS);
     response
@@ -370,13 +520,19 @@ pub fn icon_button(
     let image = egui::Image::new(icon)
         .fit_to_exact_size(egui::vec2(18.0, 18.0))
         .tint(tint);
-    let response = ui.add(
-        egui::Button::image(image)
-            .fill(p.card_hover)
-            .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(CornerRadius::same(BUTTON_RADIUS))
-            .min_size(egui::vec2(size, size)),
-    );
+    let response = ui
+        .scope(|ui| {
+            ui.spacing_mut().button_padding = egui::vec2(12.0, 12.0);
+            add_fixed_button(
+                ui,
+                egui::vec2(size, size),
+                egui::Button::new((Atom::grow(), image, Atom::grow()))
+                    .fill(p.card_hover)
+                    .stroke(Stroke::new(1.0, p.border))
+                    .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
+            )
+        })
+        .inner;
     press_overlay(ui, &response, BUTTON_RADIUS);
     response.on_hover_text(tooltip)
 }
@@ -390,6 +546,47 @@ pub fn text_width(ui: &egui::Ui, text: &str, font_id: FontId) -> f32 {
     })
 }
 
+fn text_chip_ex(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    text: &str,
+    font_size: f32,
+    max_width: f32,
+    semibold_text: bool,
+    center: bool,
+) -> egui::Response {
+    let font_id = if semibold_text {
+        semibold(font_size)
+    } else {
+        FontId::proportional(font_size)
+    };
+    let text_width = text_width(ui, text, font_id);
+    let width = (text_width + 24.0).clamp(36.0, max_width.max(36.0));
+    let frame = egui::Frame::new()
+        .fill(p.card_hover)
+        .stroke(Stroke::new(1.0, p.border))
+        .corner_radius(CornerRadius::same(BUTTON_RADIUS))
+        .inner_margin(Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ui.set_width((width - 22.0).max(16.0));
+            let label = if semibold_text {
+                strong_text(text, font_size)
+            } else {
+                RichText::new(text).size(font_size)
+            };
+            ui.add(
+                egui::Label::new(label.color(p.text))
+                    .halign(if center {
+                        egui::Align::Center
+                    } else {
+                        egui::Align::LEFT
+                    })
+                    .truncate(),
+            );
+        });
+    frame.response.on_hover_text(text)
+}
+
 pub fn text_chip(
     ui: &mut egui::Ui,
     p: &Palette,
@@ -398,36 +595,12 @@ pub fn text_chip(
     max_width: f32,
     semibold_text: bool,
 ) -> egui::Response {
-    let font_id = if semibold_text {
-        semibold(font_size)
-    } else {
-        FontId::proportional(font_size)
-    };
-    let text_width = text_width(ui, text, font_id);
-    let width = (text_width + 22.0).clamp(36.0, max_width.max(36.0));
-    let frame = egui::Frame::new()
-        .fill(p.card_hover)
-        .stroke(Stroke::new(1.0, p.border))
-        .corner_radius(CornerRadius::same(BUTTON_RADIUS))
-        .inner_margin(Margin::symmetric(10, 8))
-        .show(ui, |ui| {
-            ui.set_width((width - 20.0).max(16.0));
-            let label = if semibold_text {
-                strong_text(text, font_size)
-            } else {
-                RichText::new(text).size(font_size)
-            };
-            ui.add(
-                egui::Label::new(label.color(p.text))
-                    .halign(egui::Align::LEFT)
-                    .truncate(),
-            );
-        });
-    frame.response
+    text_chip_ex(ui, p, text, font_size, max_width, semibold_text, false)
 }
 
 pub fn value_box(ui: &mut egui::Ui, p: &Palette, value: impl Into<String>) {
-    text_chip(ui, p, &value.into(), 13.0, 120.0, true);
+    let value = value.into();
+    text_chip_ex(ui, p, &value, 13.0, 120.0, true, true);
 }
 
 pub fn segmented_button(
@@ -446,15 +619,20 @@ pub fn segmented_button(
     } else {
         (p.card_hover, Stroke::new(1.0, p.border), p.text)
     };
-    let response = ui.add(
-        egui::Button::new(strong_text(label, 13.0).color(color))
-            .fill(fill)
-            .stroke(stroke)
-            .corner_radius(CornerRadius::same(BUTTON_RADIUS))
-            .min_size(egui::vec2(width, CONTROL_HEIGHT)),
+    let response = add_fixed_button(
+        ui,
+        egui::vec2(width, CONTROL_HEIGHT),
+        egui::Button::new((
+            Atom::grow(),
+            strong_text(label, 13.0).color(color),
+            Atom::grow(),
+        ))
+        .fill(fill)
+        .stroke(stroke)
+        .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
     );
     press_overlay(ui, &response, BUTTON_RADIUS);
-    response
+    response.on_hover_text(label)
 }
 
 pub fn slider(
@@ -464,11 +642,12 @@ pub fn slider(
     range: std::ops::RangeInclusive<usize>,
     width: f32,
 ) -> egui::Response {
-    let width = if width > 0.0 {
+    let width = if width.is_finite() && width > 0.0 {
         width
     } else {
         ui.available_width()
-    };
+    }
+    .max(1.0);
     let (rect, mut response) =
         ui.allocate_exact_size(egui::vec2(width, 34.0), egui::Sense::click_and_drag());
     let start = *range.start();
@@ -479,7 +658,11 @@ pub fn slider(
             && let Some(pointer) = ui.input(|input| input.pointer.interact_pos())
         {
             let track = rect.shrink2(egui::vec2(9.0, 0.0));
-            let t = ((pointer.x - track.left()) / track.width()).clamp(0.0, 1.0);
+            let t = if track.width() > 0.0 {
+                ((pointer.x - track.left()) / track.width()).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
             let next = start + ((end - start) as f32 * t).round() as usize;
             if next != *value {
                 *value = next;
@@ -540,12 +723,17 @@ pub fn progress_bar(ui: &mut egui::Ui, p: &Palette, fraction: f32, height: f32) 
     let desired = egui::vec2(ui.available_width(), height);
     let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
     let painter = ui.painter();
-    painter.rect_filled(rect, CornerRadius::same((height / 2.0) as u8), p.track);
-    let fraction = fraction.clamp(0.0, 1.0);
+    let radius = CornerRadius::same((height / 2.0).round().max(0.0) as u8);
+    painter.rect_filled(rect, radius, p.track);
+    let fraction = if fraction.is_finite() {
+        fraction.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     if fraction > 0.0 {
         let width = rect.width() * fraction;
         let fill = egui::Rect::from_min_size(rect.min, egui::vec2(width, rect.height()));
-        painter.rect_filled(fill, CornerRadius::same((height / 2.0) as u8), p.accent);
+        painter.rect_filled(fill, radius, p.accent);
     }
     response
 }
@@ -590,9 +778,12 @@ pub fn modal_header(
         modal_icon(ui, p, icon);
         ui.add_space(4.0);
         ui.vertical(|ui| {
-            ui.label(strong_text(title, 22.0).color(p.text));
+            ui.add(egui::Label::new(strong_text(title, 22.0).color(p.text)).truncate());
             if !subtitle.trim().is_empty() {
-                ui.label(RichText::new(subtitle).size(13.0).color(p.muted));
+                ui.add(
+                    egui::Label::new(RichText::new(subtitle).size(FONT_MUTED).color(p.muted))
+                        .wrap(),
+                );
             }
         });
     });
@@ -601,7 +792,8 @@ pub fn modal_header(
 pub fn modal_close(ui: &mut egui::Ui, p: &Palette, text: &str) -> bool {
     let mut clicked = false;
     ui.vertical_centered(|ui| {
-        let response = ui.add(
+        let response = add_auto_button(
+            ui,
             egui::Button::new(strong_text(text, 13.0).color(p.muted))
                 .fill(Color32::TRANSPARENT)
                 .stroke(Stroke::NONE),
@@ -624,15 +816,15 @@ pub fn press_overlay(ui: &mut egui::Ui, response: &egui::Response, radius: u8) {
 pub fn spinner(ui: &mut egui::Ui, p: &Palette, text: &str) {
     ui.horizontal(|ui| {
         ui.add(egui::Spinner::new().color(p.accent));
-        ui.label(RichText::new(text).color(p.muted));
+        ui.add(egui::Label::new(RichText::new(text).color(p.muted)).truncate());
     });
 }
 
 pub fn centered_spinner(ui: &mut egui::Ui, p: &Palette, text: &str) {
-    let text_width = text_width(ui, text, FontId::proportional(15.0));
-    let group_width = 18.0 + 8.0 + text_width;
+    let text_width = text_width(ui, text, FontId::proportional(FONT_BODY));
+    let group_width = (18.0 + 8.0 + text_width).min(ui.available_width().max(1.0));
     ui.allocate_ui_with_layout(
-        egui::vec2(group_width, 24.0),
+        egui::vec2(group_width, CONTROL_HEIGHT),
         egui::Layout::left_to_right(egui::Align::Center),
         |ui| spinner(ui, p, text),
     );
@@ -666,13 +858,13 @@ pub fn dashed_placeholder(ui: &mut egui::Ui, p: &Palette, height: f32, text: &st
     draw_edge(rect.right_top(), rect.right_bottom());
     draw_edge(rect.right_bottom(), rect.left_bottom());
     draw_edge(rect.left_bottom(), rect.left_top());
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        text,
-        egui::FontId::proportional(13.0),
+    let galley = painter.layout(
+        text.to_owned(),
+        egui::FontId::proportional(FONT_MUTED),
         p.muted,
+        (rect.width() - 24.0).max(1.0),
     );
+    painter.galley(rect.center() - galley.size() / 2.0, galley, p.muted);
 }
 
 pub fn split_columns(

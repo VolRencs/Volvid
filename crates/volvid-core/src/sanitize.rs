@@ -9,6 +9,7 @@ fn sanitize(name: &str, fallback: &str, trim_dots: bool, check_reserved: bool) -
     let mut name: String = name
         .trim()
         .chars()
+        .filter(|ch| !ch.is_control())
         .map(|ch| match ch {
             '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
             _ => ch,
@@ -17,8 +18,10 @@ fn sanitize(name: &str, fallback: &str, trim_dots: bool, check_reserved: bool) -
 
     if trim_dots {
         name = name.trim_end_matches([' ', '.']).to_owned();
-        if name.chars().count() > MAX_SANITIZED_FILENAME_LEN {
-            name = name.chars().take(MAX_SANITIZED_FILENAME_LEN).collect();
+        if name.len() > MAX_SANITIZED_FILENAME_LEN {
+            name = truncate_utf8(&name, MAX_SANITIZED_FILENAME_LEN)
+                .trim_end_matches([' ', '.'])
+                .to_owned();
         }
     }
     if name.is_empty() || name == "." {
@@ -41,6 +44,17 @@ pub fn sanitize_dirname(name: &str) -> String {
     sanitize(name, "playlist", true, true)
 }
 
+fn truncate_utf8(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -54,5 +68,14 @@ mod tests {
     fn resets_reserved_names() {
         assert_eq!(sanitize_dirname("CON"), "_CON");
         assert_eq!(sanitize_dirname("   "), "playlist");
+    }
+
+    #[test]
+    fn limits_utf8_bytes_and_control_chars() {
+        let name = "Ж".repeat(200);
+        let sanitized = sanitize_dirname(&name);
+        assert!(sanitized.len() <= 180);
+        assert!(sanitized.is_char_boundary(sanitized.len()));
+        assert_eq!(sanitize_dirname("a\nb\tc"), "abc");
     }
 }

@@ -43,6 +43,8 @@ pub async fn run_download(
     cancel: CancellationToken,
     encoders: Option<Arc<HashSet<String>>>,
 ) -> Result<()> {
+    let request = normalize_request(request, &paths);
+    validate_request(&request, &deps)?;
     let output_dir = prepare_dir(&request.output_dir)?;
     if request.uses_playlist() {
         run_playlist(paths, deps, request, output_dir, tx, cancel, encoders).await
@@ -519,6 +521,9 @@ pub fn validate_request(request: &DownloadRequest, deps: &CheckDepsResult) -> Re
     }
     if request.playlist_info.is_some() && !request.force_single && request.entries.is_empty() {
         bail!("playlist entries are required");
+    }
+    if request.uses_playlist() && request.fragment.is_some() {
+        bail!("trimming is unavailable for playlists");
     }
     if !deps.ytdlp.available {
         bail!("yt-dlp is required");

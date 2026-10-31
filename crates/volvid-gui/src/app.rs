@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use arboard::Clipboard;
@@ -20,13 +21,13 @@ pub struct VolvidApp {
     current_theme: egui::Theme,
     started: Instant,
     preview_texture: Option<egui::TextureHandle>,
-    preview_source: String,
-    preview_error: Option<String>,
+    preview_generation: u64,
     last_route: Route,
     pub(crate) scroll_reset: bool,
     dragging_url: bool,
     session_nonce: u64,
     startup_focus_cleared: bool,
+    repaint_installed: bool,
 }
 
 impl VolvidApp {
@@ -45,8 +46,7 @@ impl VolvidApp {
             current_theme,
             started: Instant::now(),
             preview_texture: None,
-            preview_source: String::new(),
-            preview_error: None,
+            preview_generation: 0,
             last_route: Route::Home,
             scroll_reset: true,
             dragging_url: false,
@@ -55,6 +55,7 @@ impl VolvidApp {
                 .map(|duration| duration.as_nanos() as u64)
                 .unwrap_or(1),
             startup_focus_cleared: false,
+            repaint_installed: false,
         }
     }
 
@@ -64,36 +65,33 @@ impl VolvidApp {
 
     fn update_preview(&mut self, ctx: &egui::Context) {
         let state = &self.controller.state;
-        if state.thumbnail_bytes.is_empty() {
-            if self.preview_texture.is_some() {
-                self.preview_texture = None;
-                self.preview_source.clear();
-            }
+        if self.preview_generation == state.preview_generation {
             return;
         }
-        if self.preview_source == state.media_thumbnail && self.preview_texture.is_some() {
+        self.preview_generation = state.preview_generation;
+        let Some(image) = &state.preview_image else {
+            self.preview_texture = None;
             return;
+        };
+        let color = egui::ColorImage::from_rgba_unmultiplied(
+            [image.width as usize, image.height as usize],
+            &image.rgba,
+        );
+        if let Some(texture) = &mut self.preview_texture {
+            texture.set(color, egui::TextureOptions::LINEAR);
+        } else {
+            self.preview_texture =
+                Some(ctx.load_texture("volvid-preview", color, egui::TextureOptions::LINEAR));
         }
-        self.preview_source = state.media_thumbnail.clone();
-        self.preview_texture = texture_from_bytes(ctx, "volvid-preview", &state.thumbnail_bytes);
         tracing::debug!(
-            bytes = state.thumbnail_bytes.len(),
-            ok = self.preview_texture.is_some(),
+            width = image.width,
+            height = image.height,
             "preview texture updated"
         );
-        self.preview_error = if self.preview_texture.is_some() {
-            None
-        } else {
-            Some("Could not decode thumbnail".to_owned())
-        };
     }
 
     pub fn preview_texture(&self) -> Option<&egui::TextureHandle> {
         self.preview_texture.as_ref()
-    }
-
-    pub fn preview_error(&self) -> Option<&str> {
-        self.preview_error.as_deref()
     }
 
     pub fn s(&self) -> &'static volvid_i18n::Strings {
@@ -131,7 +129,7 @@ impl VolvidApp {
             || self.controller.state.mixed_choice.is_some();
         let (paste, search, folder, deps, settings, escape) = ctx.input_mut(|input| {
             (
-                !text_focused && input.consume_key(Modifiers::CTRL, Key::V),
+                !text_focused && !modal_open && input.consume_key(Modifiers::CTRL, Key::V),
                 input.consume_key(Modifiers::CTRL, Key::G),
                 input.consume_key(Modifiers::CTRL, Key::O),
                 input.consume_key(Modifiers::CTRL, Key::U),
@@ -209,19 +207,18 @@ impl VolvidApp {
             Stroke::new(2.0, p.accent),
             egui::StrokeKind::Inside,
         );
-        painter.text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            self.s().drag_hint,
+        let galley = painter.layout(
+            self.s().drag_hint.to_owned(),
             theme::semibold(19.0),
             p.text,
+            (rect.width() - 48.0).max(1.0),
         );
+        painter.galley(rect.center() - galley.size() / 2.0, galley, p.text);
     }
 
     fn top_controls(&mut self, ui: &mut egui::Ui) {
         let p = self.palette();
         let s = self.s();
-        let locale = self.controller.state.locale;
         let width = ui.available_width();
         ui.allocate_ui_with_layout(
             egui::vec2(width, 44.0),
@@ -243,19 +240,6 @@ impl VolvidApp {
                         .clicked()
                 {
                     self.controller.state.update_modal = true;
-                }
-                let language = ui.add(
-                    egui::Button::new(
-                        theme::strong_text(locale.code().to_uppercase(), 12.0).color(p.text),
-                    )
-                    .fill(p.card_hover)
-                    .stroke(Stroke::new(1.0, p.border))
-                    .corner_radius(egui::CornerRadius::same(255))
-                    .min_size(egui::vec2(42.0, 42.0)),
-                );
-                theme::press_overlay(ui, &language, 255);
-                if language.on_hover_text(s.language).clicked() {
-                    self.controller.set_locale(volvid_core::next_locale(locale));
                 }
             },
         );
@@ -398,7 +382,18 @@ impl VolvidApp {
                         ui.set_max_width(440.0);
                         ui.horizontal(|ui| {
                             theme::status_dot(ui, color);
-                            ui.label(egui::RichText::new(&toast.text).color(p.text));
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(360.0, 0.0),
+                                Layout::top_down(Align::LEFT),
+                                |ui| {
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(&toast.text).color(p.text),
+                                        )
+                                        .truncate(),
+                                    );
+                                },
+                            );
                             if ui
                                 .add(
                                     egui::Button::new(egui::RichText::new("×").color(p.muted))
@@ -424,6 +419,12 @@ impl eframe::App for VolvidApp {
             }
             ctx.memory_mut(|memory| memory.stop_text_input());
             self.startup_focus_cleared = true;
+        }
+        if !self.repaint_installed {
+            let repaint_ctx = ctx.clone();
+            self.controller
+                .set_repaint(Arc::new(move || repaint_ctx.request_repaint()));
+            self.repaint_installed = true;
         }
         self.controller.poll();
         self.update_preview(ctx);
@@ -453,6 +454,7 @@ impl eframe::App for VolvidApp {
             || state.playlist_loading
             || state.quality_loading
             || state.probe_loading
+            || state.thumbnail_loading
             || state.search_loading
             || state.active_jobs() > 0
             || state.installing_dep.is_some()
@@ -487,7 +489,10 @@ impl eframe::App for VolvidApp {
             .frame(
                 egui::Frame::new()
                     .fill(p.bg)
-                    .inner_margin(egui::Margin::symmetric(42, 22)),
+                    .inner_margin(egui::Margin::symmetric(
+                        theme::PAGE_MARGIN_X,
+                        theme::PAGE_MARGIN_Y,
+                    )),
             )
             .show(ui, |ui| self.central(ui));
 
@@ -525,7 +530,8 @@ fn nav_item(
             .fill(fill)
             .stroke(Stroke::NONE)
             .corner_radius(egui::CornerRadius::same(11))
-            .min_size(egui::vec2(ui.available_width(), 44.0)),
+            .min_size(egui::vec2(ui.available_width(), 44.0))
+            .truncate(),
     );
     theme::press_overlay(ui, &response, 11);
     if response.clicked() {
@@ -535,30 +541,25 @@ fn nav_item(
         let rect = response.rect;
         let color = if active { p.on_accent } else { p.accent };
         let text_color = if active { p.accent } else { Color32::WHITE };
+        let text = if badge > 99 {
+            "99+".to_owned()
+        } else {
+            badge.to_string()
+        };
+        let radius = if badge > 9 { 12.0 } else { 10.0 };
         ui.painter().circle_filled(
             egui::pos2(rect.right() - 18.0, rect.center().y),
-            10.0,
+            radius,
             color,
         );
         ui.painter().text(
             egui::pos2(rect.right() - 18.0, rect.center().y),
             Align2::CENTER_CENTER,
-            badge.to_string(),
+            text,
             theme::semibold(11.0),
             text_color,
         );
     }
-}
-
-fn texture_from_bytes(
-    ctx: &egui::Context,
-    name: &str,
-    bytes: &[u8],
-) -> Option<egui::TextureHandle> {
-    let image = image::load_from_memory(bytes).ok()?.to_rgba8();
-    let size = [image.width() as usize, image.height() as usize];
-    let color = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
-    Some(ctx.load_texture(name, color, egui::TextureOptions::LINEAR))
 }
 
 fn dropped_file_text(file: &egui::DroppedFileHandle) -> Option<String> {

@@ -30,15 +30,12 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
         }
         ui.add_space(4.0);
         ui.vertical(|ui| {
-            theme::title(
-                ui,
-                p,
-                if playlist_title.is_empty() {
-                    s.playlist_title
-                } else {
-                    &playlist_title
-                },
-            );
+            let title = if playlist_title.is_empty() {
+                s.playlist_title
+            } else {
+                playlist_title.as_str()
+            };
+            theme::page_title(ui, p, title);
             theme::muted(
                 ui,
                 p,
@@ -98,13 +95,14 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
     theme::card_frame(p).show(ui, |ui| {
         ui.set_min_width(ui.available_width());
         ui.set_min_height(min_height);
-        let wide = ui.available_width() >= 860.0;
+        let wide = ui.available_width() >= 900.0;
         if wide {
             ui.horizontal(|ui| {
-                ui.add_sized(
-                    [300.0, theme::BUTTON_HEIGHT],
-                    egui::TextEdit::singleline(&mut app.controller.state.playlist_filter)
-                        .hint_text(s.filter_placeholder),
+                theme::text_input(
+                    ui,
+                    &mut app.controller.state.playlist_filter,
+                    s.filter_placeholder,
+                    300.0,
                 );
                 if secondary_button(ui, p, s.select_all).clicked() {
                     select_all = true;
@@ -116,19 +114,21 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                     if primary_button(ui, p, s.apply_range).clicked() {
                         apply_range = true;
                     }
-                    ui.add_sized(
-                        [150.0, theme::BUTTON_HEIGHT],
-                        egui::TextEdit::singleline(&mut app.controller.state.range_input)
-                            .hint_text(s.range_placeholder),
+                    theme::text_input(
+                        ui,
+                        &mut app.controller.state.range_input,
+                        s.range_placeholder,
+                        150.0,
                     );
                 });
             });
         } else {
             ui.horizontal_wrapped(|ui| {
-                ui.add_sized(
-                    [260.0, theme::BUTTON_HEIGHT],
-                    egui::TextEdit::singleline(&mut app.controller.state.playlist_filter)
-                        .hint_text(s.filter_placeholder),
+                theme::text_input(
+                    ui,
+                    &mut app.controller.state.playlist_filter,
+                    s.filter_placeholder,
+                    260.0,
                 );
                 if secondary_button(ui, p, s.select_all).clicked() {
                     select_all = true;
@@ -139,19 +139,23 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
             });
             ui.add_space(6.0);
             ui.horizontal_wrapped(|ui| {
-                ui.add_sized(
-                    [150.0, theme::BUTTON_HEIGHT],
-                    egui::TextEdit::singleline(&mut app.controller.state.range_input)
-                        .hint_text(s.range_placeholder),
+                theme::text_input(
+                    ui,
+                    &mut app.controller.state.range_input,
+                    s.range_placeholder,
+                    150.0,
                 );
-                if primary_button_sized(ui, p, s.apply_range, 174.0).clicked() {
+                if primary_button_sized(ui, p, s.apply_range, 188.0).clicked() {
                     apply_range = true;
                 }
             });
         }
         if let Some(error) = app.controller.state.range_error.clone() {
             ui.add_space(4.0);
-            ui.label(RichText::new(error).color(p.danger).size(12.0));
+            ui.add(
+                egui::Label::new(RichText::new(error).color(p.danger).size(theme::FONT_SMALL))
+                    .wrap(),
+            );
         }
         ui.add_space(10.0);
         ui.separator();
@@ -173,14 +177,9 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
         ui.add_space(4.0);
         ui.separator();
 
-        let filter = app.controller.state.playlist_filter.trim().to_lowercase();
+        app.controller.state.refresh_playlist_filter();
+        let filtered = app.controller.state.playlist_filtered.clone();
         let entries = app.controller.state.playlist_entries();
-        let filtered: Vec<usize> = entries
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| filter.is_empty() || entry.title.to_lowercase().contains(&filter))
-            .map(|(index, _)| index)
-            .collect();
         let selected_entries = &app.controller.state.selected_entries;
         let mut rows = egui::ScrollArea::vertical()
             .id_salt(("playlist-rows", session_nonce, playlist_title.as_str()))
@@ -208,6 +207,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                     .corner_radius(egui::CornerRadius::same(8))
                     .inner_margin(egui::Margin::symmetric(6, 6))
                     .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
                         ui.horizontal(|ui| {
                             ui.add_sized(
                                 [46.0, 24.0],
@@ -264,7 +264,14 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                 app.controller.continue_playlist();
             }
             if selected_now == 0 {
-                ui.label(RichText::new(s.no_selection).color(p.warning).size(12.0));
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(s.no_selection)
+                            .color(p.warning)
+                            .size(theme::FONT_SMALL),
+                    )
+                    .truncate(),
+                );
             }
         });
     });

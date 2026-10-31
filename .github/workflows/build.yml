@@ -27,11 +27,28 @@ jobs:
           toolchain: "1.99.1"
       - uses: Swatinem/rust-cache@v2
       - name: Build
-        run: cargo build --release -p volvid-gui
+        run: cargo build --release --locked -p volvid-gui
       - name: Collect artifact
         shell: bash
         run: cp "${{ matrix.source }}" "${{ matrix.artifact }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: volvid-${{ matrix.os }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: volvid-*
+          merge-multiple: true
+          path: dist
       - uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          artifacts: ${{ matrix.artifact }}
+          artifacts: |
+            dist/Volvid.exe
+            dist/Volvid

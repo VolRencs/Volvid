@@ -20,13 +20,21 @@ pub enum SelectionError {
 
 /// Parses playlist selection strings such as `1-5, 8, 12-` or `all`.
 pub fn parse_selection(raw: &str, max_index: usize) -> Result<Vec<usize>, SelectionError> {
-    let raw = raw.trim().to_ascii_lowercase();
+    let raw = raw.trim().to_lowercase();
     if raw.is_empty() {
         return Err(SelectionError::Empty);
+    }
+    if max_index == 0 {
+        return Err(SelectionError::None);
     }
     if matches!(raw.as_str(), "a" | "а" | "all" | "все" | "всё" | "*") {
         return Ok((1..=max_index).collect());
     }
+    let raw = raw
+        .replace(" - ", "-")
+        .replace(" – ", "–")
+        .replace(" -", "-")
+        .replace("- ", "-");
 
     let mut seen = vec![false; max_index + 1];
     for part in raw.split([',', ';', ' ', '\t', '\n']) {
@@ -97,5 +105,16 @@ mod tests {
         assert!(parse_selection("0", 3).is_err());
         assert!(parse_selection("2-9", 3).is_err());
         assert!(parse_selection("x", 3).is_err());
+    }
+
+    #[test]
+    fn accepts_uppercase_cyrillic_all() {
+        assert_eq!(parse_selection("ВСЕ", 3).unwrap(), vec![1, 2, 3]);
+        assert_eq!(parse_selection("Всё", 2).unwrap(), vec![1, 2]);
+    }
+
+    #[test]
+    fn accepts_spaces_around_ranges() {
+        assert_eq!(parse_selection("1 - 3", 4).unwrap(), vec![1, 2, 3]);
     }
 }

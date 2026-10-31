@@ -28,6 +28,7 @@ directories = "6.0.0"
 eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "links", "persistence", "system_fonts", "wgpu"] }
 egui = "0.37.0"
 egui_extras = { version = "0.37.0", features = ["image", "svg"] }
+flate2 = "1.1.10"
 futures-util = "0.3.34"
 hex = "0.4.3"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }

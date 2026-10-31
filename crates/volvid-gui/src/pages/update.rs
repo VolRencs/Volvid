@@ -19,7 +19,7 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
         .frame(theme::modal_frame(p))
         .backdrop_color(egui::Color32::from_black_alpha(150))
         .show(ctx, |ui| {
-            ui.set_width(512.0);
+            ui.set_width(theme::MODAL_WIDTH_MD);
             theme::modal_header(
                 ui,
                 p,
@@ -29,7 +29,7 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
             );
             ui.add_space(18.0);
             if updating {
-                theme::spinner(ui, p, s.checking);
+                theme::spinner(ui, p, s.updating);
                 if let Some(progress) = &progress {
                     ui.add_space(8.0);
                     theme::progress_bar(ui, p, (progress.pct / 100.0) as f32, 10.0);

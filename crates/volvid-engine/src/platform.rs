@@ -14,7 +14,7 @@ pub fn open_folder(path: &Path) -> Result<()> {
     };
     Command::new(program)
         .arg(path)
-        .spawn()
+        .status()
         .with_context(|| format!("open {} with {program}", path.display()))?;
     Ok(())
 }

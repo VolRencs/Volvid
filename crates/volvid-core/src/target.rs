@@ -30,7 +30,10 @@ impl ParsedTarget {
         if self.video_id.is_empty() {
             self.canonical_url.clone()
         } else {
-            format!("https://www.youtube.com/watch?v={}", self.video_id)
+            format!(
+                "https://www.youtube.com/watch?v={}",
+                urlencoding(&self.video_id)
+            )
         }
     }
 
@@ -66,6 +69,9 @@ pub fn parse_target(raw: &str) -> Result<ParsedTarget, TargetError> {
         format!("https://{raw}")
     };
     let url = Url::parse(&normalized)?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(TargetError::Unsupported);
+    }
     let host = normalize_youtube_host(url.host_str().unwrap_or_default()).ok_or_else(|| {
         TargetError::UnsupportedHost(url.host_str().unwrap_or_default().to_owned())
     })?;
@@ -238,5 +244,10 @@ mod tests {
     fn rejects_non_youtube() {
         assert!(parse_target("https://example.com/watch?v=abc").is_err());
         assert!(parse_target("").is_err());
+    }
+
+    #[test]
+    fn rejects_non_http_schemes() {
+        assert!(parse_target("ftp://youtube.com/watch?v=abc").is_err());
     }
 }

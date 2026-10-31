@@ -3,10 +3,19 @@ use volvid_engine::{AppPaths, paths::write_atomic};
 
 pub fn load_history(paths: &AppPaths) -> Vec<HistoryItem> {
     let path = paths.history_file();
-    let Ok(bytes) = std::fs::read(path) else {
+    let Ok(bytes) = std::fs::read(&path) else {
         return Vec::new();
     };
-    let mut items: Vec<HistoryItem> = serde_json::from_slice(&bytes).unwrap_or_default();
+    let mut items: Vec<HistoryItem> = match serde_json::from_slice(&bytes) {
+        Ok(items) => items,
+        Err(err) => {
+            tracing::warn!(%err, "history parse failed; keeping a backup");
+            let backup = path.with_extension("json.bak");
+            let _ = std::fs::remove_file(&backup);
+            let _ = std::fs::rename(&path, &backup);
+            Vec::new()
+        }
+    };
     if items.len() > 100 {
         items.drain(..items.len() - 100);
     }

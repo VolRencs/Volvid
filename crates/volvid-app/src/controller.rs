@@ -46,6 +46,10 @@ impl Controller {
         self.backend.app_version()
     }
 
+    pub fn set_repaint(&self, repaint: std::sync::Arc<dyn Fn() + Send + Sync>) {
+        self.backend.set_repaint(repaint);
+    }
+
     pub fn poll(&mut self) {
         let events = self.backend.drain_events();
         let mut refresh_deps = false;
@@ -66,7 +70,7 @@ impl Controller {
             self.backend.refresh_deps();
         }
         if save_history {
-            let _ = self.backend.save_history(&self.state.history);
+            self.backend.save_history_async(self.state.history.clone());
         }
         if save_config {
             self.backend.save_config(self.state.config.clone());
@@ -145,6 +149,12 @@ impl Controller {
         let Some(target) = target.or_else(|| self.state.target.clone()) else {
             return;
         };
+        let selected = self.state.selected_playlist_entries();
+        if target.is_playlist() && !force_single && selected.is_empty() {
+            self.state
+                .toast(self.state.s().no_selection, ToastKind::Warn);
+            return;
+        }
         let op = self.next_op();
         self.state.op_id = op;
         self.state.target = Some(target.clone());
@@ -160,7 +170,10 @@ impl Controller {
         self.state.media_duration = 0;
         self.state.media_title.clear();
         self.state.media_thumbnail.clear();
-        self.state.thumbnail_bytes.clear();
+        self.state.preview_image = None;
+        self.state.preview_generation = self.state.preview_generation.wrapping_add(1);
+        self.state.thumbnail_loading = true;
+        self.state.thumbnail_error = false;
         self.state.audio_tracks.clear();
         self.state.sub_tracks.clear();
         self.state.tracks_error = None;
@@ -168,15 +181,10 @@ impl Controller {
         self.state.probe_loading = true;
         self.state.quality_loading = true;
 
-        let selected = self.state.selected_playlist_entries();
         let (probe_url, quality_urls) = if target.is_playlist() && !force_single {
-            let Some(first) = selected.first() else {
-                self.state.probe_loading = false;
-                self.state.quality_loading = false;
-                self.state
-                    .toast(self.state.s().no_selection, ToastKind::Warn);
-                return;
-            };
+            let first = selected
+                .first()
+                .expect("selection checked before starting configure");
             (
                 first.url.clone(),
                 selected.iter().map(|entry| entry.url.clone()).collect(),
@@ -209,7 +217,7 @@ impl Controller {
         self.state.search_op = op;
         self.state.search_loading = true;
         self.state.search_error = None;
-        self.backend.search(query, op);
+        self.backend.search(query, self.state.locale, op);
     }
 
     pub fn select_search_result(&mut self, index: usize) {
@@ -223,14 +231,17 @@ impl Controller {
 
     pub fn toggle_playlist(&mut self, index: usize) {
         self.state.toggle_playlist_entry(index);
+        self.state.range_error = None;
     }
 
     pub fn select_all_playlist(&mut self) {
         self.state.select_all_playlist();
+        self.state.range_error = None;
     }
 
     pub fn clear_playlist(&mut self) {
         self.state.clear_playlist_selection();
+        self.state.range_error = None;
     }
 
     pub fn apply_playlist_range(&mut self) {
@@ -281,6 +292,11 @@ impl Controller {
                 return;
             }
         };
+        if target.is_playlist() && !self.state.force_single && fragment.is_some() {
+            self.state
+                .toast(s.trim_playlist_unavailable, ToastKind::Warn);
+            return;
+        }
         let profile = self.state.draft.profile(self.state.locale);
         if profile.needs_ffmpeg(fragment.as_ref()) && !self.state.deps.ffmpeg.available {
             self.state.route = Route::Settings;
@@ -407,6 +423,7 @@ impl Controller {
             started_at: std::time::Instant::now(),
             elapsed: std::time::Duration::ZERO,
             recorded: false,
+            pending_resume: false,
         });
         self.state.route = Route::Downloads;
         self.state
@@ -451,6 +468,7 @@ impl Controller {
         job.failed = 0;
         job.error = None;
         job.recorded = false;
+        job.pending_resume = false;
         let slots = if job.is_playlist {
             request.workers.max(1)
         } else {
@@ -469,6 +487,7 @@ impl Controller {
             job.status = JobStatus::Queued;
             job.error = None;
             job.recorded = false;
+            job.pending_resume = false;
             self.pump_queue();
         }
     }
@@ -479,19 +498,33 @@ impl Controller {
                 JobStatus::Active => {
                     self.backend.cancel_download(job_id);
                     job.status = JobStatus::Paused;
+                    job.pending_resume = false;
                 }
-                JobStatus::Queued => job.status = JobStatus::Paused,
+                JobStatus::Queued => {
+                    job.status = JobStatus::Paused;
+                    job.pending_resume = false;
+                }
                 _ => {}
             }
         }
     }
 
     pub fn resume_job(&mut self, job_id: u64) {
+        let running = self.backend.is_job_running(job_id);
+        let mut queued = false;
         if let Some(job) = self.state.jobs.iter_mut().find(|job| job.id == job_id)
             && job.status == JobStatus::Paused
         {
-            job.status = JobStatus::Queued;
             job.error = None;
+            if running {
+                job.pending_resume = true;
+            } else {
+                job.status = JobStatus::Queued;
+                job.pending_resume = false;
+                queued = true;
+            }
+        }
+        if queued {
             self.pump_queue();
         }
     }
@@ -551,6 +584,7 @@ impl Controller {
         if let Some(job) = self.state.jobs.iter_mut().find(|job| job.id == job_id) {
             job.status = JobStatus::Cancelled;
             job.error = None;
+            job.pending_resume = false;
         }
         self.pump_queue();
     }
@@ -566,9 +600,16 @@ impl Controller {
     }
 
     pub fn install_dependency(&mut self, key: &str) {
+        if self.state.installing_dep.is_some() {
+            return;
+        }
         self.state.installing_dep = Some(key.to_owned());
         self.backend
             .install_dependency(key.to_owned(), self.state.locale);
+    }
+
+    pub fn cancel_install(&mut self) {
+        self.backend.cancel_install();
     }
 
     pub fn apply_update(&mut self) {
@@ -582,6 +623,11 @@ impl Controller {
     pub fn check_updates(&mut self) {
         self.state.update_checking = true;
         self.backend.check_update();
+    }
+
+    pub fn refresh_deps(&mut self) {
+        self.state.deps_checking = true;
+        self.backend.refresh_deps();
     }
 
     pub fn set_locale(&mut self, locale: volvid_core::Locale) {
@@ -603,10 +649,15 @@ impl Controller {
 
     pub fn clear_history(&mut self) {
         self.state.history.clear();
-        let _ = self.backend.clear_history();
+        self.backend.clear_history_async();
     }
 
     pub fn set_route(&mut self, route: Route) {
+        if route != Route::Playlist && self.state.playlist_loading {
+            self.backend.cancel_metadata();
+            self.state.playlist_loading = false;
+            self.state.op_id = self.next_op();
+        }
         self.state.route = route;
     }
 }

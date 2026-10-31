@@ -11,6 +11,7 @@ pub mod install;
 pub mod paths;
 pub mod platform;
 pub mod process;
+pub mod thumbnail;
 pub mod update;
 pub mod ytdlp;
 
@@ -18,7 +19,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{Result, bail};
+use futures_util::StreamExt;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use volvid_core::{
@@ -28,16 +30,23 @@ use volvid_core::{
 
 pub use config::{Config, ConfigError, Theme};
 pub use paths::AppPaths;
+pub use thumbnail::{PreviewImage, fetch_preview, youtube_preview_url};
 
 use crate::config::load_config;
 use crate::deps::{detect_deps, enrich_deps};
 use crate::download::run_download;
 use crate::ffmpeg::detect_video_encoders;
-use crate::ytdlp::{fetch_playlist, probe_media, resolve_quality_choices, search_youtube};
+use crate::ytdlp::{
+    fetch_playlist, probe_media, quality_choices_from_probe, resolve_quality_choices,
+    search_youtube,
+};
 
 const PROBE_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const THUMBNAIL_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 const DEPS_CACHE_TTL: Duration = Duration::from_secs(60);
 const RUNTIME_DEPS_TTL: Duration = Duration::from_secs(5 * 60);
+const MAX_PROBE_CACHE: usize = 64;
+const MAX_THUMBNAIL_CACHE: usize = 32;
 
 pub struct Engine {
     pub paths: AppPaths,
@@ -46,7 +55,10 @@ pub struct Engine {
     downloads_dir: RwLock<PathBuf>,
     deps_cache: RwLock<Option<(Instant, CheckDepsResult)>>,
     runtime_deps_cache: RwLock<Option<(Instant, CheckDepsResult)>>,
+    runtime_deps_lock: Mutex<()>,
     probe_cache: Mutex<std::collections::HashMap<String, (Instant, MediaProbe)>>,
+    thumbnail_cache:
+        Mutex<std::collections::HashMap<String, (Instant, Arc<thumbnail::PreviewImage>)>>,
     ffmpeg_encoder_cache: Mutex<Option<Arc<std::collections::HashSet<String>>>>,
 }
 
@@ -59,10 +71,11 @@ impl Engine {
         let client = reqwest::Client::builder()
             .user_agent(format!("Volvid/{}", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(120))
+            .read_timeout(Duration::from_secs(60))
             .redirect(reqwest::redirect::Policy::limited(10))
+            .https_only(true)
             .build()
-            .unwrap_or_default();
+            .expect("failed to create HTTP client");
         Self {
             paths,
             config: RwLock::new(config),
@@ -70,7 +83,9 @@ impl Engine {
             downloads_dir: RwLock::new(downloads_dir),
             deps_cache: RwLock::new(None),
             runtime_deps_cache: RwLock::new(None),
+            runtime_deps_lock: Mutex::new(()),
             probe_cache: Mutex::new(std::collections::HashMap::new()),
+            thumbnail_cache: Mutex::new(std::collections::HashMap::new()),
             ffmpeg_encoder_cache: Mutex::new(None),
         }
     }
@@ -123,7 +138,13 @@ impl Engine {
         if let Some(deps) = self.cached_deps() {
             return deps;
         }
-        let deps = detect_deps(&self.paths);
+        let paths = self.paths.clone();
+        let deps = tokio::task::spawn_blocking(move || detect_deps(&paths))
+            .await
+            .unwrap_or_else(|err| {
+                tracing::warn!(%err, "dependency detection task failed");
+                CheckDepsResult::default()
+            });
         if let Ok(mut cache) = self.deps_cache.write() {
             *cache = Some((Instant::now(), deps.clone()));
         }
@@ -143,6 +164,13 @@ impl Engine {
     }
 
     pub async fn runtime_deps(&self) -> CheckDepsResult {
+        if let Ok(cache) = self.runtime_deps_cache.read()
+            && let Some((at, deps)) = cache.as_ref()
+            && at.elapsed() < RUNTIME_DEPS_TTL
+        {
+            return deps.clone();
+        }
+        let _guard = self.runtime_deps_lock.lock().await;
         if let Ok(cache) = self.runtime_deps_cache.read()
             && let Some((at, deps)) = cache.as_ref()
             && at.elapsed() < RUNTIME_DEPS_TTL
@@ -189,6 +217,15 @@ impl Engine {
         let deps = self.runtime_deps().await;
         let probe = probe_media(&deps, url, cancel).await?;
         let mut cache = self.probe_cache.lock().await;
+        cache.retain(|_, (at, _)| at.elapsed() < PROBE_CACHE_TTL);
+        if cache.len() >= MAX_PROBE_CACHE
+            && let Some(oldest) = cache
+                .iter()
+                .min_by_key(|(_, (at, _))| *at)
+                .map(|(key, _)| key.clone())
+        {
+            cache.remove(&oldest);
+        }
         cache.insert(key, (Instant::now(), probe.clone()));
         Ok(probe)
     }
@@ -204,9 +241,10 @@ impl Engine {
     }
 
     pub async fn fetch_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        const MAX_BYTES: usize = 12 << 20;
         let parsed = url::Url::parse(url).map_err(|err| anyhow::anyhow!("invalid URL: {err}"))?;
         if parsed.scheme() != "https" {
-            anyhow::bail!("only HTTPS is allowed");
+            bail!("only HTTPS is allowed");
         }
         let response = self
             .client
@@ -215,22 +253,73 @@ impl Engine {
             .send()
             .await?;
         if !response.status().is_success() {
-            anyhow::bail!("HTTP {}", response.status());
+            bail!("HTTP {}", response.status());
         }
-        let bytes = response.bytes().await?;
-        if bytes.len() > 12 << 20 {
-            anyhow::bail!("image is too large");
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_BYTES as u64)
+        {
+            bail!("response is too large");
         }
-        Ok(bytes.to_vec())
+        let mut bytes = Vec::with_capacity(
+            response
+                .content_length()
+                .unwrap_or(64 * 1024)
+                .min(MAX_BYTES as u64) as usize,
+        );
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            if bytes.len() + chunk.len() > MAX_BYTES {
+                bail!("response is too large");
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(bytes)
+    }
+
+    pub async fn fetch_thumbnail(
+        &self,
+        url: &str,
+        target_width: u32,
+        cancel: Option<CancellationToken>,
+    ) -> Result<Arc<thumbnail::PreviewImage>> {
+        let key = format!("{url}#{target_width}");
+        {
+            let cache = self.thumbnail_cache.lock().await;
+            if let Some((at, image)) = cache.get(&key)
+                && at.elapsed() < THUMBNAIL_CACHE_TTL
+            {
+                return Ok(image.clone());
+            }
+        }
+        let image = fetch_preview(&self.client, url, target_width, cancel.as_ref()).await?;
+        let mut cache = self.thumbnail_cache.lock().await;
+        cache.retain(|_, (at, _)| at.elapsed() < THUMBNAIL_CACHE_TTL);
+        if cache.len() >= MAX_THUMBNAIL_CACHE
+            && let Some(oldest) = cache
+                .iter()
+                .min_by_key(|(_, (at, _))| *at)
+                .map(|(key, _)| key.clone())
+        {
+            cache.remove(&oldest);
+        }
+        cache.insert(key, (Instant::now(), image.clone()));
+        Ok(image)
     }
 
     pub async fn search_youtube(
         &self,
         query: &str,
+        locale: Locale,
         cancel: Option<CancellationToken>,
     ) -> Result<Vec<SearchResult>> {
         let deps = self.runtime_deps().await;
-        search_youtube(&deps, query, cancel).await
+        search_youtube(&deps, query, locale, cancel).await
+    }
+
+    pub fn quality_from_probe(&self, probe: &MediaProbe) -> Result<Vec<QualityChoice>> {
+        quality_choices_from_probe(probe)
     }
 
     pub async fn resolve_quality(

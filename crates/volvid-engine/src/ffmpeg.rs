@@ -152,11 +152,19 @@ fn create_temp_path(input: &Path, kind: &str, extension: String) -> Result<PathB
 }
 
 fn finalize_file(temp: &Path, final_path: &Path) -> Result<()> {
+    let backup = final_path.with_extension("bak-volvid");
     if final_path.exists() {
-        let _ = std::fs::remove_file(final_path);
+        let _ = std::fs::remove_file(&backup);
+        std::fs::rename(final_path, &backup)
+            .with_context(|| format!("backup {}", final_path.display()))?;
     }
-    std::fs::rename(temp, final_path)
-        .with_context(|| format!("replace {}", final_path.display()))?;
+    if let Err(err) = std::fs::rename(temp, final_path) {
+        if backup.exists() {
+            let _ = std::fs::rename(&backup, final_path);
+        }
+        return Err(err).with_context(|| format!("replace {}", final_path.display()));
+    }
+    let _ = std::fs::remove_file(&backup);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

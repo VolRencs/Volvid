@@ -5042,8 +5042,10 @@ version = "8.0.0"
 dependencies = [
  "anyhow",
  "directories",
+ "flate2",
  "futures-util",
  "hex",
+ "image",
  "process-wrap",
  "reqwest",
  "rfd",

@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -9,7 +10,7 @@ use volvid_core::{
     PlaylistEntry, PlaylistInfo, QualityChoice, SearchResult, SubtitleTrack, UpdateInfo,
     format_fragment_label, parse_bounded_fragment_range,
 };
-use volvid_engine::{AppPaths, Config, Theme};
+use volvid_engine::{AppPaths, Config, PreviewImage, Theme};
 use volvid_i18n::{
     audio_output_profiles, default_quality, quality_profile, strings, thumbnail_profile,
     video_output_profiles,
@@ -212,6 +213,7 @@ pub struct JobView {
     pub started_at: Instant,
     pub elapsed: Duration,
     pub recorded: bool,
+    pub pending_resume: bool,
 }
 
 impl JobView {
@@ -286,7 +288,8 @@ impl JobView {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct HistoryItem {
     pub label: String,
     pub url: String,
@@ -332,6 +335,12 @@ pub struct Toast {
     pub created: Instant,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThumbnailStage {
+    Preview,
+    Full,
+}
+
 #[derive(Clone, Debug)]
 pub enum AppEvent {
     Deps(CheckDepsResult),
@@ -347,7 +356,8 @@ pub enum AppEvent {
     },
     Thumbnail {
         op: u64,
-        result: Result<Vec<u8>, String>,
+        stage: ThumbnailStage,
+        result: Result<Arc<PreviewImage>, String>,
     },
     Quality {
         op: u64,
@@ -380,6 +390,7 @@ pub enum AppEvent {
     FolderPicked(Result<Option<PathBuf>, String>),
     OpenFolder(Result<(), String>),
     ConfigSaved(Result<(), String>),
+    HistorySaved(Result<(), String>),
     Toast(String, ToastKind),
 }
 
@@ -419,6 +430,8 @@ pub struct AppState {
     pub playlist_loading: bool,
     pub playlist_scroll_reset: bool,
     pub playlist_filter: String,
+    pub playlist_filtered: Arc<Vec<usize>>,
+    pub playlist_filter_key: String,
     pub selected_entries: BTreeSet<usize>,
     pub range_input: String,
     pub range_error: Option<String>,
@@ -427,7 +440,10 @@ pub struct AppState {
     pub media_duration: i64,
     pub media_title: String,
     pub media_thumbnail: String,
-    pub thumbnail_bytes: Vec<u8>,
+    pub preview_image: Option<Arc<PreviewImage>>,
+    pub preview_generation: u64,
+    pub thumbnail_loading: bool,
+    pub thumbnail_error: bool,
     pub audio_tracks: Vec<AudioTrack>,
     pub sub_tracks: Vec<SubtitleTrack>,
     pub quality_choices: Vec<QualityChoice>,
@@ -478,6 +494,8 @@ impl AppState {
             playlist_loading: false,
             playlist_scroll_reset: true,
             playlist_filter: String::new(),
+            playlist_filtered: Arc::new(Vec::new()),
+            playlist_filter_key: String::new(),
             selected_entries: BTreeSet::new(),
             range_input: String::new(),
             range_error: None,
@@ -488,7 +506,10 @@ impl AppState {
             media_duration: 0,
             media_title: String::new(),
             media_thumbnail: String::new(),
-            thumbnail_bytes: Vec::new(),
+            preview_image: None,
+            preview_generation: 0,
+            thumbnail_loading: false,
+            thumbnail_error: false,
             audio_tracks: Vec::new(),
             sub_tracks: Vec::new(),
             quality_choices: Vec::new(),
@@ -547,7 +568,9 @@ impl AppState {
                         self.playlist = Some(info);
                         self.selected_entries.clear();
                         self.playlist_filter.clear();
+                        self.playlist_filter_key = "\0".to_owned();
                         self.playlist_scroll_reset = true;
+                        self.refresh_playlist_filter();
                         self.route = Route::Playlist;
                     }
                     Err(err) => {
@@ -578,19 +601,28 @@ impl AppState {
                 }
                 true
             }
-            AppEvent::Thumbnail { op, result } => {
+            AppEvent::Thumbnail { op, stage, result } => {
                 if op != self.op_id {
                     return false;
                 }
+                self.thumbnail_loading = false;
                 match result {
-                    Ok(bytes) => {
-                        tracing::debug!(bytes = bytes.len(), "thumbnail loaded");
-                        self.thumbnail_bytes = bytes;
+                    Ok(image) => {
+                        tracing::debug!(
+                            stage = ?stage,
+                            width = image.width,
+                            height = image.height,
+                            "thumbnail loaded"
+                        );
+                        self.preview_image = Some(image);
+                        self.preview_generation = self.preview_generation.wrapping_add(1);
+                        self.thumbnail_error = false;
                     }
                     Err(err) => {
-                        tracing::debug!(%err, "thumbnail fetch failed");
-                        tracing::debug!(%err, "thumbnail unavailable");
-                        self.thumbnail_bytes.clear();
+                        tracing::debug!(?stage, %err, "thumbnail unavailable");
+                        if self.preview_image.is_none() {
+                            self.thumbnail_error = true;
+                        }
                     }
                 }
                 true
@@ -657,12 +689,17 @@ impl AppState {
                 let failure_text = self.s().download_failed.to_owned();
                 let history_item =
                     if let Some(job) = self.jobs.iter_mut().find(|job| job.id == job_id) {
-                        if job.run_id != run_id
-                            || !matches!(
-                                job.status,
-                                JobStatus::Active | JobStatus::Completed | JobStatus::Failed
-                            )
-                        {
+                        if job.run_id != run_id {
+                            None
+                        } else if job.status == JobStatus::Paused && job.pending_resume {
+                            job.pending_resume = false;
+                            job.status = JobStatus::Queued;
+                            job.elapsed = job.started_at.elapsed();
+                            None
+                        } else if !matches!(
+                            job.status,
+                            JobStatus::Active | JobStatus::Completed | JobStatus::Failed
+                        ) {
                             None
                         } else {
                             if job.status == JobStatus::Active {
@@ -772,6 +809,15 @@ impl AppState {
                 }
                 true
             }
+            AppEvent::HistorySaved(result) => {
+                if let Err(err) = result {
+                    self.toast(
+                        format!("{}: {err}", self.s().history_save_failed),
+                        ToastKind::Error,
+                    );
+                }
+                true
+            }
             AppEvent::Toast(text, kind) => {
                 self.toast(text, kind);
                 true
@@ -784,6 +830,22 @@ impl AppState {
             .as_ref()
             .map(|playlist| playlist.entries.as_slice())
             .unwrap_or_default()
+    }
+
+    pub fn refresh_playlist_filter(&mut self) {
+        if self.playlist_filter_key == self.playlist_filter {
+            return;
+        }
+        let filter = self.playlist_filter.trim().to_lowercase();
+        let filtered = self
+            .playlist_entries()
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| filter.is_empty() || entry.title.to_lowercase().contains(&filter))
+            .map(|(index, _)| index)
+            .collect();
+        self.playlist_filtered = Arc::new(filtered);
+        self.playlist_filter_key = self.playlist_filter.clone();
     }
 
     pub fn selected_playlist_entries(&self) -> Vec<PlaylistEntry> {
@@ -841,10 +903,16 @@ impl AppState {
     }
 
     pub fn localize_playlist_title(&self) -> String {
-        self.playlist
+        let title = self
+            .playlist
             .as_ref()
-            .map(|playlist| playlist.title.clone())
-            .unwrap_or_default()
+            .map(|playlist| playlist.title.trim())
+            .unwrap_or_default();
+        if title.is_empty() || title.eq_ignore_ascii_case("playlist") {
+            self.s().playlist_title.to_owned()
+        } else {
+            title.to_owned()
+        }
     }
 
     pub fn title_for_configure(&self) -> String {
@@ -907,6 +975,7 @@ mod tests {
             started_at: Instant::now(),
             elapsed: Duration::ZERO,
             recorded: false,
+            pending_resume: false,
         };
         job.apply(&DlUpdate {
             event_type: DlEventType::Done,
@@ -940,6 +1009,7 @@ mod tests {
             started_at: Instant::now(),
             elapsed: Duration::ZERO,
             recorded: false,
+            pending_resume: false,
         }
     }
 

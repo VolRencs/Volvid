@@ -30,7 +30,7 @@ impl std::fmt::Display for Locale {
 
 /// Maps free-form input ("ru", "rus", ...) to a locale.
 pub fn parse_locale(raw: &str) -> Locale {
-    match raw.trim().to_ascii_lowercase().as_str() {
+    match raw.trim().to_lowercase().as_str() {
         "ru" | "rus" | "russian" => Locale::Ru,
         _ => Locale::En,
     }

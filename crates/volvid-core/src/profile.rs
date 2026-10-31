@@ -116,6 +116,11 @@ impl OutputProfile {
             || fragment.is_some()
             || self.wants_subtitles()
             || self.requires_video_postprocessing()
+            || (self.mode == DownloadMode::Video
+                && self
+                    .video_fmt_chain
+                    .iter()
+                    .any(|format| format.contains('+')))
     }
 }
 
@@ -136,5 +141,20 @@ pub struct DownloadRequest {
 impl DownloadRequest {
     pub fn uses_playlist(&self) -> bool {
         self.playlist_info.is_some() && !self.force_single && !self.entries.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merged_video_formats_require_ffmpeg() {
+        let profile = OutputProfile {
+            mode: DownloadMode::Video,
+            video_fmt_chain: vec![YTDLP_BEST_FORMAT.to_owned()],
+            ..OutputProfile::default()
+        };
+        assert!(profile.needs_ffmpeg(None));
     }
 }

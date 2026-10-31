@@ -40,11 +40,30 @@ impl Default for Config {
 
 impl Config {
     pub fn load(paths: &AppPaths) -> Self {
-        let mut config = std::fs::read_to_string(paths.config_file())
-            .ok()
-            .and_then(|text| toml::from_str::<Self>(&text).ok())
-            .unwrap_or_default();
-        if config.import_legacy {
+        let path = paths.config_file();
+        let existed = path.is_file();
+        let mut parsed_ok = false;
+        let mut config = match std::fs::read_to_string(&path) {
+            Ok(text) => match toml::from_str::<Self>(&text) {
+                Ok(config) => {
+                    parsed_ok = true;
+                    config
+                }
+                Err(err) => {
+                    tracing::warn!(%err, path = %path.display(), "config parse failed; keeping a backup");
+                    let backup = path.with_extension("toml.bak");
+                    let _ = std::fs::remove_file(&backup);
+                    let _ = std::fs::rename(&path, &backup);
+                    Self::default()
+                }
+            },
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Self::default(),
+            Err(err) => {
+                tracing::warn!(%err, path = %path.display(), "could not read config");
+                Self::default()
+            }
+        };
+        if config.import_legacy && (!existed || parsed_ok) {
             import_legacy(paths, &mut config);
             config.import_legacy = false;
             let _ = config.save(paths);
@@ -99,4 +118,26 @@ pub enum ConfigError {
 
 pub fn load_config(paths: &AppPaths) -> Config {
     Config::load(paths)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn corrupt_config_is_backed_up_without_overwriting_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths {
+            config_dir: dir.path().join("config"),
+            data_dir: dir.path().join("data"),
+            deps_dir: dir.path().join("deps"),
+            downloads_dir: dir.path().join("downloads"),
+        };
+        std::fs::create_dir_all(&paths.config_dir).unwrap();
+        std::fs::write(paths.config_file(), "locale = \"not-a-locale\"\n").unwrap();
+        let config = Config::load(&paths);
+        assert_eq!(config.locale, Locale::En);
+        assert!(paths.config_file().with_extension("toml.bak").is_file());
+        assert!(!paths.config_file().is_file());
+    }
 }

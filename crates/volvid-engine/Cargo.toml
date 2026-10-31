@@ -13,8 +13,10 @@ volvid-i18n = { workspace = true }
 
 anyhow = { workspace = true }
 directories = { workspace = true }
+flate2 = { workspace = true }
 futures-util = { workspace = true }
 hex = { workspace = true }
+image = { workspace = true }
 process-wrap = { workspace = true }
 reqwest = { workspace = true }
 rfd = { workspace = true }

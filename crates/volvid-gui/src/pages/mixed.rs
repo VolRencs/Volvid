@@ -15,7 +15,7 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
         .frame(theme::modal_frame(p))
         .backdrop_color(egui::Color32::from_black_alpha(150))
         .show(ctx, |ui| {
-            ui.set_width(480.0);
+            ui.set_width(theme::MODAL_WIDTH_SM);
             theme::modal_header(
                 ui,
                 p,
@@ -39,10 +39,11 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
             ui.add_space(18.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 11.0;
-                if primary_button_ex(ui, p, s.video_only, egui::vec2(234.0, 54.0)).clicked() {
+                let width = ((ui.available_width() - 11.0) / 2.0).max(1.0);
+                if primary_button_ex(ui, p, s.video_only, egui::vec2(width, 54.0)).clicked() {
                     app.controller.choose_mixed(true);
                 }
-                if secondary_button_ex(ui, p, s.full_playlist, egui::vec2(234.0, 54.0)).clicked() {
+                if secondary_button_ex(ui, p, s.full_playlist, egui::vec2(width, 54.0)).clicked() {
                     app.controller.choose_mixed(false);
                 }
             });

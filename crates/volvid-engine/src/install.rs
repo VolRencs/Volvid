@@ -233,7 +233,7 @@ fn replace_file(source: &Path, destination: &Path) -> Result<()> {
 fn checksum_from_manifest(manifest: &str, asset: &str) -> Result<String> {
     for line in manifest.lines() {
         let fields: Vec<&str> = line.split_whitespace().collect();
-        if fields.len() >= 2 && fields[fields.len() - 1] == asset {
+        if fields.len() >= 2 && fields[fields.len() - 1].trim_start_matches('*') == asset {
             return Ok(fields[0].to_owned());
         }
     }
@@ -246,7 +246,7 @@ fn asset_from_manifest(manifest: &str, suffix: &str) -> Result<(String, String)>
         if fields.len() < 2 {
             continue;
         }
-        let asset = fields[fields.len() - 1];
+        let asset = fields[fields.len() - 1].trim_start_matches('*');
         if asset.ends_with(suffix) {
             let name = Path::new(asset)
                 .file_name()
@@ -265,6 +265,8 @@ fn extract_binaries(archive: &Path, targets: &[(String, PathBuf)]) -> Result<()>
     let lower = archive.to_string_lossy().to_ascii_lowercase();
     if lower.ends_with(".zip") {
         extract_zip(archive, targets)
+    } else if lower.ends_with(".tar.gz") || lower.ends_with(".tgz") {
+        extract_tar_gz(archive, targets)
     } else {
         extract_tar_xz(archive, targets)
     }
@@ -302,8 +304,16 @@ fn extract_zip(archive: &Path, targets: &[(String, PathBuf)]) -> Result<()> {
 
 fn extract_tar_xz(archive: &Path, targets: &[(String, PathBuf)]) -> Result<()> {
     let file = File::open(archive)?;
-    let decoder = xz2::read::XzDecoder::new(file);
-    let mut tar = tar::Archive::new(decoder);
+    extract_tar(xz2::read::XzDecoder::new(file), targets)
+}
+
+fn extract_tar_gz(archive: &Path, targets: &[(String, PathBuf)]) -> Result<()> {
+    let file = File::open(archive)?;
+    extract_tar(flate2::read::GzDecoder::new(file), targets)
+}
+
+fn extract_tar<R: Read>(reader: R, targets: &[(String, PathBuf)]) -> Result<()> {
+    let mut tar = tar::Archive::new(reader);
     let mut found = vec![false; targets.len()];
     for entry in tar.entries()? {
         let mut entry = entry?;
@@ -380,5 +390,27 @@ mod tests {
         let manifest = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789  node-v99.0.0-linux-x64.tar.gz\n";
         let (name, _) = asset_from_manifest(manifest, "-linux-x64.tar.gz").unwrap();
         assert_eq!(name, "node-v99.0.0-linux-x64.tar.gz");
+    }
+
+    #[test]
+    fn extracts_gzip_node_archive() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("node-v99-linux-x64.tar.gz");
+        let file = File::create(&archive).unwrap();
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::fast());
+        let mut builder = tar::Builder::new(encoder);
+        let data = b"node binary";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(data.len() as u64);
+        header.set_mode(0o755);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "node-v99/bin/node", &data[..])
+            .unwrap();
+        builder.into_inner().unwrap().finish().unwrap();
+
+        let target = dir.path().join("node");
+        extract_binaries(&archive, &[("node".to_owned(), target.clone())]).unwrap();
+        assert!(target.is_file());
     }
 }

@@ -13,7 +13,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
     theme::title(ui, p, s.home_title);
     ui.add_space(4.0);
     theme::muted(ui, p, s.home_subtitle);
-    ui.add_space(24.0);
+    ui.add_space(theme::PAGE_HEADER_GAP);
 
     if app.controller.state.deps.missing_required() {
         egui::Frame::new()
@@ -35,17 +35,16 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                     .fit_to_exact_size(egui::vec2(18.0, 18.0))
                     .tint(p.muted),
             );
-            let button_width = theme::text_width(ui, s.analyze, theme::semibold(14.0)) + 30.0;
+            let button_width = theme::text_width(ui, s.analyze, theme::semibold(14.0)) + 40.0;
             let input_width = (ui.available_width() - button_width - 8.0).max(180.0);
             ui.scope(|ui| {
                 ui.visuals_mut().extreme_bg_color = p.card_hover;
                 ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, p.border);
-                let response = ui.add_sized(
-                    [input_width, theme::BUTTON_HEIGHT],
-                    egui::TextEdit::singleline(&mut app.controller.state.url)
-                        .hint_text(s.url_placeholder)
-                        .font(egui::TextStyle::Body)
-                        .margin(egui::Margin::symmetric(12, 11)),
+                let response = theme::text_input(
+                    ui,
+                    &mut app.controller.state.url,
+                    s.url_placeholder,
+                    input_width,
                 );
                 if response.has_focus() && ui.input(|input| input.key_pressed(Key::Enter)) {
                     response.surrender_focus();
@@ -58,7 +57,10 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
         });
         if let Some(error) = app.controller.state.url_error.clone() {
             ui.add_space(4.0);
-            ui.label(RichText::new(error).color(p.danger).size(12.5));
+            ui.add(
+                egui::Label::new(RichText::new(error).color(p.danger).size(theme::FONT_MUTED))
+                    .wrap(),
+            );
         }
         ui.add_space(12.0);
         ui.horizontal(|ui| {
@@ -70,12 +72,12 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                 app.controller.state.search_error = None;
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                theme::muted(ui, p, s.drag_hint);
+                theme::muted_inline(ui, p, s.drag_hint);
             });
         });
     });
 
-    ui.add_space(16.0);
+    ui.add_space(theme::CARD_GAP);
     let available = ui.available_width();
     if let Some((left, right)) = theme::split_columns(available, 16.0, 0.42, 340.0, 360.0) {
         ui.horizontal_top(|ui| {
@@ -93,7 +95,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
         });
     } else {
         location_card(app, ui);
-        ui.add_space(16.0);
+        ui.add_space(theme::CARD_GAP);
         recent_card(app, ui);
     }
 }
@@ -101,8 +103,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
 fn location_card(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let p = app.palette();
     let s = app.s();
-    theme::card_frame(p).show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
+    theme::card(ui, p, |ui| {
         theme::section_title(ui, p, s.download_location);
         ui.add_space(8.0);
         let path = app.controller.state.downloads_dir.to_string_lossy();
@@ -123,8 +124,7 @@ fn location_card(app: &mut VolvidApp, ui: &mut egui::Ui) {
 fn recent_card(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let p = app.palette();
     let s = app.s();
-    theme::card_frame(p).show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
+    theme::card(ui, p, |ui| {
         ui.horizontal(|ui| {
             theme::section_title(ui, p, s.recent);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -150,31 +150,41 @@ fn recent_card(app: &mut VolvidApp, ui: &mut egui::Ui) {
                 .collect();
             for item in history {
                 let color = if item.ok { p.success } else { p.danger };
+                let timestamp = format::timestamp(item.timestamp, app.controller.state.locale);
+                let open_width =
+                    theme::text_width(ui, s.open, theme::semibold(theme::FONT_LABEL)) + 30.0;
+                let timestamp_width =
+                    theme::text_width(ui, &timestamp, egui::FontId::proportional(theme::FONT_TINY));
+                let actions_width = open_width + 8.0 + timestamp_width + 8.0;
                 ui.horizontal(|ui| {
                     theme::status_dot(ui, color);
-                    let title_width = (ui.available_width() - 178.0).max(80.0);
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(title_width, 24.0),
-                        Layout::left_to_right(Align::Center),
+                    theme::row_with_actions(
+                        ui,
+                        actions_width,
                         |ui| {
                             ui.add(
                                 egui::Label::new(
-                                    RichText::new(&item.label).color(p.text).size(12.5),
+                                    RichText::new(&item.label)
+                                        .color(p.text)
+                                        .size(theme::FONT_MUTED),
+                                )
+                                .truncate(),
+                            );
+                        },
+                        |ui| {
+                            if secondary_button(ui, p, s.open).clicked() {
+                                app.controller.open_folder(item.output_dir.clone());
+                            }
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(&timestamp)
+                                        .size(theme::FONT_TINY)
+                                        .color(p.muted),
                                 )
                                 .truncate(),
                             );
                         },
                     );
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if secondary_button(ui, p, s.open).clicked() {
-                            app.controller.open_folder(item.output_dir.clone());
-                        }
-                        ui.label(
-                            RichText::new(format::timestamp(item.timestamp))
-                                .size(10.5)
-                                .color(p.muted),
-                        );
-                    });
                 });
             }
         }
