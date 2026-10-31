@@ -1,5 +1,5 @@
 use eframe::egui;
-use egui::RichText;
+use egui::{FontId, RichText};
 
 use crate::app::VolvidApp;
 use crate::theme::{self, primary_button_sized};
@@ -64,23 +64,57 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
                         theme::muted(ui, p, s.no_results);
                     }
                     for (index, result) in app.controller.state.search_results.iter().enumerate() {
-                        let label = format!(
-                            "{}  ·  {}",
-                            result.title,
-                            volvid_core::format_duration(result.duration)
+                        let duration = volvid_core::format_duration(result.duration);
+                        let duration_width = theme::text_width(
+                            ui,
+                            &duration,
+                            FontId::proportional(theme::FONT_MUTED),
                         );
-                        let response = ui.add(
-                            egui::Button::new(
-                                theme::strong_text(&label, theme::FONT_MUTED).color(p.text),
-                            )
+                        let row = egui::Frame::new()
                             .fill(p.card_hover)
                             .stroke(egui::Stroke::new(1.0, p.border))
                             .corner_radius(egui::CornerRadius::same(theme::ROW_RADIUS))
-                            .min_size(egui::vec2(ui.available_width(), theme::BUTTON_HEIGHT))
-                            .truncate(),
-                        );
+                            .inner_margin(egui::Margin::symmetric(12, 9))
+                            .show(ui, |ui| {
+                                ui.set_min_width(ui.available_width());
+                                ui.horizontal(|ui| {
+                                    let title_width =
+                                        (ui.available_width() - duration_width - 16.0).max(80.0);
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(title_width, 0.0),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            ui.add(
+                                                egui::Label::new(
+                                                    theme::strong_text(&result.title, 14.0)
+                                                        .color(p.text),
+                                                )
+                                                .truncate(),
+                                            )
+                                            .on_hover_text(&result.title);
+                                        },
+                                    );
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(&duration)
+                                                        .size(theme::FONT_MUTED)
+                                                        .color(p.muted),
+                                                )
+                                                .truncate(),
+                                            );
+                                        },
+                                    );
+                                });
+                            });
+                        let response = row
+                            .response
+                            .interact(egui::Sense::click())
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            .on_hover_text(format!("{}  ·  {}", result.title, duration));
                         theme::press_overlay(ui, &response, theme::ROW_RADIUS);
-                        let response = response.on_hover_text(&label);
                         if response.clicked() {
                             selected = Some(index);
                             close = true;

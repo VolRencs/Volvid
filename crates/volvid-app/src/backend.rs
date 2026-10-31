@@ -347,6 +347,19 @@ impl Backend {
             .unwrap_or(false)
     }
 
+    /// Fetches a small queue preview for a job without blocking the UI thread.
+    pub fn fetch_job_preview(&self, job_id: u64, url: String) {
+        let engine = self.engine.clone();
+        let sink = self.sink.clone();
+        self.runtime.spawn(async move {
+            let result = engine
+                .fetch_thumbnail(&url, 320, None)
+                .await
+                .map_err(|err| err.to_string());
+            sink.send(AppEvent::JobThumbnail { job_id, result });
+        });
+    }
+
     pub fn cancel_download(&self, job_id: u64) {
         if let Ok(cancels) = self.cancels.lock()
             && let Some(cancel) = cancels.get(&job_id)

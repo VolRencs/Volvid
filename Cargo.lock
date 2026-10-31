@@ -5014,7 +5014,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "volvid-app"
-version = "8.0.0"
+version = "8.0.1"
 dependencies = [
  "anyhow",
  "serde",
@@ -5029,7 +5029,7 @@ dependencies = [
 
 [[package]]
 name = "volvid-core"
-version = "8.0.0"
+version = "8.0.1"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -5038,7 +5038,7 @@ dependencies = [
 
 [[package]]
 name = "volvid-engine"
-version = "8.0.0"
+version = "8.0.1"
 dependencies = [
  "anyhow",
  "directories",
@@ -5071,7 +5071,7 @@ dependencies = [
 
 [[package]]
 name = "volvid-gui"
-version = "8.0.0"
+version = "8.0.1"
 dependencies = [
  "arboard",
  "eframe",
@@ -5092,7 +5092,7 @@ dependencies = [
 
 [[package]]
 name = "volvid-i18n"
-version = "8.0.0"
+version = "8.0.1"
 dependencies = [
  "volvid-core",
 ]

@@ -1,3 +1,7 @@
+// Hide the console window in release builds on Windows; debug builds keep it
+// to make troubleshooting output visible.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod app;
 mod format;
 mod pages;

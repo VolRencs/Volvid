@@ -153,8 +153,11 @@ fn recent_card(app: &mut VolvidApp, ui: &mut egui::Ui) {
                 let timestamp = format::timestamp(item.timestamp, app.controller.state.locale);
                 let open_width =
                     theme::text_width(ui, s.open, theme::semibold(theme::FONT_LABEL)) + 30.0;
-                let timestamp_width =
-                    theme::text_width(ui, &timestamp, egui::FontId::proportional(theme::FONT_TINY));
+                let timestamp_width = theme::text_width(
+                    ui,
+                    &timestamp,
+                    egui::FontId::proportional(theme::FONT_SMALL),
+                );
                 let actions_width = open_width + 8.0 + timestamp_width + 8.0;
                 ui.horizontal(|ui| {
                     theme::status_dot(ui, color);
@@ -178,7 +181,7 @@ fn recent_card(app: &mut VolvidApp, ui: &mut egui::Ui) {
                             ui.add(
                                 egui::Label::new(
                                     RichText::new(&timestamp)
-                                        .size(theme::FONT_TINY)
+                                        .size(theme::FONT_SMALL)
                                         .color(p.muted),
                                 )
                                 .truncate(),

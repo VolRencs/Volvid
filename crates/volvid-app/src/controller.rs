@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use volvid_core::{DownloadMode, DownloadRequest, ParsedTarget, TargetKind};
-use volvid_engine::{AppPaths, Theme};
+use volvid_core::{DownloadMode, DownloadRequest, ParsedTarget, TargetKind, parse_target};
+use volvid_engine::{AppPaths, Theme, youtube_preview_url};
 use volvid_i18n::{default_quality, fragment_error_text};
 
 use crate::backend::Backend;
@@ -385,6 +385,19 @@ impl Controller {
         );
     }
 
+    /// Best-effort thumbnail linked to the job's first video, used by the queue tile.
+    fn job_preview_url(request: &DownloadRequest) -> Option<String> {
+        let url = if request.uses_playlist() {
+            request.entries.first()?.url.clone()
+        } else {
+            request.target.download_url(request.force_single)
+        };
+        parse_target(&url)
+            .ok()
+            .filter(|target| !target.video_id.is_empty())
+            .map(|target| youtube_preview_url(&target.video_id))
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn enqueue_request(
         &mut self,
@@ -398,6 +411,7 @@ impl Controller {
     ) {
         let job_id = self.next_job;
         self.next_job += 1;
+        let preview_url = Self::job_preview_url(&request);
         let slots = if is_playlist {
             (0..workers).map(|_| SlotView::default()).collect()
         } else {
@@ -424,10 +438,14 @@ impl Controller {
             elapsed: std::time::Duration::ZERO,
             recorded: false,
             pending_resume: false,
+            thumbnail: None,
         });
         self.state.route = Route::Downloads;
         self.state
             .toast(self.state.s().queued_message, ToastKind::Info);
+        if let Some(url) = preview_url {
+            self.backend.fetch_job_preview(job_id, url);
+        }
         self.pump_queue();
     }
 

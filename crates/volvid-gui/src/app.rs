@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -13,6 +14,12 @@ use crate::theme::{self, Palette};
 
 const SIDEBAR_WIDTH: f32 = 228.0;
 
+/// A queue preview texture plus the identity of the image it was built from.
+struct JobPreview {
+    source: u64,
+    texture: egui::TextureHandle,
+}
+
 pub struct VolvidApp {
     pub controller: Controller,
     clipboard: Option<Clipboard>,
@@ -22,6 +29,7 @@ pub struct VolvidApp {
     started: Instant,
     preview_texture: Option<egui::TextureHandle>,
     preview_generation: u64,
+    job_previews: HashMap<u64, JobPreview>,
     last_route: Route,
     pub(crate) scroll_reset: bool,
     dragging_url: bool,
@@ -47,6 +55,7 @@ impl VolvidApp {
             started: Instant::now(),
             preview_texture: None,
             preview_generation: 0,
+            job_previews: HashMap::new(),
             last_route: Route::Home,
             scroll_reset: true,
             dragging_url: false,
@@ -90,8 +99,57 @@ impl VolvidApp {
         );
     }
 
+    /// Uploads queue tile previews once per fetched image and drops stale ones.
+    fn update_job_previews(&mut self, ctx: &egui::Context) {
+        let active: Vec<u64> = self
+            .controller
+            .state
+            .jobs
+            .iter()
+            .map(|job| job.id)
+            .collect();
+        self.job_previews.retain(|id, _| active.contains(id));
+        for job in &self.controller.state.jobs {
+            let Some(image) = job.thumbnail.as_ref() else {
+                continue;
+            };
+            let source = Arc::as_ptr(image) as *const () as u64;
+            if self
+                .job_previews
+                .get(&job.id)
+                .is_some_and(|preview| preview.source == source)
+            {
+                continue;
+            }
+            let color = egui::ColorImage::from_rgba_unmultiplied(
+                [image.width as usize, image.height as usize],
+                &image.rgba,
+            );
+            let texture = ctx.load_texture(
+                format!("volvid-job-preview-{}", job.id),
+                color,
+                egui::TextureOptions::LINEAR,
+            );
+            self.job_previews
+                .insert(job.id, JobPreview { source, texture });
+            tracing::debug!(
+                job = job.id,
+                width = image.width,
+                height = image.height,
+                "job preview ready"
+            );
+        }
+    }
+
     pub fn preview_texture(&self) -> Option<&egui::TextureHandle> {
         self.preview_texture.as_ref()
+    }
+
+    /// Uploaded preview texture for a queue job's tile, if available.
+    pub fn job_preview(&self, job_id: u64) -> Option<&egui::TextureHandle> {
+        self.job_previews
+            .get(&job_id)
+            .map(|preview| &preview.texture)
     }
 
     pub fn s(&self) -> &'static volvid_i18n::Strings {
@@ -428,6 +486,7 @@ impl eframe::App for VolvidApp {
         }
         self.controller.poll();
         self.update_preview(ctx);
+        self.update_job_previews(ctx);
         self.handle_drag_and_drop(ctx);
         if self.controller.state.route != self.last_route {
             self.last_route = self.controller.state.route;

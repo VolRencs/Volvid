@@ -173,6 +173,8 @@ async fn install_node(
     Ok(())
 }
 
+// Windows has no executable permission bit, so `path` stays unused there.
+#[cfg_attr(windows, allow(unused_variables))]
 fn make_executable(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {

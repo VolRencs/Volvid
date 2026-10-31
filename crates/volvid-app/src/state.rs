@@ -214,6 +214,8 @@ pub struct JobView {
     pub elapsed: Duration,
     pub recorded: bool,
     pub pending_resume: bool,
+    /// Instant preview fetched for the queue tile, applied late by the backend.
+    pub thumbnail: Option<Arc<PreviewImage>>,
 }
 
 impl JobView {
@@ -371,6 +373,10 @@ pub enum AppEvent {
         job_id: u64,
         run_id: u64,
         update: DlUpdate,
+    },
+    JobThumbnail {
+        job_id: u64,
+        result: Result<Arc<PreviewImage>, String>,
     },
     DownloadFinished {
         job_id: u64,
@@ -681,6 +687,14 @@ impl AppState {
                 }
                 true
             }
+            AppEvent::JobThumbnail { job_id, result } => {
+                if let Some(job) = self.jobs.iter_mut().find(|job| job.id == job_id)
+                    && let Ok(image) = result
+                {
+                    job.thumbnail = Some(image);
+                }
+                true
+            }
             AppEvent::DownloadFinished {
                 job_id,
                 run_id,
@@ -976,6 +990,7 @@ mod tests {
             elapsed: Duration::ZERO,
             recorded: false,
             pending_resume: false,
+            thumbnail: None,
         };
         job.apply(&DlUpdate {
             event_type: DlEventType::Done,
@@ -1010,6 +1025,7 @@ mod tests {
             elapsed: Duration::ZERO,
             recorded: false,
             pending_resume: false,
+            thumbnail: None,
         }
     }
 

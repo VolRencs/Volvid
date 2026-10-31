@@ -1,13 +1,16 @@
 use std::path::PathBuf;
 
 use eframe::egui;
-use egui::{Align, Layout, RichText, Sense, Stroke, Vec2};
+use egui::{Align, CornerRadius, FontId, Layout, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 use volvid_app::{JobStatus, Route};
 use volvid_core::format_clock;
 use volvid_i18n::{format_bytes, format_elapsed};
 
 use crate::app::VolvidApp;
-use crate::theme::{self, secondary_button, secondary_button_ex, secondary_button_sized};
+use crate::theme::{self, primary_button, secondary_button, secondary_button_ex};
+
+const TILE_SIZE: Vec2 = Vec2::new(124.0, 80.0);
+const TILE_RADIUS: u8 = 11;
 
 enum QueueAction {
     Pause(u64),
@@ -83,191 +86,12 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                 theme::status_dot(ui, p.muted);
                 ui.add_space(6.0);
                 theme::muted(ui, p, s.no_downloads);
-                ui.add_space(18.0);
-                if secondary_button(ui, p, s.nav_new).clicked() {
-                    action = Some(QueueAction::GoHome);
-                }
                 ui.add_space(28.0);
             });
         });
     } else {
         for job in state.jobs.iter().rev() {
-            let status_color = status_color(job.status, p);
-            theme::card_frame(p).show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-                ui.horizontal_top(|ui| {
-                    job_tile(ui, p);
-                    let action_width = action_width(job.status);
-                    let content_width = (ui.available_width() - action_width - 16.0).max(180.0);
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(content_width, 0.0),
-                        Layout::top_down(Align::LEFT),
-                        |ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    theme::strong_text(&job.title, 15.0).color(p.text),
-                                )
-                                .truncate(),
-                            );
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(&job.detail).size(12.0).color(p.muted),
-                                )
-                                .truncate(),
-                            );
-                            ui.add_space(8.0);
-                            theme::progress_bar(ui, p, (job.progress() / 100.0) as f32, 8.0);
-                            ui.add_space(6.0);
-                            ui.horizontal(|ui| {
-                                if job.status == JobStatus::Failed {
-                                    let text = job.error.as_deref().unwrap_or(s.download_failed);
-                                    ui.add(
-                                        egui::Label::new(
-                                            RichText::new(text).color(p.danger).size(11.5),
-                                        )
-                                        .truncate(),
-                                    )
-                                    .on_hover_text(text);
-                                } else {
-                                    let label = status_label(job, s, status_color);
-                                    ui.add(
-                                        egui::Label::new(
-                                            RichText::new(&label)
-                                                .color(status_color)
-                                                .size(theme::FONT_SMALL),
-                                        )
-                                        .truncate(),
-                                    );
-                                }
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    let meta = job_meta(job, s, state.locale);
-                                    if !meta.is_empty() {
-                                        ui.add(
-                                            egui::Label::new(
-                                                RichText::new(meta).size(11.0).color(p.muted),
-                                            )
-                                            .truncate(),
-                                        );
-                                    }
-                                });
-                            });
-                        },
-                    );
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.add_space(12.0);
-                        match job.status {
-                            JobStatus::Active => {
-                                if theme::icon_button(
-                                    ui,
-                                    p,
-                                    egui::include_image!("../../../../assets/icons/close.svg"),
-                                    42.0,
-                                    p.muted,
-                                    s.cancel,
-                                )
-                                .clicked()
-                                {
-                                    action = Some(QueueAction::Cancel(job.id));
-                                }
-                                if theme::icon_button(
-                                    ui,
-                                    p,
-                                    egui::include_image!("../../../../assets/icons/pause.svg"),
-                                    42.0,
-                                    p.text,
-                                    s.pause,
-                                )
-                                .clicked()
-                                {
-                                    action = Some(QueueAction::Pause(job.id));
-                                }
-                            }
-                            JobStatus::Queued | JobStatus::Cancelled => {
-                                if theme::icon_button(
-                                    ui,
-                                    p,
-                                    egui::include_image!("../../../../assets/icons/close.svg"),
-                                    42.0,
-                                    p.muted,
-                                    if job.status == JobStatus::Queued {
-                                        s.cancel
-                                    } else {
-                                        s.remove
-                                    },
-                                )
-                                .clicked()
-                                {
-                                    action = Some(if job.status == JobStatus::Queued {
-                                        QueueAction::Cancel(job.id)
-                                    } else {
-                                        QueueAction::Dismiss(job.id)
-                                    });
-                                }
-                            }
-                            JobStatus::Paused => {
-                                if theme::icon_button(
-                                    ui,
-                                    p,
-                                    egui::include_image!("../../../../assets/icons/close.svg"),
-                                    42.0,
-                                    p.muted,
-                                    s.cancel,
-                                )
-                                .clicked()
-                                {
-                                    action = Some(QueueAction::Cancel(job.id));
-                                }
-                                if theme::icon_button(
-                                    ui,
-                                    p,
-                                    egui::include_image!("../../../../assets/icons/play.svg"),
-                                    42.0,
-                                    p.text,
-                                    s.resume,
-                                )
-                                .clicked()
-                                {
-                                    action = Some(QueueAction::Resume(job.id));
-                                }
-                            }
-                            JobStatus::Failed => {
-                                if theme::icon_button(
-                                    ui,
-                                    p,
-                                    egui::include_image!("../../../../assets/icons/close.svg"),
-                                    42.0,
-                                    p.muted,
-                                    s.remove,
-                                )
-                                .clicked()
-                                {
-                                    action = Some(QueueAction::Dismiss(job.id));
-                                }
-                                if secondary_button_sized(ui, p, s.retry, 110.0).clicked() {
-                                    action = Some(QueueAction::Retry(job.id));
-                                }
-                            }
-                            JobStatus::Completed => {
-                                if theme::icon_button(
-                                    ui,
-                                    p,
-                                    egui::include_image!("../../../../assets/icons/close.svg"),
-                                    42.0,
-                                    p.muted,
-                                    s.remove,
-                                )
-                                .clicked()
-                                {
-                                    action = Some(QueueAction::Dismiss(job.id));
-                                }
-                                if secondary_button_sized(ui, p, s.open_folder, 136.0).clicked() {
-                                    action = Some(QueueAction::Open(job.output_dir.clone()));
-                                }
-                            }
-                        }
-                    });
-                });
-            });
+            job_card(app, ui, p, job, &mut action);
             ui.add_space(12.0);
         }
     }
@@ -287,6 +111,162 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
     }
 }
 
+fn job_card(
+    app: &VolvidApp,
+    ui: &mut egui::Ui,
+    p: &crate::theme::Palette,
+    job: &volvid_app::JobView,
+    action: &mut Option<QueueAction>,
+) {
+    let s = app.s();
+    let status_color = status_color(job.status, p);
+    let action_width = action_width(ui, job, s);
+    theme::card_frame(p).show(ui, |ui| {
+        ui.set_min_width(ui.available_width());
+        // The row only holds the tile and the text column, so its rect keeps the
+        // natural content height. Painting the actions afterwards inside a
+        // bounded rect keeps them centered without stretching the card.
+        let row = ui.horizontal_top(|ui| {
+            job_tile(app, ui, p, job.id);
+            let content_width = (ui.available_width() - action_width - 16.0).max(180.0);
+            ui.allocate_ui_with_layout(
+                egui::vec2(content_width, 0.0),
+                Layout::top_down(Align::LEFT),
+                |ui| {
+                    ui.add(
+                        egui::Label::new(theme::strong_text(&job.title, 15.0).color(p.text))
+                            .truncate(),
+                    )
+                    .on_hover_text(&job.title);
+                    ui.add(
+                        egui::Label::new(RichText::new(&job.detail).size(12.0).color(p.muted))
+                            .truncate(),
+                    )
+                    .on_hover_text(&job.detail);
+                    ui.add_space(8.0);
+                    theme::progress_bar(ui, p, (job.progress() / 100.0) as f32, 8.0);
+                    ui.add_space(6.0);
+                    status_line(
+                        ui,
+                        p,
+                        job,
+                        s,
+                        status_color,
+                        app.controller.state.locale,
+                        content_width,
+                    );
+                },
+            );
+        });
+        let row_rect = row.response.rect;
+        let actions_rect = Rect::from_min_max(
+            Pos2::new(ui.max_rect().right() - action_width, row_rect.top()),
+            Pos2::new(ui.max_rect().right(), row_rect.bottom()),
+        );
+        ui.scope_builder(egui::UiBuilder::new().max_rect(actions_rect), |ui| {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                match job.status {
+                    JobStatus::Active => {
+                        if close_icon(ui, p, s.cancel) {
+                            *action = Some(QueueAction::Cancel(job.id));
+                        }
+                        if icon_action(ui, p, PAUSE_SVG, s.pause) {
+                            *action = Some(QueueAction::Pause(job.id));
+                        }
+                    }
+                    JobStatus::Queued | JobStatus::Cancelled => {
+                        let queued = job.status == JobStatus::Queued;
+                        if close_icon(ui, p, if queued { s.cancel } else { s.remove }) {
+                            *action = Some(if queued {
+                                QueueAction::Cancel(job.id)
+                            } else {
+                                QueueAction::Dismiss(job.id)
+                            });
+                        }
+                    }
+                    JobStatus::Paused => {
+                        if close_icon(ui, p, s.cancel) {
+                            *action = Some(QueueAction::Cancel(job.id));
+                        }
+                        if icon_action(ui, p, PLAY_SVG, s.resume) {
+                            *action = Some(QueueAction::Resume(job.id));
+                        }
+                    }
+                    JobStatus::Failed => {
+                        if close_icon(ui, p, s.remove) {
+                            *action = Some(QueueAction::Dismiss(job.id));
+                        }
+                        if secondary_button(ui, p, s.retry).clicked() {
+                            *action = Some(QueueAction::Retry(job.id));
+                        }
+                    }
+                    JobStatus::Completed => {
+                        if close_icon(ui, p, s.remove) {
+                            *action = Some(QueueAction::Dismiss(job.id));
+                        }
+                        if secondary_button(ui, p, s.open_folder).clicked() {
+                            *action = Some(QueueAction::Open(job.output_dir.clone()));
+                        }
+                    }
+                }
+            });
+        });
+    });
+}
+
+/// Left-side status/error text and right-side metadata on one evenly aligned line.
+#[allow(clippy::too_many_arguments)]
+fn status_line(
+    ui: &mut egui::Ui,
+    p: &crate::theme::Palette,
+    job: &volvid_app::JobView,
+    s: &volvid_i18n::Strings,
+    status_color: egui::Color32,
+    locale: volvid_core::Locale,
+    content_width: f32,
+) {
+    let status_text = if job.status == JobStatus::Failed {
+        job.error
+            .clone()
+            .unwrap_or_else(|| s.download_failed.to_owned())
+    } else {
+        status_label(job, s)
+    };
+    let meta = job_meta(job, s, locale);
+    let meta_width = theme::text_width(ui, &meta, FontId::proportional(theme::FONT_SMALL));
+    ui.horizontal(|ui| {
+        let status_width = if meta.is_empty() {
+            content_width
+        } else {
+            (content_width - meta_width - 16.0).max(60.0)
+        };
+        ui.allocate_ui_with_layout(
+            egui::vec2(status_width, 0.0),
+            Layout::left_to_right(Align::Center),
+            |ui| {
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(&status_text)
+                            .color(status_color)
+                            .size(theme::FONT_SMALL),
+                    )
+                    .truncate(),
+                )
+                .on_hover_text(&status_text);
+            },
+        );
+        if !meta.is_empty() {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add(
+                    egui::Label::new(RichText::new(&meta).color(p.muted).size(theme::FONT_SMALL))
+                        .truncate(),
+                )
+                .on_hover_text(&meta);
+            });
+        }
+    });
+}
+
 fn queue_actions(
     ui: &mut egui::Ui,
     p: &crate::theme::Palette,
@@ -296,6 +276,9 @@ fn queue_actions(
     paused: usize,
     action: &mut Option<QueueAction>,
 ) {
+    if primary_button(ui, p, s.nav_new).clicked() {
+        *action = Some(QueueAction::GoHome);
+    }
     let clear = ui
         .add_enabled_ui(has_finished, |ui| {
             secondary_button_ex(
@@ -330,14 +313,42 @@ fn queue_actions(
     }
 }
 
-fn action_width(status: JobStatus) -> f32 {
-    match status {
-        JobStatus::Active | JobStatus::Paused => 108.0,
-        JobStatus::Failed => 170.0,
-        JobStatus::Completed => 198.0,
-        JobStatus::Queued | JobStatus::Cancelled => 58.0,
+fn action_width(ui: &egui::Ui, job: &volvid_app::JobView, s: &volvid_i18n::Strings) -> f32 {
+    const LEAD: f32 = 16.0;
+    const ICON: f32 = 42.0;
+    const GAP: f32 = 8.0;
+    let label = |text: &str| theme::text_width(ui, text, theme::semibold(theme::FONT_LABEL)) + 30.0;
+    match job.status {
+        JobStatus::Active | JobStatus::Paused => LEAD + ICON * 2.0 + GAP,
+        JobStatus::Queued | JobStatus::Cancelled => LEAD + ICON,
+        JobStatus::Failed => LEAD + ICON + GAP + label(s.retry),
+        JobStatus::Completed => LEAD + ICON + GAP + label(s.open_folder),
     }
 }
+
+fn close_icon(ui: &mut egui::Ui, p: &crate::theme::Palette, tooltip: &str) -> bool {
+    theme::icon_button(
+        ui,
+        p,
+        egui::include_image!("../../../../assets/icons/close.svg"),
+        42.0,
+        p.muted,
+        tooltip,
+    )
+    .clicked()
+}
+
+fn icon_action(
+    ui: &mut egui::Ui,
+    p: &crate::theme::Palette,
+    icon: egui::ImageSource<'static>,
+    tooltip: &str,
+) -> bool {
+    theme::icon_button(ui, p, icon, 42.0, p.text, tooltip).clicked()
+}
+
+const PAUSE_SVG: egui::ImageSource = egui::include_image!("../../../../assets/icons/pause.svg");
+const PLAY_SVG: egui::ImageSource = egui::include_image!("../../../../assets/icons/play.svg");
 
 fn status_color(status: JobStatus, p: &crate::theme::Palette) -> egui::Color32 {
     match status {
@@ -350,11 +361,7 @@ fn status_color(status: JobStatus, p: &crate::theme::Palette) -> egui::Color32 {
     }
 }
 
-fn status_label(
-    job: &volvid_app::JobView,
-    s: &volvid_i18n::Strings,
-    _color: egui::Color32,
-) -> String {
+fn status_label(job: &volvid_app::JobView, s: &volvid_i18n::Strings) -> String {
     match job.status {
         JobStatus::Queued => s.queued.to_owned(),
         JobStatus::Active => job
@@ -414,18 +421,47 @@ fn job_meta(
     parts.join("  ·  ")
 }
 
-fn job_tile(ui: &mut egui::Ui, p: &crate::theme::Palette) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(124.0, 80.0), Sense::hover());
+/// Queue tile: fetched thumbnail filling the tile or a subtle play glyph.
+fn job_tile(app: &VolvidApp, ui: &mut egui::Ui, p: &crate::theme::Palette, job_id: u64) {
+    let (rect, _) = ui.allocate_exact_size(TILE_SIZE, Sense::hover());
     let painter = ui.painter();
-    painter.rect_filled(rect, egui::CornerRadius::same(11), p.card_hover);
-    let center = rect.center();
-    painter.add(egui::epaint::PathShape::convex_polygon(
-        vec![
-            center + egui::vec2(-5.0, -8.0),
-            center + egui::vec2(-5.0, 8.0),
-            center + egui::vec2(8.0, 0.0),
-        ],
-        p.muted,
-        Stroke::NONE,
-    ));
+    painter.rect_filled(rect, CornerRadius::same(TILE_RADIUS), p.card_hover);
+    if let Some(texture) = app.job_preview(job_id) {
+        let size = texture.size_vec2();
+        let uv = fill_uv(
+            size.x.max(1.0) / size.y.max(1.0),
+            rect.width() / rect.height(),
+        );
+        ui.put(
+            rect,
+            egui::Image::new((texture.id(), rect.size()))
+                .uv(uv)
+                .corner_radius(CornerRadius::same(TILE_RADIUS)),
+        );
+    } else {
+        let center = rect.center();
+        painter.circle_stroke(center, 15.0, Stroke::new(1.5, p.muted.gamma_multiply(0.55)));
+        painter.add(egui::epaint::PathShape::convex_polygon(
+            vec![
+                center + egui::vec2(-3.0, -7.0),
+                center + egui::vec2(-3.0, 7.0),
+                center + egui::vec2(7.0, 0.0),
+            ],
+            p.muted,
+            Stroke::NONE,
+        ));
+    }
+}
+
+/// Centered UV window so a texture fills the whole box without distortion.
+fn fill_uv(image_aspect: f32, box_aspect: f32) -> Rect {
+    if image_aspect > box_aspect {
+        let width = (box_aspect / image_aspect).clamp(0.0, 1.0);
+        let offset = (1.0 - width) / 2.0;
+        Rect::from_min_max(Pos2::new(offset, 0.0), Pos2::new(offset + width, 1.0))
+    } else {
+        let height = (image_aspect / box_aspect).clamp(0.0, 1.0);
+        let offset = (1.0 - height) / 2.0;
+        Rect::from_min_max(Pos2::new(0.0, offset), Pos2::new(1.0, offset + height))
+    }
 }

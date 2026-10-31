@@ -29,7 +29,6 @@ pub const FONT_BODY: f32 = 15.0;
 pub const FONT_LABEL: f32 = 14.0;
 pub const FONT_MUTED: f32 = 13.0;
 pub const FONT_SMALL: f32 = 11.5;
-pub const FONT_TINY: f32 = 10.5;
 pub const SETTINGS_LABEL_W: f32 = 220.0;
 pub const SETTINGS_LABEL_W_NARROW: f32 = 180.0;
 pub const SETTINGS_BREAKPOINT: f32 = 720.0;

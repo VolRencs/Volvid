@@ -12,6 +12,9 @@ struct Candidate {
 
 /// Detects the newest usable browser cookie database. This intentionally
 /// mirrors the old Go heuristic: use the most recently touched profile.
+// Windows detection uses APPDATA/LOCALAPPDATA instead of the home directory,
+// which leaves `home` unused there.
+#[cfg_attr(windows, allow(unused_variables))]
 pub fn detect_browser_cookies(home: &Path) -> BrowserCookiesInfo {
     let mut candidates = Vec::new();
     let mut found_root = false;
