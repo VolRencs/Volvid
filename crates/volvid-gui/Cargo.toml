@@ -6,6 +6,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+build = "build.rs"
 
 [[bin]]
 name = "Volvid"
@@ -29,12 +30,11 @@ jiff = { workspace = true }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
-winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
 
 [target.'cfg(unix)'.dependencies]
 eframe = { workspace = true, features = ["wayland"] }
+# Feature unification for the Wayland backend: load libwayland dynamically.
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen"] }
 
-[dev-dependencies]
-egui_kittest = { workspace = true }
-insta = { workspace = true }
+[build-dependencies]
+winresource = "0.1.34"

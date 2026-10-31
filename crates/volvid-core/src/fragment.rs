@@ -126,27 +126,6 @@ pub fn parse_bounded_fragment_range(
     Ok(fragment)
 }
 
-#[allow(non_snake_case)]
-pub fn ParseBoundedFragmentRange(
-    raw: &str,
-    media_duration: i64,
-) -> Result<DownloadFragment, FragmentError> {
-    parse_bounded_fragment_range(raw, media_duration)
-}
-
-#[allow(non_snake_case)]
-pub fn ValidateFragmentDuration(
-    fragment: &DownloadFragment,
-    media_duration: i64,
-) -> Result<(), FragmentError> {
-    validate_fragment_duration(fragment, media_duration)
-}
-
-#[allow(non_snake_case)]
-pub fn FormatFragmentLabel(fragment: Option<&DownloadFragment>) -> String {
-    format_fragment_label(fragment)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

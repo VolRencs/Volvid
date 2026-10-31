@@ -1,6 +1,5 @@
-#![allow(clippy::collapsible_if, clippy::too_many_arguments)]
-
 mod app;
+mod format;
 mod pages;
 mod theme;
 
@@ -56,7 +55,7 @@ fn main() -> eframe::Result {
     let icon = load_icon();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Volvid")
-        .with_inner_size([1180.0, 760.0])
+        .with_inner_size([1280.0, 800.0])
         .with_min_inner_size([940.0, 620.0])
         .with_app_id("volvid");
     if let Some(icon) = icon {

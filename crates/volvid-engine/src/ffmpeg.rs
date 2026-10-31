@@ -4,11 +4,11 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use tokio_util::sync::CancellationToken;
-use volvid_core::{CheckDepsResult, DownloadMode, OutputProfile};
+use volvid_core::{CheckDepsResult, OutputProfile};
 
 use crate::deps::ffmpeg_bin;
 use crate::paths::AppPaths;
-use crate::process::command_combined_output;
+use crate::process::{ProcessError, command_output_cancellable};
 
 const ENCODERS_TIMEOUT: Duration = Duration::from_secs(3);
 const DEFAULT_HARDWARE_CRF: &str = "23";
@@ -27,7 +27,7 @@ pub async fn detect_video_encoders(
 ) -> HashSet<String> {
     let ffmpeg = ffmpeg_bin(deps, paths);
     let args = vec!["-hide_banner".to_owned(), "-encoders".to_owned()];
-    let output = command_combined_output(&ffmpeg, &args, Some(ENCODERS_TIMEOUT)).await;
+    let output = command_output_cancellable(&ffmpeg, &args, Some(ENCODERS_TIMEOUT), cancel).await;
     let Ok(output) = output else {
         return HashSet::new();
     };
@@ -40,7 +40,6 @@ pub async fn detect_video_encoders(
         }
         encoders.insert(fields[1].to_owned());
     }
-    let _ = cancel;
     encoders
 }
 
@@ -49,6 +48,7 @@ pub async fn transcode_video(
     deps: &CheckDepsResult,
     profile: &OutputProfile,
     input: &Path,
+    encoders: Option<&HashSet<String>>,
     cancel: Option<CancellationToken>,
 ) -> Result<Option<PathBuf>> {
     if !profile.needs_video_transcode() {
@@ -56,8 +56,15 @@ pub async fn transcode_video(
     }
     let ffmpeg = ffmpeg_bin(deps, paths);
     let final_path = transcode_final_path(input, &profile.video_container);
-    let encoders = detect_video_encoders(paths, deps, cancel.clone()).await;
-    let commands = transcode_commands(profile, &encoders);
+    let detected;
+    let encoders = match encoders {
+        Some(encoders) => encoders,
+        None => {
+            detected = detect_video_encoders(paths, deps, cancel.clone()).await;
+            &detected
+        }
+    };
+    let commands = transcode_commands(profile, encoders);
 
     let mut last_error = String::new();
     for command in commands {
@@ -67,7 +74,18 @@ pub async fn transcode_video(
         let temp = create_temp_path(input, "transcode", extension_for(profile, input))?;
         let mut args = fill_transcode_input(&command, input);
         args.push(temp.to_string_lossy().into_owned());
-        let output = command_combined_output(&ffmpeg, &args, None).await?;
+        let output = command_output_cancellable(&ffmpeg, &args, None, cancel.clone()).await;
+        let output = match output {
+            Ok(output) => output,
+            Err(ProcessError::Cancelled) => {
+                let _ = std::fs::remove_file(&temp);
+                bail!("operation cancelled");
+            }
+            Err(err) => {
+                let _ = std::fs::remove_file(&temp);
+                return Err(err.into());
+            }
+        };
         if !output.success {
             last_error = output.stderr.trim().to_owned();
             let _ = std::fs::remove_file(&temp);
@@ -417,7 +435,17 @@ pub async fn retag_audio_languages(
         }
     }
     args.push(temp.to_string_lossy().into_owned());
-    let output = command_combined_output(&ffmpeg, &args, None).await?;
+    let output = match command_output_cancellable(&ffmpeg, &args, None, cancel.clone()).await {
+        Ok(output) => output,
+        Err(ProcessError::Cancelled) => {
+            let _ = std::fs::remove_file(&temp);
+            bail!("operation cancelled");
+        }
+        Err(err) => {
+            let _ = std::fs::remove_file(&temp);
+            return Err(err.into());
+        }
+    };
     if !output.success {
         let _ = std::fs::remove_file(&temp);
         bail!("retag audio languages: {}", output.stderr.trim());
@@ -485,13 +513,10 @@ pub fn fill_transcode_input(args: &[String], input: &Path) -> Vec<String> {
         .collect()
 }
 
-pub fn profile_needs_subtitles(profile: &OutputProfile) -> bool {
-    profile.mode == DownloadMode::Video && profile.wants_subtitles()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use volvid_core::DownloadMode;
 
     #[test]
     fn maps_iso_languages() {

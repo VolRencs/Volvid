@@ -43,7 +43,3 @@ pub fn next_locale(locale: Locale) -> Locale {
         Locale::Ru => Locale::En,
     }
 }
-
-/// Kept as a free function to mirror the Go domain naming.
-pub use next_locale as NextLocale;
-pub use parse_locale as ParseLocale;

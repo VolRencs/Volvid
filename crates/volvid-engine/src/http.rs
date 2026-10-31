@@ -6,14 +6,13 @@ use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use volvid_core::FileProgress;
-
-use crate::paths::write_atomic;
+use volvid_core::{FileProgress, Locale};
 
 pub async fn download_file(
     client: &reqwest::Client,
     url: &str,
     destination: &Path,
+    locale: Locale,
     progress: Option<&mpsc::UnboundedSender<FileProgress>>,
     cancel: Option<CancellationToken>,
 ) -> Result<PathBuf> {
@@ -29,7 +28,12 @@ pub async fn download_file(
     let mut stream = response.bytes_stream();
     let dir = destination.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(dir)?;
-    let mut temp = tokio::fs::File::create(destination).await?;
+    let temp = tempfile::Builder::new()
+        .prefix(".volvid-download-")
+        .tempfile_in(dir)
+        .context("create temporary download file")?;
+    let temp_path = temp.path().to_path_buf();
+    let mut file = tokio::fs::File::from_std(temp.reopen()?);
     let mut done = 0i64;
     let started = Instant::now();
     let mut last_emit = Instant::now() - Duration::from_secs(1);
@@ -37,7 +41,7 @@ pub async fn download_file(
         let next = if let Some(token) = &cancel {
             tokio::select! {
                 _ = token.cancelled() => {
-                    let _ = tokio::fs::remove_file(destination).await;
+                    drop(file);
                     send_progress(progress, FileProgress {
                         done: true,
                         err: Some("operation cancelled".to_owned()),
@@ -54,7 +58,7 @@ pub async fn download_file(
             break;
         };
         let chunk = chunk.context("read download stream")?;
-        temp.write_all(&chunk).await?;
+        file.write_all(&chunk).await?;
         done += chunk.len() as i64;
         if last_emit.elapsed() >= Duration::from_millis(100) {
             let pct = if total > 0 {
@@ -73,7 +77,7 @@ pub async fn download_file(
                     pct: pct.clamp(0.0, 100.0),
                     done_b: done,
                     total_b: total,
-                    speed: volvid_i18n::format_speed(speed, volvid_core::Locale::En),
+                    speed: volvid_i18n::format_speed(speed, locale),
                     done: false,
                     err: None,
                 },
@@ -81,9 +85,11 @@ pub async fn download_file(
             last_emit = Instant::now();
         }
     }
-    temp.flush().await?;
-    temp.sync_all().await?;
-    drop(temp);
+    file.flush().await?;
+    file.sync_all().await?;
+    drop(file);
+    temp.persist(destination)
+        .map_err(|err| anyhow::anyhow!("persist {}: {}", temp_path.display(), err.error))?;
     send_progress(
         progress,
         FileProgress {
@@ -126,9 +132,4 @@ pub async fn fetch_json(client: &reqwest::Client, url: &str) -> Result<serde_jso
         bail!("HTTP {} for {url}", response.status());
     }
     Ok(response.json().await?)
-}
-
-pub fn write_text_atomic(path: &Path, text: &str) -> Result<()> {
-    write_atomic(path, text.as_bytes())?;
-    Ok(())
 }

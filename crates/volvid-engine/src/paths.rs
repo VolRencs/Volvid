@@ -12,7 +12,6 @@ pub const DOWNLOADS_FILE: &str = ".volvid_downloads_dir";
 
 #[derive(Clone, Debug)]
 pub struct AppPaths {
-    pub app_dir: PathBuf,
     pub config_dir: PathBuf,
     pub data_dir: PathBuf,
     pub deps_dir: PathBuf,
@@ -51,7 +50,6 @@ impl AppPaths {
             .unwrap_or_else(|| data_dir.join("downloads"));
 
         Self {
-            app_dir,
             config_dir,
             data_dir,
             deps_dir,
@@ -85,19 +83,6 @@ impl AppPaths {
 
     pub fn node_bin(&self) -> PathBuf {
         self.deps_dir.join(binary_name("node"))
-    }
-
-    pub fn downloads_locked(&self) -> bool {
-        env_path(ENV_DOWNLOADS_DIR).is_some()
-    }
-
-    pub fn save_downloads_dir(&self, path: &Path) -> std::io::Result<()> {
-        std::fs::create_dir_all(&self.config_dir)?;
-        let mut content = path.to_string_lossy().into_owned();
-        if !content.ends_with('\n') {
-            content.push('\n');
-        }
-        write_atomic(&self.config_dir.join(DOWNLOADS_FILE), content.as_bytes())
     }
 }
 

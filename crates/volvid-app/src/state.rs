@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use volvid_core::{
     AudioTrack, CheckDepsResult, DlEventType, DlUpdate, DownloadFragment, DownloadMode,
     DownloadRequest, FileProgress, FragmentError, Locale, MediaProbe, OutputProfile, ParsedTarget,
-    PlaylistEntry, PlaylistInfo, QualityChoice, SearchResult, SubtitleTrack, TargetKind,
-    UpdateInfo, format_fragment_label, parse_bounded_fragment_range,
+    PlaylistEntry, PlaylistInfo, QualityChoice, SearchResult, SubtitleTrack, UpdateInfo,
+    format_fragment_label, parse_bounded_fragment_range,
 };
 use volvid_engine::{AppPaths, Config, Theme};
 use volvid_i18n::{
@@ -164,11 +164,19 @@ impl Draft {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum JobStatus {
+    Queued,
     #[default]
     Active,
+    Paused,
     Completed,
     Failed,
     Cancelled,
+}
+
+impl JobStatus {
+    pub fn is_pending(self) -> bool {
+        matches!(self, Self::Queued | Self::Active | Self::Paused)
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -178,10 +186,9 @@ pub struct SlotView {
     pub done_b: i64,
     pub total_b: i64,
     pub speed: String,
+    pub speed_bps: i64,
     pub label: String,
     pub proc: bool,
-    pub done: bool,
-    pub failed: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -200,6 +207,8 @@ pub struct JobView {
     pub slots: Vec<SlotView>,
     pub status: JobStatus,
     pub error: Option<String>,
+    pub run_id: u64,
+    pub started: bool,
     pub started_at: Instant,
     pub elapsed: Duration,
     pub recorded: bool,
@@ -239,6 +248,7 @@ impl JobView {
                     slot.done_b = update.done_b;
                     slot.total_b = update.total_b;
                     slot.speed = update.speed.clone();
+                    slot.speed_bps = update.speed_bps;
                     slot.proc = false;
                 }
                 DlEventType::Proc | DlEventType::Fallback => {
@@ -247,15 +257,12 @@ impl JobView {
                 }
                 DlEventType::Reset => *slot = SlotView::default(),
                 DlEventType::Done => {
-                    slot.done = update.ok;
-                    slot.failed = !update.ok;
                     slot.proc = false;
                     slot.pct = 100.0;
                     if !update.ok {
                         slot.label = update.err_text.clone();
                     }
                 }
-                DlEventType::Closed => {}
             }
         }
         if update.event_type == DlEventType::Done {
@@ -296,7 +303,7 @@ impl HistoryItem {
         Self {
             label: job.title.clone(),
             url: job.url.clone(),
-            ok: job.failed == 0,
+            ok: job.status == JobStatus::Completed,
             mode: job.mode,
             output_dir: job.output_dir.clone(),
             timestamp: SystemTime::now()
@@ -346,13 +353,18 @@ pub enum AppEvent {
         op: u64,
         result: Result<Vec<QualityChoice>, String>,
     },
-    Search(Result<Vec<SearchResult>, String>),
+    Search {
+        op: u64,
+        result: Result<Vec<SearchResult>, String>,
+    },
     Download {
         job_id: u64,
+        run_id: u64,
         update: DlUpdate,
     },
     DownloadFinished {
         job_id: u64,
+        run_id: u64,
         result: Result<(), String>,
     },
     InstallProgress {
@@ -405,6 +417,7 @@ pub struct AppState {
 
     pub playlist: Option<PlaylistInfo>,
     pub playlist_loading: bool,
+    pub playlist_scroll_reset: bool,
     pub playlist_filter: String,
     pub selected_entries: BTreeSet<usize>,
     pub range_input: String,
@@ -415,7 +428,6 @@ pub struct AppState {
     pub media_title: String,
     pub media_thumbnail: String,
     pub thumbnail_bytes: Vec<u8>,
-    pub thumbnail_error: Option<String>,
     pub audio_tracks: Vec<AudioTrack>,
     pub sub_tracks: Vec<SubtitleTrack>,
     pub quality_choices: Vec<QualityChoice>,
@@ -428,12 +440,12 @@ pub struct AppState {
     pub search_results: Vec<SearchResult>,
     pub search_loading: bool,
     pub search_error: Option<String>,
+    pub search_op: u64,
 
     pub jobs: Vec<JobView>,
     pub history: Vec<HistoryItem>,
     pub toast: Option<Toast>,
     pub op_id: u64,
-    pub last_finished_job: Option<u64>,
 }
 
 impl AppState {
@@ -464,6 +476,7 @@ impl AppState {
             force_single: false,
             playlist: None,
             playlist_loading: false,
+            playlist_scroll_reset: true,
             playlist_filter: String::new(),
             selected_entries: BTreeSet::new(),
             range_input: String::new(),
@@ -476,7 +489,6 @@ impl AppState {
             media_title: String::new(),
             media_thumbnail: String::new(),
             thumbnail_bytes: Vec::new(),
-            thumbnail_error: None,
             audio_tracks: Vec::new(),
             sub_tracks: Vec::new(),
             quality_choices: Vec::new(),
@@ -488,11 +500,11 @@ impl AppState {
             search_results: Vec::new(),
             search_loading: false,
             search_error: None,
+            search_op: 0,
             jobs: Vec::new(),
             history,
             toast: None,
             op_id: 0,
-            last_finished_job: None,
         }
     }
 
@@ -535,6 +547,7 @@ impl AppState {
                         self.playlist = Some(info);
                         self.selected_entries.clear();
                         self.playlist_filter.clear();
+                        self.playlist_scroll_reset = true;
                         self.route = Route::Playlist;
                     }
                     Err(err) => {
@@ -573,12 +586,11 @@ impl AppState {
                     Ok(bytes) => {
                         tracing::debug!(bytes = bytes.len(), "thumbnail loaded");
                         self.thumbnail_bytes = bytes;
-                        self.thumbnail_error = None;
                     }
                     Err(err) => {
                         tracing::debug!(%err, "thumbnail fetch failed");
+                        tracing::debug!(%err, "thumbnail unavailable");
                         self.thumbnail_bytes.clear();
-                        self.thumbnail_error = Some(err);
                     }
                 }
                 true
@@ -607,7 +619,10 @@ impl AppState {
                 }
                 true
             }
-            AppEvent::Search(result) => {
+            AppEvent::Search { op, result } => {
+                if op != self.search_op {
+                    return false;
+                }
                 self.search_loading = false;
                 match result {
                     Ok(results) => {
@@ -621,51 +636,68 @@ impl AppState {
                 }
                 true
             }
-            AppEvent::Download { job_id, update } => {
-                if let Some(job) = self.jobs.iter_mut().find(|job| job.id == job_id) {
+            AppEvent::Download {
+                job_id,
+                run_id,
+                update,
+            } => {
+                if let Some(job) = self.jobs.iter_mut().find(|job| job.id == job_id)
+                    && job.run_id == run_id
+                    && job.status == JobStatus::Active
+                {
                     job.apply(&update);
-                    if job.status != JobStatus::Active {
-                        self.last_finished_job = Some(job_id);
-                    }
                 }
                 true
             }
-            AppEvent::DownloadFinished { job_id, result } => {
+            AppEvent::DownloadFinished {
+                job_id,
+                run_id,
+                result,
+            } => {
                 let failure_text = self.s().download_failed.to_owned();
                 let history_item =
                     if let Some(job) = self.jobs.iter_mut().find(|job| job.id == job_id) {
-                        if job.status == JobStatus::Active {
-                            job.status = if result.is_ok() && job.failed == 0 {
-                                JobStatus::Completed
-                            } else {
-                                JobStatus::Failed
-                            };
-                            job.elapsed = job.started_at.elapsed();
-                        }
-                        if let Err(err) = result {
-                            if job.error.is_none() {
-                                job.error = Some(err.clone());
-                            }
-                            if job.status == JobStatus::Active {
-                                job.status = JobStatus::Failed;
-                            }
-                        }
-                        if job.status == JobStatus::Failed && job.error.is_none() {
-                            job.error = Some(failure_text);
-                        }
-                        let item = if !job.recorded {
-                            job.recorded = true;
-                            Some(HistoryItem::from_job(job))
-                        } else {
+                        if job.run_id != run_id
+                            || !matches!(
+                                job.status,
+                                JobStatus::Active | JobStatus::Completed | JobStatus::Failed
+                            )
+                        {
                             None
-                        };
-                        self.last_finished_job = Some(job_id);
-                        item
+                        } else {
+                            if job.status == JobStatus::Active {
+                                job.status = if result.is_ok() && job.failed == 0 {
+                                    JobStatus::Completed
+                                } else {
+                                    JobStatus::Failed
+                                };
+                            }
+                            job.elapsed = job.started_at.elapsed();
+                            if let Err(err) = result
+                                && job.error.is_none()
+                            {
+                                job.error = Some(err);
+                            }
+                            if job.status == JobStatus::Failed && job.error.is_none() {
+                                job.error = Some(failure_text);
+                            }
+                            if matches!(job.status, JobStatus::Failed | JobStatus::Completed)
+                                && !job.recorded
+                            {
+                                job.recorded = true;
+                                Some(HistoryItem::from_job(job))
+                            } else {
+                                None
+                            }
+                        }
                     } else {
                         None
                     };
                 if let Some(item) = history_item {
                     self.history.push(item);
+                    if self.history.len() > 100 {
+                        self.history.drain(..self.history.len() - 100);
+                    }
                 }
                 true
             }
@@ -780,16 +812,31 @@ impl AppState {
         self.selected_entries.clear();
     }
 
-    pub fn summary_jobs(&self) -> impl Iterator<Item = &JobView> {
-        self.jobs
-            .iter()
-            .filter(|job| job.status != JobStatus::Active)
-    }
-
     pub fn active_jobs(&self) -> usize {
         self.jobs
             .iter()
             .filter(|job| job.status == JobStatus::Active)
+            .count()
+    }
+
+    pub fn queued_jobs(&self) -> usize {
+        self.jobs
+            .iter()
+            .filter(|job| job.status == JobStatus::Queued)
+            .count()
+    }
+
+    pub fn paused_jobs(&self) -> usize {
+        self.jobs
+            .iter()
+            .filter(|job| job.status == JobStatus::Paused)
+            .count()
+    }
+
+    pub fn pending_jobs(&self) -> usize {
+        self.jobs
+            .iter()
+            .filter(|job| job.status.is_pending())
             .count()
     }
 
@@ -805,12 +852,10 @@ impl AppState {
             .target
             .as_ref()
             .is_some_and(|target| target.is_playlist() && !self.force_single)
+            && let Some(playlist) = &self.playlist
+            && !playlist.title.trim().is_empty()
         {
-            if let Some(playlist) = &self.playlist {
-                if !playlist.title.trim().is_empty() {
-                    return playlist.title.clone();
-                }
-            }
+            return playlist.title.clone();
         }
         if !self.media_title.trim().is_empty() {
             return self.media_title.clone();
@@ -821,24 +866,8 @@ impl AppState {
         String::new()
     }
 
-    pub fn status_text(&self, status: JobStatus) -> &'static str {
-        match status {
-            JobStatus::Active => self.s().active,
-            JobStatus::Completed => self.s().completed,
-            JobStatus::Failed => self.s().failed,
-            JobStatus::Cancelled => self.s().cancel,
-        }
-    }
-
     pub fn theme(&self) -> Theme {
         self.config.theme
-    }
-
-    pub fn target_kind(&self) -> TargetKind {
-        self.target
-            .as_ref()
-            .map(|target| target.kind)
-            .unwrap_or_default()
     }
 }
 
@@ -873,6 +902,8 @@ mod tests {
             slots: vec![SlotView::default()],
             status: JobStatus::Active,
             error: None,
+            run_id: 1,
+            started: true,
             started_at: Instant::now(),
             elapsed: Duration::ZERO,
             recorded: false,
@@ -886,6 +917,72 @@ mod tests {
         });
         assert_eq!(job.status, JobStatus::Completed);
         assert_eq!(job.progress(), 100.0);
+    }
+
+    fn test_job(status: JobStatus) -> JobView {
+        JobView {
+            id: 7,
+            title: "Test".to_owned(),
+            url: "https://youtu.be/test".to_owned(),
+            output_dir: PathBuf::from("/tmp"),
+            mode: DownloadMode::Video,
+            detail: "Video · MP4".to_owned(),
+            request: None,
+            is_playlist: false,
+            total: 0,
+            done: 0,
+            failed: 0,
+            slots: vec![SlotView::default()],
+            status,
+            error: None,
+            run_id: 1,
+            started: true,
+            started_at: Instant::now(),
+            elapsed: Duration::ZERO,
+            recorded: false,
+        }
+    }
+
+    #[test]
+    fn failed_download_is_recorded_as_failure() {
+        let mut state = state();
+        state.jobs.push(test_job(JobStatus::Active));
+        state.apply(AppEvent::DownloadFinished {
+            job_id: 7,
+            run_id: 1,
+            result: Err("boom".to_owned()),
+        });
+        assert_eq!(state.jobs[0].status, JobStatus::Failed);
+        assert_eq!(state.history.len(), 1);
+        assert!(!state.history[0].ok);
+    }
+
+    #[test]
+    fn cancelled_download_is_not_history() {
+        let mut state = state();
+        state.jobs.push(test_job(JobStatus::Cancelled));
+        state.apply(AppEvent::DownloadFinished {
+            job_id: 7,
+            run_id: 1,
+            result: Err("operation cancelled".to_owned()),
+        });
+        assert!(state.history.is_empty());
+    }
+
+    #[test]
+    fn stale_run_updates_are_ignored() {
+        let mut state = state();
+        state.jobs.push(test_job(JobStatus::Active));
+        state.apply(AppEvent::Download {
+            job_id: 7,
+            run_id: 0,
+            update: DlUpdate {
+                event_type: DlEventType::Progress,
+                pct: 50.0,
+                ..DlUpdate::default()
+            },
+        });
+        assert_eq!(state.jobs[0].slots[0].pct, 0.0);
     }
 
     #[test]

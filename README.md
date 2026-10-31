@@ -38,7 +38,7 @@ been removed; the new app is a native GPU-rendered desktop application.
 - **Dependency manager** — detects and installs managed yt-dlp, ffmpeg and node.
 - **Browser cookies** — auto-detects Firefox, Chrome, Chromium, Brave, Vivaldi and Opera profiles.
 - **Self-update** — GitHub release check and in-place binary replacement.
-- **Download queue** — progress, speed, cancellation and session history.
+- **Download queue** — queued/active/paused jobs, progress, speed, ETA, pause/resume and session history.
 - **English / Russian** — switch language instantly from the UI.
 - **Wayland-native Linux** — no X11 build; XWayland is not used.
 
@@ -94,7 +94,7 @@ crates/
   volvid-app/       UI-independent state machine, command/event flow, download queue
   volvid-gui/       eframe/egui app, theme, pages, SVG icons and thumbnail preview
 assets/
-  fonts/            Noto Sans with Cyrillic
+  fonts/            Onest with Cyrillic
   icons/            application icon, logo variants, SVG action icons
 docs/               GitHub Pages site and screenshots
 ```
@@ -156,4 +156,4 @@ External tools:
 - [ffmpeg](https://ffmpeg.org) — LGPL/GPL
 - [egui / eframe](https://github.com/emilk/egui) — MIT/Apache-2.0
 - [Tokio](https://tokio.rs) — MIT
-- [Noto Sans](https://fonts.google.com/noto) — OFL
+- [Onest](https://github.com/simpals/onest) — OFL

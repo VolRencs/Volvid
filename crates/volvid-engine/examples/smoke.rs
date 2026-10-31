@@ -127,6 +127,5 @@ async fn main() -> anyhow::Result<()> {
         }
         println!("download result: {:?}", runner.await?);
     }
-    let _ = DownloadMode::Thumbnail;
     Ok(())
 }

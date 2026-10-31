@@ -24,18 +24,14 @@ volvid-app = { path = "crates/volvid-app" }
 
 anyhow = "1.0.104"
 arboard = "3.7.0"
-assert_cmd = "2.2.2"
 directories = "6.0.0"
 eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "links", "persistence", "system_fonts", "wgpu"] }
 egui = "0.37.0"
 egui_extras = { version = "0.37.0", features = ["image", "svg"] }
-egui_kittest = "0.37.0"
 futures-util = "0.3.34"
 hex = "0.4.3"
-image = { version = "0.25.10", default-features = false, features = ["png", "webp"] }
-insta = "1.49.0"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 jiff = "0.2.38"
-proptest = "1.12.0"
 process-wrap = { version = "10.0.1", features = ["tokio1"] }
 reqwest = { version = "0.13.5", features = ["json", "stream", "rustls"] }
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "common-controls-v6"] }

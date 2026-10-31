@@ -1,5 +1,4 @@
 //! UI-independent application state and controller for Volvid.
-#![allow(clippy::collapsible_if, clippy::too_many_arguments)]
 
 pub mod backend;
 pub mod controller;

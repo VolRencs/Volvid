@@ -40,9 +40,6 @@ pub const STATUS_ACTIVE: &str = "active";
 pub const STATUS_NO_PROFILE: &str = "browser found but no usable profile";
 pub const STATUS_NOT_FOUND: &str = "not found";
 
-pub const FAMILY_FIREFOX: &str = "firefox";
-pub const FAMILY_CHROMIUM: &str = "chromium";
-
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckDepsResult {
     pub ytdlp: DependencyInfo,
@@ -62,16 +59,6 @@ impl CheckDepsResult {
             .into_iter()
             .any(|dep| dep.required && !dep.available)
     }
-
-    pub fn actionable_dependencies(&self) -> Vec<DependencyInfo> {
-        self.dependencies()
-            .into_iter()
-            .filter(|dep| {
-                dep.downloadable && (!dep.available || dep.source == DependencySource::Managed)
-            })
-            .cloned()
-            .collect()
-    }
 }
 
 /// Renders yt-dlp's shared `--ffmpeg-location` prefix.
@@ -82,9 +69,4 @@ pub fn ffmpeg_args(deps: &CheckDepsResult) -> Vec<String> {
     } else {
         vec!["--ffmpeg-location".to_owned(), bin.to_owned()]
     }
-}
-
-#[allow(non_snake_case)]
-pub fn FFmpegArgs(deps: &CheckDepsResult) -> Vec<String> {
-    ffmpeg_args(deps)
 }

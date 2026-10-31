@@ -10,9 +10,8 @@ use volvid_core::{
     QualityChoice, SearchResult, SubtitleTrack, default_quality_choices, parse_target,
 };
 
-use crate::deps::{ffmpeg_bin, first_non_empty_line, ytdlp_bin, ytdlp_command_args};
-use crate::paths::AppPaths;
-use crate::process::{ProcessError, ProcessLine, run_capture, run_lines};
+use crate::deps::{ytdlp_bin, ytdlp_command_args};
+use crate::process::{ProcessError, run_capture, run_lines};
 
 const QUALITY_SCAN_TIMEOUT: Duration = Duration::from_secs(90);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(90);
@@ -70,21 +69,16 @@ pub fn probe_from_value(payload: &Value) -> Result<MediaProbe> {
         .to_owned();
 
     let mut formats = Vec::new();
-    let mut has_video = false;
     if let Some(items) = payload.get("formats").and_then(Value::as_array) {
         for item in items {
-            let format = MediaFormat {
+            formats.push(MediaFormat {
                 height: value_i64(item.get("height")),
                 vcodec: value_string(item.get("vcodec")),
                 acodec: value_string(item.get("acodec")),
                 language: value_string(item.get("language")),
                 filesize: value_i64(item.get("filesize")),
                 filesize_approx: value_i64(item.get("filesize_approx")),
-            };
-            if !format.vcodec.is_empty() && format.vcodec != "none" {
-                has_video = true;
-            }
-            formats.push(format);
+            });
         }
     }
 
@@ -104,7 +98,6 @@ pub fn probe_from_value(payload: &Value) -> Result<MediaProbe> {
         title,
         thumbnail,
         formats: formats.clone(),
-        has_video,
         subtitles: subtitle_tracks(&manual, &automatic),
         audio_tracks: audio_tracks(&formats),
     })
@@ -536,53 +529,12 @@ pub fn postprocess_label(name: &str, locale: volvid_core::Locale) -> String {
     }
 }
 
-/// Parses one `--progress-template` line.
-pub fn parse_progress_fields(line: &str) -> Option<(i64, i64, f64, String)> {
-    let mut parts = line.split('\t');
-    let done = parts.next()?.trim().parse().ok()?;
-    let total = parts.next()?.trim().parse().ok()?;
-    let total_estimate = parts.next()?.trim().parse().ok()?;
-    let speed = parts.next()?.trim().parse::<f64>().ok()?;
-    let percent = parts.next()?.trim().trim_end_matches('%').parse().ok()?;
-    Some((
-        done,
-        if total > 0 { total } else { total_estimate },
-        if percent > 0.0 { percent } else { 0.0 },
-        speed.to_string(),
-    ))
-}
-
 pub fn format_progress_speed(raw: f64, locale: volvid_core::Locale) -> String {
     if raw <= 0.0 {
         String::new()
     } else {
         volvid_i18n::format_speed(raw as i64, locale)
     }
-}
-
-pub fn ffmpeg_bin_for(deps: &CheckDepsResult, paths: &AppPaths) -> String {
-    ffmpeg_bin(deps, paths)
-}
-
-pub fn first_error_line(lines: &[ProcessLine]) -> String {
-    lines
-        .iter()
-        .filter(|line| !line.stdout)
-        .find_map(|line| {
-            let text = line.text.trim();
-            if is_error_line(text) {
-                Some(text.trim_start_matches("ERROR:").trim().to_owned())
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
-            lines
-                .iter()
-                .filter(|line| !line.stdout)
-                .find_map(|line| first_non_empty_line(&line.text))
-        })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

@@ -13,27 +13,21 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
     };
     let updating = app.controller.state.updating;
     let progress = app.controller.state.update_progress.clone();
-    theme::modal_backdrop(ctx);
     let mut close = false;
 
-    egui::Window::new("volvid-update-dialog")
-        .title_bar(false)
-        .collapsible(false)
-        .resizable(false)
-        .fixed_size(egui::vec2(560.0, 380.0))
+    let modal = egui::Modal::new(egui::Id::unique("volvid-update-dialog"))
         .frame(theme::modal_frame(p))
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .backdrop_color(egui::Color32::from_black_alpha(150))
         .show(ctx, |ui| {
             ui.set_width(512.0);
             theme::modal_header(
                 ui,
                 p,
-                egui::include_image!("../../../../assets/icons/new-download.svg"),
+                egui::include_image!("../../../../assets/icons/refresh.svg"),
                 s.update_available,
                 &format!("{} → {}", s.current_version, update.latest),
             );
-            ui.add_space(16.0);
+            ui.add_space(18.0);
             if updating {
                 theme::spinner(ui, p, s.checking);
                 if let Some(progress) = &progress {
@@ -51,6 +45,7 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
                 }
             } else {
                 ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 11.0;
                     if primary_button_sized(ui, p, s.install_update, 230.0).clicked() {
                         app.controller.apply_update();
                     }
@@ -66,6 +61,9 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
                 close = true;
             }
         });
+    if modal.should_close() {
+        close = true;
+    }
     if close {
         app.controller.state.update_modal = false;
     }

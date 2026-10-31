@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
@@ -11,7 +10,7 @@ use volvid_core::{FileProgress, Locale};
 
 use crate::deps::probe_version;
 use crate::http::{download_file, fetch_text};
-use crate::paths::{AppPaths, binary_name, clean_abs};
+use crate::paths::{AppPaths, binary_name};
 
 const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/";
 const NODE_BASE: &str = "https://nodejs.org/download/release/latest/";
@@ -59,6 +58,7 @@ async fn install_ytdlp(
         client,
         &format!("{YTDLP_BASE}{}", platform.ytdlp_asset),
         &staged,
+        locale,
         Some(&progress),
         cancel.clone(),
     )
@@ -72,7 +72,6 @@ async fn install_ytdlp(
         bail!("downloaded yt-dlp does not run");
     }
     replace_file(&staged, &paths.ytdlp_bin())?;
-    let _ = locale;
     Ok(())
 }
 
@@ -96,14 +95,15 @@ async fn install_ffmpeg(
         client,
         platform.ffmpeg_url,
         &archive,
+        locale,
         Some(&progress),
         cancel.clone(),
     )
     .await?;
-    if let Ok(expected) = std::env::var("VOLVID_FFMPEG_SHA256") {
-        if !expected.trim().is_empty() {
-            verify_sha256(&archive, expected.trim())?;
-        }
+    if let Ok(expected) = std::env::var("VOLVID_FFMPEG_SHA256")
+        && !expected.trim().is_empty()
+    {
+        verify_sha256(&archive, expected.trim())?;
     }
     let ffmpeg = staging.path().join(binary_name("ffmpeg"));
     let ffprobe = staging.path().join(binary_name("ffprobe"));
@@ -134,7 +134,6 @@ async fn install_ffmpeg(
     }
     replace_file(&ffmpeg, &paths.ffmpeg_bin())?;
     replace_file(&ffprobe, &paths.ffprobe_bin())?;
-    let _ = locale;
     Ok(())
 }
 
@@ -155,6 +154,7 @@ async fn install_node(
         client,
         &format!("{NODE_BASE}{asset}"),
         &archive,
+        locale,
         Some(&progress),
         cancel.clone(),
     )
@@ -170,7 +170,6 @@ async fn install_node(
         bail!("downloaded node does not run");
     }
     replace_file(&node, &paths.node_bin())?;
-    let _ = locale;
     Ok(())
 }
 
@@ -360,26 +359,6 @@ fn platform_info() -> Result<PlatformInfo> {
     } else {
         bail!("unsupported platform for managed dependencies")
     }
-}
-
-pub fn cleanup_staging(paths: &AppPaths) {
-    let _ = std::fs::create_dir_all(&paths.deps_dir);
-}
-
-pub fn staged_binary_path(dir: &Path, name: &str) -> PathBuf {
-    clean_abs(dir.join(binary_name(name)))
-}
-
-pub fn progress_done(error: Option<String>) -> FileProgress {
-    FileProgress {
-        done: true,
-        err: error,
-        ..FileProgress::default()
-    }
-}
-
-pub fn install_timeout() -> Duration {
-    Duration::from_secs(2 * 60 * 60)
 }
 
 #[cfg(test)]

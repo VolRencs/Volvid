@@ -5,7 +5,15 @@ use egui::{
     Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Margin, RichText, Stroke,
     TextStyle, Visuals,
 };
-use volvid_engine::Theme;
+use volvid_engine::Theme as ConfigTheme;
+
+const FONT_REGULAR: &str = "onest";
+const FONT_SEMIBOLD: &str = "onest-semibold";
+const SEMIBOLD_FAMILY: &str = "onest-semibold-family";
+
+pub const BUTTON_HEIGHT: f32 = 42.0;
+pub const BUTTON_RADIUS: u8 = 10;
+pub const CONTROL_HEIGHT: f32 = 42.0;
 
 pub struct Palette {
     pub bg: Color32,
@@ -17,6 +25,7 @@ pub struct Palette {
     pub muted: Color32,
     pub accent: Color32,
     pub accent_hover: Color32,
+    pub on_accent: Color32,
     pub selection: Color32,
     pub success: Color32,
     pub warning: Color32,
@@ -34,6 +43,7 @@ pub const DARK: Palette = Palette {
     muted: Color32::from_rgb(163, 170, 184),
     accent: Color32::from_rgb(255, 90, 79),
     accent_hover: Color32::from_rgb(255, 116, 105),
+    on_accent: Color32::from_rgb(15, 17, 21),
     selection: Color32::from_rgb(92, 200, 232),
     success: Color32::from_rgb(74, 222, 154),
     warning: Color32::from_rgb(245, 177, 66),
@@ -51,6 +61,7 @@ pub const LIGHT: Palette = Palette {
     muted: Color32::from_rgb(104, 112, 126),
     accent: Color32::from_rgb(230, 68, 56),
     accent_hover: Color32::from_rgb(200, 52, 42),
+    on_accent: Color32::WHITE,
     selection: Color32::from_rgb(0, 139, 177),
     success: Color32::from_rgb(20, 156, 94),
     warning: Color32::from_rgb(184, 116, 9),
@@ -58,55 +69,79 @@ pub const LIGHT: Palette = Palette {
     track: Color32::from_rgb(238, 241, 245),
 };
 
-pub fn palette(theme: Theme) -> &'static Palette {
+pub fn palette(theme: egui::Theme) -> &'static Palette {
     match theme {
-        Theme::Light => &LIGHT,
-        _ => &DARK,
+        egui::Theme::Light => &LIGHT,
+        egui::Theme::Dark => &DARK,
     }
 }
 
-pub fn setup(cc: &CreationContext<'_>, theme: Theme) {
+pub fn resolve_theme(ctx: &egui::Context, theme: ConfigTheme) -> egui::Theme {
+    match theme {
+        ConfigTheme::Light => egui::Theme::Light,
+        ConfigTheme::Dark => egui::Theme::Dark,
+        ConfigTheme::System => ctx.system_theme().unwrap_or(egui::Theme::Dark),
+    }
+}
+
+pub fn setup(cc: &CreationContext<'_>, theme: ConfigTheme) {
     egui_extras::install_image_loaders(&cc.egui_ctx);
     install_fonts(&cc.egui_ctx);
     apply_theme(&cc.egui_ctx, theme);
 }
 
+pub fn semibold(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name(SEMIBOLD_FAMILY.into()))
+}
+
+pub fn strong_text(text: impl Into<String>, size: f32) -> RichText {
+    RichText::new(text.into()).font(semibold(size))
+}
+
+pub fn title(ui: &mut egui::Ui, p: &Palette, text: &str) {
+    ui.label(strong_text(text, 36.0).color(p.text));
+}
+
 pub fn install_fonts(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
     fonts.font_data.insert(
-        "noto-sans".to_owned(),
+        FONT_REGULAR.to_owned(),
         Arc::new(FontData::from_static(include_bytes!(
-            "../../../assets/fonts/NotoSans-Regular.ttf"
+            "../../../assets/fonts/Onest-Regular.ttf"
         ))),
     );
     fonts.font_data.insert(
-        "noto-sans-semibold".to_owned(),
+        FONT_SEMIBOLD.to_owned(),
         Arc::new(FontData::from_static(include_bytes!(
-            "../../../assets/fonts/NotoSans-SemiBold.ttf"
+            "../../../assets/fonts/Onest-SemiBold.ttf"
         ))),
     );
     fonts
         .families
         .entry(FontFamily::Proportional)
         .or_default()
-        .insert(0, "noto-sans".to_owned());
+        .insert(0, FONT_REGULAR.to_owned());
     fonts
         .families
         .entry(FontFamily::Monospace)
         .or_default()
-        .insert(0, "noto-sans".to_owned());
+        .insert(0, FONT_REGULAR.to_owned());
+    fonts.families.insert(
+        FontFamily::Name(SEMIBOLD_FAMILY.into()),
+        vec![FONT_SEMIBOLD.to_owned(), FONT_REGULAR.to_owned()],
+    );
     ctx.set_fonts(fonts);
 
     ctx.all_styles_mut(|style| {
         style.text_styles = [
             (
                 TextStyle::Heading,
-                FontId::new(24.0, FontFamily::Proportional),
+                FontId::new(24.0, FontFamily::Name(SEMIBOLD_FAMILY.into())),
             ),
             (TextStyle::Body, FontId::new(15.0, FontFamily::Proportional)),
             (
                 TextStyle::Button,
-                FontId::new(15.0, FontFamily::Proportional),
+                FontId::new(15.0, FontFamily::Name(SEMIBOLD_FAMILY.into())),
             ),
             (
                 TextStyle::Small,
@@ -114,7 +149,7 @@ pub fn install_fonts(ctx: &egui::Context) {
             ),
             (
                 TextStyle::Monospace,
-                FontId::new(14.0, FontFamily::Monospace),
+                FontId::new(14.0, FontFamily::Proportional),
             ),
         ]
         .into();
@@ -124,12 +159,21 @@ pub fn install_fonts(ctx: &egui::Context) {
     });
 }
 
-pub fn apply_theme(ctx: &egui::Context, theme: Theme) {
-    let p = palette(theme);
-    let mut visuals = if matches!(theme, Theme::Light) {
-        Visuals::light()
-    } else {
+pub fn apply_theme(ctx: &egui::Context, theme: ConfigTheme) {
+    ctx.set_theme(match theme {
+        ConfigTheme::Light => egui::ThemePreference::Light,
+        ConfigTheme::Dark => egui::ThemePreference::Dark,
+        ConfigTheme::System => egui::ThemePreference::System,
+    });
+    ctx.set_visuals_of(egui::Theme::Dark, visuals_for(&DARK, true));
+    ctx.set_visuals_of(egui::Theme::Light, visuals_for(&LIGHT, false));
+}
+
+fn visuals_for(p: &Palette, dark: bool) -> Visuals {
+    let mut visuals = if dark {
         Visuals::dark()
+    } else {
+        Visuals::light()
     };
     visuals.panel_fill = p.bg;
     visuals.window_fill = p.panel;
@@ -138,6 +182,9 @@ pub fn apply_theme(ctx: &egui::Context, theme: Theme) {
     visuals.code_bg_color = p.card;
     visuals.selection.bg_fill = p.selection.gamma_multiply(0.22);
     visuals.selection.stroke = Stroke::new(1.0, p.selection);
+    visuals.hyperlink_color = p.selection;
+    visuals.warn_fg_color = p.warning;
+    visuals.error_fg_color = p.danger;
     visuals.widgets.noninteractive.bg_fill = p.card;
     visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, p.border);
     visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, p.muted);
@@ -152,7 +199,7 @@ pub fn apply_theme(ctx: &egui::Context, theme: Theme) {
     visuals.widgets.active.bg_fill = p.accent;
     visuals.widgets.active.weak_bg_fill = p.accent;
     visuals.widgets.active.bg_stroke = Stroke::new(1.0, p.accent_hover);
-    visuals.widgets.active.fg_stroke = Stroke::new(1.0, Color32::WHITE);
+    visuals.widgets.active.fg_stroke = Stroke::new(1.0, p.on_accent);
     visuals.window_corner_radius = CornerRadius::same(14);
     visuals.menu_corner_radius = CornerRadius::same(10);
     for widget in [
@@ -169,9 +216,9 @@ pub fn apply_theme(ctx: &egui::Context, theme: Theme) {
         offset: [0, 12],
         blur: 36,
         spread: 0,
-        color: Color32::from_black_alpha(90),
+        color: Color32::from_black_alpha(if dark { 90 } else { 45 }),
     };
-    ctx.set_visuals(visuals);
+    visuals
 }
 
 pub fn card_frame(p: &Palette) -> egui::Frame {
@@ -183,11 +230,11 @@ pub fn card_frame(p: &Palette) -> egui::Frame {
 }
 
 pub fn section_title(ui: &mut egui::Ui, p: &Palette, text: &str) {
-    ui.label(egui::RichText::new(text).size(13.0).strong().color(p.muted));
+    ui.label(strong_text(text, 12.5).color(p.muted));
 }
 
 pub fn muted(ui: &mut egui::Ui, p: &Palette, text: impl Into<String>) {
-    ui.label(egui::RichText::new(text.into()).color(p.muted).size(13.0));
+    ui.label(RichText::new(text.into()).color(p.muted).size(13.0));
 }
 
 pub fn status_dot(ui: &mut egui::Ui, color: Color32) {
@@ -203,36 +250,290 @@ pub fn badge(ui: &mut egui::Ui, _p: &Palette, text: &str, color: Color32) {
         .corner_radius(CornerRadius::same(255))
         .inner_margin(Margin::symmetric(10, 4))
         .show(ui, |ui| {
-            ui.label(egui::RichText::new(text).color(color).size(12.0).strong());
+            ui.label(strong_text(text, 12.0).color(color));
         });
 }
 
 pub fn primary_button(ui: &mut egui::Ui, p: &Palette, text: &str) -> egui::Response {
-    let button = egui::Button::new(
-        egui::RichText::new(text)
-            .color(Color32::from_rgb(15, 17, 21))
-            .strong()
-            .size(14.5),
-    )
-    .fill(p.accent)
-    .stroke(Stroke::NONE)
-    .corner_radius(CornerRadius::same(10))
-    .min_size(egui::vec2(128.0, 40.0));
+    primary_button_ex(ui, p, text, egui::vec2(0.0, BUTTON_HEIGHT))
+}
+
+pub fn primary_button_sized(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    text: &str,
+    width: f32,
+) -> egui::Response {
+    primary_button_ex(ui, p, text, egui::vec2(width, BUTTON_HEIGHT))
+}
+
+pub fn primary_button_ex(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    text: &str,
+    size: egui::Vec2,
+) -> egui::Response {
+    let button = egui::Button::new(strong_text(text, 14.0).color(p.on_accent))
+        .fill(p.accent)
+        .stroke(Stroke::NONE)
+        .corner_radius(CornerRadius::same(BUTTON_RADIUS))
+        .min_size(size);
     let response = ui.add(button);
-    press_overlay(ui, &response, 10);
+    press_overlay(ui, &response, BUTTON_RADIUS);
     response
 }
 
+pub fn primary_button_fill(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    text: &str,
+    width: f32,
+) -> egui::Response {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(width, BUTTON_HEIGHT), egui::Sense::click());
+    let fill = if response.is_pointer_button_down_on() || response.hovered() {
+        p.accent_hover
+    } else {
+        p.accent
+    };
+    let painter = ui.painter();
+    painter.rect_filled(rect, CornerRadius::same(BUTTON_RADIUS), fill);
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        semibold(14.0),
+        p.on_accent,
+    );
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 pub fn secondary_button(ui: &mut egui::Ui, p: &Palette, text: &str) -> egui::Response {
+    secondary_button_ex(ui, p, text, egui::vec2(0.0, BUTTON_HEIGHT))
+}
+
+pub fn secondary_button_sized(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    text: &str,
+    width: f32,
+) -> egui::Response {
+    secondary_button_ex(ui, p, text, egui::vec2(width, BUTTON_HEIGHT))
+}
+
+pub fn secondary_button_ex(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    text: &str,
+    size: egui::Vec2,
+) -> egui::Response {
     let response = ui.add(
-        egui::Button::new(egui::RichText::new(text).color(p.text).size(14.0))
+        egui::Button::new(strong_text(text, 14.0).color(p.text))
             .fill(p.card_hover)
             .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(CornerRadius::same(10))
-            .min_size(egui::vec2(90.0, 38.0)),
+            .corner_radius(CornerRadius::same(BUTTON_RADIUS))
+            .min_size(size),
     );
-    press_overlay(ui, &response, 10);
+    press_overlay(ui, &response, BUTTON_RADIUS);
     response
+}
+
+pub fn secondary_icon_button(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    icon: egui::ImageSource<'static>,
+    text: &str,
+) -> egui::Response {
+    let image = egui::Image::new(icon)
+        .fit_to_exact_size(egui::vec2(15.0, 15.0))
+        .tint(p.muted);
+    let response = ui.add(
+        egui::Button::new((image, strong_text(text, 13.5).color(p.text)))
+            .image_tint_follows_text_color(true)
+            .fill(p.card_hover)
+            .stroke(Stroke::new(1.0, p.border))
+            .corner_radius(CornerRadius::same(BUTTON_RADIUS))
+            .min_size(egui::vec2(0.0, BUTTON_HEIGHT)),
+    );
+    press_overlay(ui, &response, BUTTON_RADIUS);
+    response
+}
+
+pub fn icon_button(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    icon: egui::ImageSource<'static>,
+    size: f32,
+    tint: Color32,
+    tooltip: &str,
+) -> egui::Response {
+    let image = egui::Image::new(icon)
+        .fit_to_exact_size(egui::vec2(18.0, 18.0))
+        .tint(tint);
+    let response = ui.add(
+        egui::Button::image(image)
+            .fill(p.card_hover)
+            .stroke(Stroke::new(1.0, p.border))
+            .corner_radius(CornerRadius::same(BUTTON_RADIUS))
+            .min_size(egui::vec2(size, size)),
+    );
+    press_overlay(ui, &response, BUTTON_RADIUS);
+    response.on_hover_text(tooltip)
+}
+
+pub fn text_width(ui: &egui::Ui, text: &str, font_id: FontId) -> f32 {
+    ui.ctx().fonts_mut(|fonts| {
+        fonts
+            .layout_no_wrap(text.to_owned(), font_id, Color32::WHITE)
+            .size()
+            .x
+    })
+}
+
+pub fn text_chip(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    text: &str,
+    font_size: f32,
+    max_width: f32,
+    semibold_text: bool,
+) -> egui::Response {
+    let font_id = if semibold_text {
+        semibold(font_size)
+    } else {
+        FontId::proportional(font_size)
+    };
+    let text_width = text_width(ui, text, font_id);
+    let width = (text_width + 22.0).clamp(36.0, max_width.max(36.0));
+    let frame = egui::Frame::new()
+        .fill(p.card_hover)
+        .stroke(Stroke::new(1.0, p.border))
+        .corner_radius(CornerRadius::same(BUTTON_RADIUS))
+        .inner_margin(Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ui.set_width((width - 20.0).max(16.0));
+            let label = if semibold_text {
+                strong_text(text, font_size)
+            } else {
+                RichText::new(text).size(font_size)
+            };
+            ui.add(
+                egui::Label::new(label.color(p.text))
+                    .halign(egui::Align::LEFT)
+                    .truncate(),
+            );
+        });
+    frame.response
+}
+
+pub fn value_box(ui: &mut egui::Ui, p: &Palette, value: impl Into<String>) {
+    text_chip(ui, p, &value.into(), 13.0, 120.0, true);
+}
+
+pub fn segmented_button(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    label: &str,
+    selected: bool,
+    width: f32,
+) -> egui::Response {
+    let (fill, stroke, color) = if selected {
+        (
+            p.selection.gamma_multiply(0.16),
+            Stroke::new(1.0, p.selection),
+            p.selection,
+        )
+    } else {
+        (p.card_hover, Stroke::new(1.0, p.border), p.text)
+    };
+    let response = ui.add(
+        egui::Button::new(strong_text(label, 13.0).color(color))
+            .fill(fill)
+            .stroke(stroke)
+            .corner_radius(CornerRadius::same(BUTTON_RADIUS))
+            .min_size(egui::vec2(width, CONTROL_HEIGHT)),
+    );
+    press_overlay(ui, &response, BUTTON_RADIUS);
+    response
+}
+
+pub fn slider(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    value: &mut usize,
+    range: std::ops::RangeInclusive<usize>,
+    width: f32,
+) -> egui::Response {
+    let width = if width > 0.0 {
+        width
+    } else {
+        ui.available_width()
+    };
+    let (rect, mut response) =
+        ui.allocate_exact_size(egui::vec2(width, 34.0), egui::Sense::click_and_drag());
+    let start = *range.start();
+    let end = *range.end();
+    if end > start {
+        let mut changed = false;
+        if (response.clicked() || response.dragged())
+            && let Some(pointer) = ui.input(|input| input.pointer.interact_pos())
+        {
+            let track = rect.shrink2(egui::vec2(9.0, 0.0));
+            let t = ((pointer.x - track.left()) / track.width()).clamp(0.0, 1.0);
+            let next = start + ((end - start) as f32 * t).round() as usize;
+            if next != *value {
+                *value = next;
+                changed = true;
+            }
+        }
+        if response.has_focus() {
+            let delta = ui.input(|input| {
+                i32::from(input.key_pressed(egui::Key::ArrowRight))
+                    - i32::from(input.key_pressed(egui::Key::ArrowLeft))
+            });
+            if delta != 0 {
+                let next = value
+                    .saturating_add_signed(delta as isize)
+                    .clamp(start, end);
+                if next != *value {
+                    *value = next;
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            response.mark_changed();
+        }
+    }
+
+    let t = if end > start {
+        (*value).clamp(start, end).saturating_sub(start) as f32 / (end - start) as f32
+    } else {
+        0.0
+    };
+    let center_y = rect.center().y;
+    let track = egui::Rect::from_min_max(
+        egui::pos2(rect.left() + 9.0, center_y - 3.0),
+        egui::pos2(rect.right() - 9.0, center_y + 3.0),
+    );
+    let painter = ui.painter();
+    painter.rect_filled(track, CornerRadius::same(3), p.border);
+    let knob_x = track.left() + track.width() * t;
+    if t > 0.0 {
+        painter.rect_filled(
+            egui::Rect::from_min_max(track.min, egui::pos2(knob_x, track.bottom())),
+            CornerRadius::same(3),
+            p.text,
+        );
+    }
+    let ring = if response.hovered() || response.dragged() {
+        p.accent
+    } else {
+        p.text
+    };
+    painter.circle_filled(egui::pos2(knob_x, center_y), 8.0, p.card);
+    painter.circle_stroke(egui::pos2(knob_x, center_y), 8.0, Stroke::new(3.0, ring));
+    response.on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
 }
 
 pub fn progress_bar(ui: &mut egui::Ui, p: &Palette, fraction: f32, height: f32) -> egui::Response {
@@ -249,62 +550,11 @@ pub fn progress_bar(ui: &mut egui::Ui, p: &Palette, fraction: f32, height: f32) 
     response
 }
 
-pub fn primary_button_sized(
-    ui: &mut egui::Ui,
-    p: &Palette,
-    text: &str,
-    width: f32,
-) -> egui::Response {
-    let response = ui.add(
-        egui::Button::new(
-            egui::RichText::new(text)
-                .color(Color32::from_rgb(15, 17, 21))
-                .strong()
-                .size(14.5),
-        )
-        .fill(p.accent)
-        .stroke(Stroke::NONE)
-        .corner_radius(CornerRadius::same(10))
-        .min_size(egui::vec2(width, 42.0)),
-    );
-    press_overlay(ui, &response, 10);
-    response
-}
-
-pub fn secondary_button_sized(
-    ui: &mut egui::Ui,
-    p: &Palette,
-    text: &str,
-    width: f32,
-) -> egui::Response {
-    let response = ui.add(
-        egui::Button::new(egui::RichText::new(text).color(p.text).size(14.0))
-            .fill(p.card_hover)
-            .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(CornerRadius::same(10))
-            .min_size(egui::vec2(width, 42.0)),
-    );
-    press_overlay(ui, &response, 10);
-    response
-}
-
-pub fn modal_backdrop(ctx: &egui::Context) {
-    egui::Area::new(egui::Id::unique("volvid-modal-backdrop"))
-        .fixed_pos(egui::Pos2::ZERO)
-        .order(egui::Order::Middle)
-        .show(ctx, |ui| {
-            let screen = ui.ctx().content_rect();
-            ui.painter()
-                .rect_filled(screen, 0, Color32::from_black_alpha(150));
-            ui.allocate_rect(screen, egui::Sense::click());
-        });
-}
-
 pub fn modal_frame(p: &Palette) -> egui::Frame {
     egui::Frame::new()
         .fill(p.card)
         .stroke(Stroke::new(1.0, p.border))
-        .corner_radius(CornerRadius::same(18))
+        .corner_radius(CornerRadius::same(20))
         .inner_margin(Margin::same(24))
         .shadow(egui::epaint::Shadow {
             offset: [0, 18],
@@ -340,7 +590,7 @@ pub fn modal_header(
         modal_icon(ui, p, icon);
         ui.add_space(4.0);
         ui.vertical(|ui| {
-            ui.label(RichText::new(title).size(21.0).strong().color(p.text));
+            ui.label(strong_text(title, 22.0).color(p.text));
             if !subtitle.trim().is_empty() {
                 ui.label(RichText::new(subtitle).size(13.0).color(p.muted));
             }
@@ -352,7 +602,7 @@ pub fn modal_close(ui: &mut egui::Ui, p: &Palette, text: &str) -> bool {
     let mut clicked = false;
     ui.vertical_centered(|ui| {
         let response = ui.add(
-            egui::Button::new(RichText::new(text).size(13.0).color(p.muted))
+            egui::Button::new(strong_text(text, 13.0).color(p.muted))
                 .fill(Color32::TRANSPARENT)
                 .stroke(Stroke::NONE),
         );
@@ -374,8 +624,18 @@ pub fn press_overlay(ui: &mut egui::Ui, response: &egui::Response, radius: u8) {
 pub fn spinner(ui: &mut egui::Ui, p: &Palette, text: &str) {
     ui.horizontal(|ui| {
         ui.add(egui::Spinner::new().color(p.accent));
-        ui.label(egui::RichText::new(text).color(p.muted));
+        ui.label(RichText::new(text).color(p.muted));
     });
+}
+
+pub fn centered_spinner(ui: &mut egui::Ui, p: &Palette, text: &str) {
+    let text_width = text_width(ui, text, FontId::proportional(15.0));
+    let group_width = 18.0 + 8.0 + text_width;
+    ui.allocate_ui_with_layout(
+        egui::vec2(group_width, 24.0),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| spinner(ui, p, text),
+    );
 }
 
 pub fn dashed_placeholder(ui: &mut egui::Ui, p: &Palette, height: f32, text: &str) {
@@ -413,4 +673,50 @@ pub fn dashed_placeholder(ui: &mut egui::Ui, p: &Palette, height: f32, text: &st
         egui::FontId::proportional(13.0),
         p.muted,
     );
+}
+
+pub fn split_columns(
+    available: f32,
+    gap: f32,
+    left_ratio: f32,
+    left_min: f32,
+    right_min: f32,
+) -> Option<(f32, f32)> {
+    if available < left_min + right_min + gap {
+        return None;
+    }
+    let left = ((available - gap) * left_ratio).max(left_min);
+    let right = available - gap - left;
+    (right >= right_min).then_some((left, right))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dark_palette_matches_design_spec() {
+        assert_eq!(DARK.bg, Color32::from_rgb(0x0F, 0x11, 0x15));
+        assert_eq!(DARK.panel, Color32::from_rgb(0x0B, 0x0D, 0x10));
+        assert_eq!(DARK.card, Color32::from_rgb(0x17, 0x1A, 0x21));
+        assert_eq!(DARK.card_hover, Color32::from_rgb(0x1F, 0x23, 0x2C));
+        assert_eq!(DARK.border, Color32::from_rgb(0x2A, 0x2F, 0x3A));
+        assert_eq!(DARK.text, Color32::from_rgb(0xEC, 0xEE, 0xF2));
+        assert_eq!(DARK.muted, Color32::from_rgb(0xA3, 0xAA, 0xB8));
+        assert_eq!(DARK.accent, Color32::from_rgb(0xFF, 0x5A, 0x4F));
+        assert_eq!(DARK.success, Color32::from_rgb(0x4A, 0xDE, 0x9A));
+        assert_eq!(DARK.selection, Color32::from_rgb(0x5C, 0xC8, 0xE8));
+    }
+
+    #[test]
+    fn home_columns_match_screenshot_ratio() {
+        let (left, right) = split_columns(967.0, 16.0, 0.42, 340.0, 360.0).unwrap();
+        assert!((left - 399.4).abs() < 0.5);
+        assert!((right - 551.6).abs() < 0.5);
+    }
+
+    #[test]
+    fn narrow_layout_stacks() {
+        assert!(split_columns(628.0, 16.0, 0.42, 340.0, 360.0).is_none());
+    }
 }

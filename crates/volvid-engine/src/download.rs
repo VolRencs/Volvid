@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,15 +23,13 @@ use crate::ytdlp::{format_progress_speed, postprocess_label};
 const SLOT_RESET_DELAY: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Debug, Default)]
-pub struct DownloadResult {
-    pub output_path: PathBuf,
-    pub err: String,
+struct DownloadResult {
+    err: String,
 }
 
 impl DownloadResult {
     fn failure(message: impl Into<String>) -> Self {
         Self {
-            output_path: PathBuf::new(),
             err: message.into(),
         }
     }
@@ -42,12 +41,13 @@ pub async fn run_download(
     request: DownloadRequest,
     tx: mpsc::UnboundedSender<DlUpdate>,
     cancel: CancellationToken,
+    encoders: Option<Arc<HashSet<String>>>,
 ) -> Result<()> {
     let output_dir = prepare_dir(&request.output_dir)?;
     if request.uses_playlist() {
-        run_playlist(paths, deps, request, output_dir, tx, cancel).await
+        run_playlist(paths, deps, request, output_dir, tx, cancel, encoders).await
     } else {
-        run_single(paths, deps, request, output_dir, tx, cancel).await
+        run_single(paths, deps, request, output_dir, tx, cancel, encoders).await
     }
 }
 
@@ -58,6 +58,7 @@ async fn run_single(
     output_dir: PathBuf,
     tx: mpsc::UnboundedSender<DlUpdate>,
     cancel: CancellationToken,
+    encoders: Option<Arc<HashSet<String>>>,
 ) -> Result<()> {
     let url = request.target.download_url(request.force_single);
     send(
@@ -78,6 +79,7 @@ async fn run_single(
         &single_output_template(&output_dir),
         &tx,
         &cancel,
+        encoders.as_deref(),
     )
     .await;
     send(
@@ -105,6 +107,7 @@ async fn run_playlist(
     output_dir: PathBuf,
     tx: mpsc::UnboundedSender<DlUpdate>,
     cancel: CancellationToken,
+    encoders: Option<Arc<HashSet<String>>>,
 ) -> Result<()> {
     let entries = request.entries.clone();
     if entries.is_empty() {
@@ -128,6 +131,7 @@ async fn run_playlist(
         let cancel = cancel.clone();
         let jobs_rx = jobs_rx.clone();
         let playlist_dir = playlist_dir.clone();
+        let encoders = encoders.clone();
         tasks.push(tokio::spawn(async move {
             loop {
                 let entry = {
@@ -149,10 +153,11 @@ async fn run_playlist(
                     entry,
                     &tx,
                     &cancel,
+                    encoders.as_deref(),
                 )
                 .await;
                 if !result.err.is_empty() {
-                    // Errors are already reported through EvDone.
+                    tracing::debug!(err = %result.err, "playlist entry failed");
                 }
             }
         }));
@@ -177,6 +182,7 @@ async fn run_playlist(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_playlist_entry(
     paths: Arc<AppPaths>,
     deps: CheckDepsResult,
@@ -186,6 +192,7 @@ async fn run_playlist_entry(
     entry: PlaylistEntry,
     tx: &mpsc::UnboundedSender<DlUpdate>,
     cancel: &CancellationToken,
+    encoders: Option<&HashSet<String>>,
 ) -> DownloadResult {
     send(
         tx,
@@ -198,7 +205,7 @@ async fn run_playlist_entry(
     );
     let template = playlist_output_template(output_dir, &entry);
     let result = run_one(
-        paths, deps, &request, slot, &entry.url, &template, tx, cancel,
+        paths, deps, &request, slot, &entry.url, &template, tx, cancel, encoders,
     )
     .await;
     send(
@@ -224,6 +231,7 @@ async fn run_playlist_entry(
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_one(
     paths: Arc<AppPaths>,
     deps: CheckDepsResult,
@@ -233,6 +241,7 @@ async fn run_one(
     output_template: &str,
     tx: &mpsc::UnboundedSender<DlUpdate>,
     cancel: &CancellationToken,
+    encoders: Option<&HashSet<String>>,
 ) -> DownloadResult {
     let (formats, labels) = download_formats(request);
     if formats.is_empty() {
@@ -298,6 +307,7 @@ async fn run_one(
             &deps,
             &request.profile,
             &output_path,
+            encoders,
             Some(cancel.clone()),
         )
         .await
@@ -312,20 +322,20 @@ async fn run_one(
         if request.profile.wants_subtitles() {
             cleanup_subtitle_sidecars(&output_path, &request.profile.sub_langs);
         }
-        if request.profile.mode == DownloadMode::Video && !request.profile.audio_langs.is_empty() {
-            let _ = retag_audio_languages(
+        if request.profile.mode == DownloadMode::Video
+            && !request.profile.audio_langs.is_empty()
+            && let Err(err) = retag_audio_languages(
                 &paths,
                 &deps,
                 &output_path,
                 &request.profile.audio_langs,
                 Some(cancel.clone()),
             )
-            .await;
+            .await
+        {
+            tracing::warn!(%err, "could not retag audio languages");
         }
-        return DownloadResult {
-            output_path,
-            err: String::new(),
-        };
+        return DownloadResult { err: String::new() };
     }
     last_result
 }
@@ -371,10 +381,8 @@ fn handle_line(
 ) {
     if !line.stdout {
         let lower = line.text.to_ascii_lowercase();
-        if lower.starts_with("error:") {
-            if progress.error_text.is_empty() {
-                progress.error_text = line.text[6..].trim().to_owned();
-            }
+        if lower.starts_with("error:") && progress.error_text.is_empty() {
+            progress.error_text = line.text[6..].trim().to_owned();
         }
         return;
     }
@@ -457,6 +465,7 @@ fn handle_line(
                 done_b,
                 total_b,
                 speed: format_progress_speed(speed, locale),
+                speed_bps: speed.max(0.0) as i64,
                 ..DlUpdate::default()
             },
         );

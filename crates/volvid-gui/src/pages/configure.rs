@@ -1,11 +1,11 @@
 use eframe::egui;
-use egui::{Align, Layout, RichText, Stroke};
+use egui::{Align, Layout, RichText, Sense, Stroke};
 use volvid_app::{FragmentMode, Route};
 use volvid_core::{DownloadMode, format_clock, format_duration};
 use volvid_i18n::{fragment_error_text, quality_label};
 
 use crate::app::VolvidApp;
-use crate::theme::{self, primary_button, secondary_button};
+use crate::theme::{self, primary_button_fill, secondary_button};
 
 pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let p = app.palette();
@@ -20,7 +20,16 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
         .is_some_and(|target| target.is_playlist() && !app.controller.state.force_single);
 
     ui.horizontal(|ui| {
-        if secondary_button(ui, p, "←").clicked() {
+        if theme::icon_button(
+            ui,
+            p,
+            egui::include_image!("../../../../assets/icons/arrow-left.svg"),
+            42.0,
+            p.text,
+            s.back,
+        )
+        .clicked()
+        {
             let route = if is_playlist {
                 Route::Playlist
             } else {
@@ -28,15 +37,17 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
             };
             app.controller.set_route(route);
         }
+        ui.add_space(4.0);
         ui.vertical(|ui| {
             ui.label(
-                RichText::new(if title.is_empty() {
-                    s.configure_title.to_owned()
-                } else {
-                    title.clone()
-                })
-                .size(36.0)
-                .strong()
+                theme::strong_text(
+                    if title.is_empty() {
+                        s.configure_title.to_owned()
+                    } else {
+                        title.clone()
+                    },
+                    34.0,
+                )
                 .color(p.text),
             );
             let mut meta = Vec::new();
@@ -55,21 +66,27 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     let available = ui.available_width();
-    let left_width = (available * 0.62).max(420.0);
-    let right_width = (available - left_width - 18.0).max(280.0);
-    ui.horizontal_top(|ui| {
-        ui.allocate_ui_with_layout(
-            egui::vec2(left_width, 0.0),
-            Layout::top_down(Align::LEFT),
-            |ui| options(app, ui),
-        );
-        ui.add_space(18.0);
-        ui.allocate_ui_with_layout(
-            egui::vec2(right_width, 0.0),
-            Layout::top_down(Align::LEFT),
-            |ui| summary(app, ui),
-        );
-    });
+    if let Some((left_width, right_width)) =
+        theme::split_columns(available, 18.0, 0.62, 420.0, 320.0)
+    {
+        ui.horizontal_top(|ui| {
+            ui.spacing_mut().item_spacing.x = 18.0;
+            ui.allocate_ui_with_layout(
+                egui::vec2(left_width, 0.0),
+                Layout::top_down(Align::LEFT),
+                |ui| options(app, ui),
+            );
+            ui.allocate_ui_with_layout(
+                egui::vec2(right_width, 0.0),
+                Layout::top_down(Align::LEFT),
+                |ui| summary(app, ui),
+            );
+        });
+    } else {
+        options(app, ui);
+        ui.add_space(14.0);
+        summary(app, ui);
+    }
 }
 
 fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
@@ -84,20 +101,7 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
             (DownloadMode::Thumbnail, s.mode_thumbnail),
         ] {
             let selected = app.controller.state.draft.mode == mode;
-            let button = egui::Button::new(
-                RichText::new(label)
-                    .color(if selected {
-                        egui::Color32::WHITE
-                    } else {
-                        p.text
-                    })
-                    .strong(),
-            )
-            .fill(if selected { p.accent } else { p.card })
-            .stroke(Stroke::new(1.0, if selected { p.accent } else { p.border }))
-            .corner_radius(egui::CornerRadius::same(9))
-            .min_size(egui::vec2(110.0, 38.0));
-            if ui.add(button).clicked() {
+            if theme::segmented_button(ui, p, label, selected, 110.0).clicked() {
                 app.controller.set_mode(mode);
             }
         }
@@ -129,10 +133,7 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
                                     && current.worst == choice.worst
                             });
                     let label = quality_label(&choice, locale);
-                    if ui
-                        .selectable_label(selected, RichText::new(label).size(14.0))
-                        .clicked()
-                    {
+                    if option_row(ui, p, selected, &label).clicked() {
                         app.controller.state.draft.quality = Some(choice);
                         app.controller.state.draft.video_profile_index = 0;
                     }
@@ -148,13 +149,7 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
                 let profiles = app.controller.state.draft.video_profiles(locale);
                 let selected = app.controller.state.draft.video_profile_index;
                 for (index, profile) in profiles.iter().enumerate() {
-                    if ui
-                        .selectable_label(
-                            selected == index,
-                            RichText::new(&profile.label).size(14.0),
-                        )
-                        .clicked()
-                    {
+                    if option_row(ui, p, selected == index, &profile.label).clicked() {
                         app.controller.state.draft.video_profile_index = index;
                     }
                 }
@@ -169,13 +164,7 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
                 let profiles = app.controller.state.draft.audio_profiles(locale);
                 let selected = app.controller.state.draft.audio_profile_index;
                 for (index, profile) in profiles.iter().enumerate() {
-                    if ui
-                        .selectable_label(
-                            selected == index,
-                            RichText::new(&profile.label).size(14.0),
-                        )
-                        .clicked()
-                    {
+                    if option_row(ui, p, selected == index, &profile.label).clicked() {
                         app.controller.state.draft.audio_profile_index = index;
                     }
                 }
@@ -223,10 +212,10 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 theme::section_title(ui, p, s.workers);
-                ui.add(
-                    egui::Slider::new(&mut app.controller.state.draft.workers, 1..=8)
-                        .show_value(true),
-                );
+                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                    theme::slider(ui, p, &mut app.controller.state.draft.workers, 1..=8, 200.0);
+                    theme::value_box(ui, p, app.controller.state.draft.workers.to_string());
+                });
             });
         }
     });
@@ -236,7 +225,7 @@ fn advanced(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let p = app.palette();
     let s = app.s();
     theme::card_frame(p).show(ui, |ui| {
-        egui::CollapsingHeader::new(RichText::new(s.advanced).strong().color(p.text))
+        egui::CollapsingHeader::new(theme::strong_text(s.advanced, 14.0).color(p.text))
             .default_open(true)
             .show(ui, |ui| {
                 if app.controller.state.probe_loading {
@@ -300,7 +289,7 @@ fn fragment(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let mut enabled = app.controller.state.draft.fragment_mode != FragmentMode::None;
     theme::card_frame(p).show(ui, |ui| {
         if ui
-            .checkbox(&mut enabled, RichText::new(s.trim_enable).strong())
+            .checkbox(&mut enabled, theme::strong_text(s.trim_enable, 14.0))
             .changed()
         {
             app.controller.state.draft.fragment_mode = if enabled {
@@ -383,6 +372,7 @@ fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let s = app.s();
     let locale = app.controller.state.locale;
     let preview = app.preview_texture().cloned();
+    let preview_error = app.preview_error().map(str::to_owned);
     theme::card_frame(p).show(ui, |ui| {
         let width = ui.available_width();
         if let Some(texture) = preview {
@@ -418,15 +408,14 @@ fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
                 });
             ui.add_space(12.0);
         }
+        if let Some(error) = &preview_error {
+            ui.label(RichText::new(error).color(p.warning).size(11.5));
+            ui.add_space(6.0);
+        }
         theme::section_title(ui, p, s.configure_title);
         ui.add_space(6.0);
         let profile = app.controller.state.draft.profile(locale);
-        ui.label(
-            RichText::new(&profile.label)
-                .size(16.0)
-                .strong()
-                .color(p.text),
-        );
+        ui.label(theme::strong_text(&profile.label, 16.0).color(p.text));
         ui.add_space(4.0);
         let target = app.controller.state.target.clone();
         let fragment = app
@@ -443,13 +432,14 @@ fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
         theme::section_title(ui, p, s.estimated_size);
         let size = estimate_size(app);
         ui.label(
-            RichText::new(if size > 0 {
-                volvid_i18n::format_bytes(size, locale)
-            } else {
-                "—".to_owned()
-            })
-            .size(20.0)
-            .strong()
+            theme::strong_text(
+                if size > 0 {
+                    volvid_i18n::format_bytes(size, locale)
+                } else {
+                    "—".to_owned()
+                },
+                20.0,
+            )
             .color(p.text),
         );
         ui.add_space(4.0);
@@ -467,7 +457,8 @@ fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
             );
         }
         ui.add_space(14.0);
-        if primary_button(ui, p, s.download_button).clicked() {
+        let width = ui.available_width();
+        if primary_button_fill(ui, p, s.download_button, width).clicked() {
             app.controller.start_download();
         }
         if app.controller.state.quality_loading || app.controller.state.probe_loading {
@@ -479,6 +470,48 @@ fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
             ui.label(RichText::new(s.missing_ytdlp).color(p.danger).size(12.0));
         }
     });
+}
+
+fn option_row(
+    ui: &mut egui::Ui,
+    p: &crate::theme::Palette,
+    selected: bool,
+    text: &str,
+) -> egui::Response {
+    let frame = egui::Frame::new()
+        .fill(if selected {
+            p.selection.gamma_multiply(0.12)
+        } else {
+            p.card_hover
+        })
+        .stroke(Stroke::new(
+            1.0,
+            if selected {
+                p.selection.gamma_multiply(0.7)
+            } else {
+                p.border
+            },
+        ))
+        .corner_radius(egui::CornerRadius::same(9))
+        .inner_margin(egui::Margin::symmetric(12, 10))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal(|ui| {
+                theme::status_dot(ui, if selected { p.selection } else { p.border });
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(text)
+                            .color(if selected { p.selection } else { p.text })
+                            .size(13.5),
+                    )
+                    .truncate(),
+                );
+            });
+        });
+    frame
+        .response
+        .interact(Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 fn estimate_size(app: &VolvidApp) -> i64 {

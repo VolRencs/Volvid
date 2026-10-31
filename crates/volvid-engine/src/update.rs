@@ -78,6 +78,7 @@ fn version_gt(a: &str, b: &str) -> bool {
 pub async fn apply_update(
     client: &reqwest::Client,
     info: &UpdateInfo,
+    locale: volvid_core::Locale,
     cancel: Option<CancellationToken>,
     progress: mpsc::UnboundedSender<FileProgress>,
 ) -> Result<()> {
@@ -86,7 +87,15 @@ pub async fn apply_update(
     }
     let exe = std::env::current_exe().context("locate executable")?;
     let tmp = exe.with_extension("new");
-    let result = download_file(client, &info.download_url, &tmp, Some(&progress), cancel).await;
+    let result = download_file(
+        client,
+        &info.download_url,
+        &tmp,
+        locale,
+        Some(&progress),
+        cancel,
+    )
+    .await;
     if let Err(err) = result {
         let _ = std::fs::remove_file(&tmp);
         let _ = progress.send(FileProgress {

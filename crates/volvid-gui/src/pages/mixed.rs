@@ -2,7 +2,7 @@ use eframe::egui;
 use egui::RichText;
 
 use crate::app::VolvidApp;
-use crate::theme::{self, primary_button_sized, secondary_button_sized};
+use crate::theme::{self, primary_button_ex, secondary_button_ex};
 
 pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
     let p = app.palette();
@@ -10,17 +10,12 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
     let Some(choice) = app.controller.state.mixed_choice.clone() else {
         return;
     };
-    theme::modal_backdrop(ctx);
-    egui::Window::new("volvid-mixed-dialog")
-        .title_bar(false)
-        .collapsible(false)
-        .resizable(false)
-        .fixed_size(egui::vec2(640.0, 430.0))
+    let mut close = false;
+    let modal = egui::Modal::new(egui::Id::unique("volvid-mixed-dialog"))
         .frame(theme::modal_frame(p))
-        .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .backdrop_color(egui::Color32::from_black_alpha(150))
         .show(ctx, |ui| {
-            ui.set_width(592.0);
+            ui.set_width(480.0);
             theme::modal_header(
                 ui,
                 p,
@@ -35,19 +30,19 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
                 .corner_radius(egui::CornerRadius::same(10))
                 .inner_margin(egui::Margin::symmetric(14, 12))
                 .show(ui, |ui| {
-                    ui.label(
-                        RichText::new(&choice.url)
-                            .family(egui::FontFamily::Monospace)
-                            .size(11.5)
-                            .color(p.muted),
+                    ui.set_min_width(ui.available_width());
+                    ui.add(
+                        egui::Label::new(RichText::new(&choice.url).size(11.5).color(p.muted))
+                            .wrap(),
                     );
                 });
             ui.add_space(18.0);
             ui.horizontal(|ui| {
-                if primary_button_sized(ui, p, s.video_only, 286.0).clicked() {
+                ui.spacing_mut().item_spacing.x = 11.0;
+                if primary_button_ex(ui, p, s.video_only, egui::vec2(234.0, 54.0)).clicked() {
                     app.controller.choose_mixed(true);
                 }
-                if secondary_button_sized(ui, p, s.full_playlist, 286.0).clicked() {
+                if secondary_button_ex(ui, p, s.full_playlist, egui::vec2(234.0, 54.0)).clicked() {
                     app.controller.choose_mixed(false);
                 }
             });
@@ -55,7 +50,13 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
             ui.separator();
             ui.add_space(8.0);
             if theme::modal_close(ui, p, s.close) {
-                app.controller.state.mixed_choice = None;
+                close = true;
             }
         });
+    if modal.should_close() {
+        close = true;
+    }
+    if close {
+        app.controller.state.mixed_choice = None;
+    }
 }

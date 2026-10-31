@@ -1,27 +1,9 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use volvid_core::Locale;
 
 use crate::paths::{AppPaths, clean_abs, write_atomic};
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct WindowConfig {
-    pub width: f32,
-    pub height: f32,
-    pub maximized: bool,
-}
-
-impl Default for WindowConfig {
-    fn default() -> Self {
-        Self {
-            width: 1180.0,
-            height: 760.0,
-            maximized: false,
-        }
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -31,7 +13,6 @@ pub struct Config {
     pub theme: Theme,
     pub max_parallel_batches: usize,
     pub playlist_workers: usize,
-    pub window: WindowConfig,
     pub import_legacy: bool,
 }
 
@@ -52,7 +33,6 @@ impl Default for Config {
             theme: Theme::System,
             max_parallel_batches: 1,
             playlist_workers: 4,
-            window: WindowConfig::default(),
             import_legacy: true,
         }
     }
@@ -119,20 +99,4 @@ pub enum ConfigError {
 
 pub fn load_config(paths: &AppPaths) -> Config {
     Config::load(paths)
-}
-
-pub fn save_config(config: &Config, paths: &AppPaths) -> Result<(), ConfigError> {
-    config.save(paths)
-}
-
-pub fn ensure_data_dirs(paths: &AppPaths) -> std::io::Result<()> {
-    std::fs::create_dir_all(&paths.config_dir)?;
-    std::fs::create_dir_all(&paths.data_dir)?;
-    std::fs::create_dir_all(&paths.deps_dir)?;
-    std::fs::create_dir_all(&paths.downloads_dir)?;
-    Ok(())
-}
-
-pub fn path_exists(path: &Path) -> bool {
-    path.exists()
 }

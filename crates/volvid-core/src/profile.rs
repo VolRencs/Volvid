@@ -18,11 +18,6 @@ pub fn quality_chain_at(index: usize) -> Option<Vec<String>> {
         .map(|chain| chain.iter().map(|s| (*s).to_owned()).collect())
 }
 
-#[allow(non_snake_case)]
-pub fn QualityChainAt(index: usize) -> Option<Vec<String>> {
-    quality_chain_at(index)
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DownloadMode {
@@ -30,16 +25,6 @@ pub enum DownloadMode {
     Video,
     Audio,
     Thumbnail,
-}
-
-impl DownloadMode {
-    pub fn label_key(self) -> &'static str {
-        match self {
-            Self::Video => "mode.video",
-            Self::Audio => "mode.audio",
-            Self::Thumbnail => "mode.thumbnail",
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -85,11 +70,6 @@ pub fn default_quality_choices() -> Vec<QualityChoice> {
             fmt_labels: vec!["worst".to_owned(), "360p".to_owned(), "worst".to_owned()],
         },
     ]
-}
-
-#[allow(non_snake_case)]
-pub fn DefaultQualityChoices() -> Vec<QualityChoice> {
-    default_quality_choices()
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -158,6 +138,3 @@ impl DownloadRequest {
         self.playlist_info.is_some() && !self.force_single && !self.entries.is_empty()
     }
 }
-
-/// Compatibility-style aliases used by callers ported from Go.
-pub type AudioBitrate = String;

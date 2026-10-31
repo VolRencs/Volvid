@@ -183,12 +183,12 @@ fn scan_browser_root(browser: &str, root: &Path, out: &mut Vec<Candidate>) {
             {
                 profiles.push(path.clone());
             }
-            if name == "Profiles" {
-                if let Ok(sub) = std::fs::read_dir(path) {
-                    for sub_entry in sub.flatten() {
-                        if sub_entry.path().is_dir() {
-                            profiles.push(sub_entry.path());
-                        }
+            if name == "Profiles"
+                && let Ok(sub) = std::fs::read_dir(path)
+            {
+                for sub_entry in sub.flatten() {
+                    if sub_entry.path().is_dir() {
+                        profiles.push(sub_entry.path());
                     }
                 }
             }
@@ -213,20 +213,11 @@ fn cookie_file(profile: &Path) -> Option<(PathBuf, SystemTime)> {
         profile.join("Cookies"),
         profile.join("cookies.sqlite"),
     ] {
-        if let Ok(metadata) = std::fs::metadata(&candidate) {
-            if metadata.is_file() {
-                let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
-                return Some((candidate, modified));
-            }
-        }
-    }
-    // Fallback modification marker when cookies are locked/not present.
-    for marker in [profile.join("Preferences"), profile.join("prefs.js")] {
-        if let Ok(metadata) = std::fs::metadata(marker) {
-            return Some((
-                PathBuf::new(),
-                metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
-            ));
+        if let Ok(metadata) = std::fs::metadata(&candidate)
+            && metadata.is_file()
+        {
+            let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+            return Some((candidate, modified));
         }
     }
     None

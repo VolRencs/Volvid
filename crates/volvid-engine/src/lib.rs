@@ -1,9 +1,4 @@
 //! Async engine for Volvid: yt-dlp, ffmpeg, dependency management, updates.
-#![allow(
-    clippy::collapsible_if,
-    clippy::too_many_arguments,
-    clippy::while_let_loop
-)]
 
 pub mod args;
 pub mod config;
@@ -31,15 +26,17 @@ use volvid_core::{
     SearchResult, UpdateInfo,
 };
 
-pub use config::{Config, ConfigError, Theme, WindowConfig};
+pub use config::{Config, ConfigError, Theme};
 pub use paths::AppPaths;
 
-use crate::config::{load_config, save_config};
+use crate::config::load_config;
 use crate::deps::{detect_deps, enrich_deps};
-use crate::download::{normalize_request, run_download, validate_request};
+use crate::download::run_download;
+use crate::ffmpeg::detect_video_encoders;
 use crate::ytdlp::{fetch_playlist, probe_media, resolve_quality_choices, search_youtube};
 
 const PROBE_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const DEPS_CACHE_TTL: Duration = Duration::from_secs(60);
 const RUNTIME_DEPS_TTL: Duration = Duration::from_secs(5 * 60);
 
 pub struct Engine {
@@ -50,12 +47,13 @@ pub struct Engine {
     deps_cache: RwLock<Option<(Instant, CheckDepsResult)>>,
     runtime_deps_cache: RwLock<Option<(Instant, CheckDepsResult)>>,
     probe_cache: Mutex<std::collections::HashMap<String, (Instant, MediaProbe)>>,
-    ffmpeg_encoder_cache: Mutex<Option<std::collections::HashSet<String>>>,
+    ffmpeg_encoder_cache: Mutex<Option<Arc<std::collections::HashSet<String>>>>,
 }
 
 impl Engine {
     pub fn new() -> Self {
         let paths = AppPaths::detect();
+        crate::update::cleanup_stale_update_files();
         let config = load_config(&paths);
         let downloads_dir = config.downloads_dir(&paths);
         let client = reqwest::Client::builder()
@@ -63,27 +61,6 @@ impl Engine {
             .connect_timeout(Duration::from_secs(30))
             .timeout(Duration::from_secs(120))
             .redirect(reqwest::redirect::Policy::limited(10))
-            .build()
-            .unwrap_or_default();
-        Self {
-            paths,
-            config: RwLock::new(config),
-            client,
-            downloads_dir: RwLock::new(downloads_dir),
-            deps_cache: RwLock::new(None),
-            runtime_deps_cache: RwLock::new(None),
-            probe_cache: Mutex::new(std::collections::HashMap::new()),
-            ffmpeg_encoder_cache: Mutex::new(None),
-        }
-    }
-
-    pub fn with_paths(paths: AppPaths) -> Self {
-        let config = load_config(&paths);
-        let downloads_dir = config.downloads_dir(&paths);
-        let client = reqwest::Client::builder()
-            .user_agent(format!("Volvid/{}", env!("CARGO_PKG_VERSION")))
-            .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(120))
             .build()
             .unwrap_or_default();
         Self {
@@ -114,8 +91,10 @@ impl Engine {
         if let Ok(mut current) = self.config.write() {
             *current = config.clone();
         }
-        if let Some(dir) = &config.downloads_dir {
-            self.set_downloads_dir(dir.clone());
+        if let Some(dir) = &config.downloads_dir
+            && let Ok(mut current) = self.downloads_dir.write()
+        {
+            *current = paths::clean_abs(dir.clone());
         }
         Ok(())
     }
@@ -127,17 +106,6 @@ impl Engine {
             .unwrap_or_else(|_| self.paths.downloads_dir.clone())
     }
 
-    pub fn set_downloads_dir(&self, path: impl Into<PathBuf>) {
-        let path = paths::clean_abs(path.into());
-        if let Ok(mut current) = self.downloads_dir.write() {
-            *current = path.clone();
-        }
-        let _ = self.paths.save_downloads_dir(&path);
-        if let Ok(mut config) = self.config.write() {
-            config.downloads_dir = Some(path);
-        }
-    }
-
     pub fn detect_deps(&self) -> CheckDepsResult {
         detect_deps(&self.paths)
     }
@@ -147,6 +115,7 @@ impl Engine {
             .read()
             .ok()
             .and_then(|cache| cache.clone())
+            .filter(|(at, _)| at.elapsed() < DEPS_CACHE_TTL)
             .map(|(_, deps)| deps)
     }
 
@@ -174,12 +143,11 @@ impl Engine {
     }
 
     pub async fn runtime_deps(&self) -> CheckDepsResult {
-        if let Ok(cache) = self.runtime_deps_cache.read() {
-            if let Some((at, deps)) = cache.as_ref() {
-                if at.elapsed() < RUNTIME_DEPS_TTL {
-                    return deps.clone();
-                }
-            }
+        if let Ok(cache) = self.runtime_deps_cache.read()
+            && let Some((at, deps)) = cache.as_ref()
+            && at.elapsed() < RUNTIME_DEPS_TTL
+        {
+            return deps.clone();
         }
         let deps = self.check_deps().await;
         let enriched = self.enrich_deps(deps.clone(), None).await;
@@ -212,10 +180,10 @@ impl Engine {
         let key = probe_cache_key(url);
         {
             let cache = self.probe_cache.lock().await;
-            if let Some((at, probe)) = cache.get(&key) {
-                if at.elapsed() < PROBE_CACHE_TTL {
-                    return Ok(probe.clone());
-                }
+            if let Some((at, probe)) = cache.get(&key)
+                && at.elapsed() < PROBE_CACHE_TTL
+            {
+                return Ok(probe.clone());
             }
         }
         let deps = self.runtime_deps().await;
@@ -274,13 +242,6 @@ impl Engine {
         resolve_quality_choices(&deps, urls, cancel).await
     }
 
-    pub async fn prepare_download(&self, mut request: DownloadRequest) -> Result<DownloadRequest> {
-        let deps = self.runtime_deps().await;
-        request = normalize_request(request, &self.paths);
-        validate_request(&request, &deps)?;
-        Ok(request)
-    }
-
     pub async fn download(
         &self,
         request: DownloadRequest,
@@ -288,7 +249,33 @@ impl Engine {
         tx: tokio::sync::mpsc::UnboundedSender<volvid_core::DlUpdate>,
         cancel: CancellationToken,
     ) -> Result<()> {
-        run_download(Arc::new(self.paths.clone()), deps, request, tx, cancel).await
+        let encoders = if request.profile.needs_video_transcode() {
+            Some(self.video_encoders(&deps).await)
+        } else {
+            None
+        };
+        run_download(
+            Arc::new(self.paths.clone()),
+            deps,
+            request,
+            tx,
+            cancel,
+            encoders,
+        )
+        .await
+    }
+
+    pub async fn video_encoders(
+        &self,
+        deps: &CheckDepsResult,
+    ) -> Arc<std::collections::HashSet<String>> {
+        let mut cache = self.ffmpeg_encoder_cache.lock().await;
+        if let Some(encoders) = cache.as_ref() {
+            return encoders.clone();
+        }
+        let encoders = Arc::new(detect_video_encoders(&self.paths, deps, None).await);
+        *cache = Some(encoders.clone());
+        encoders
     }
 
     pub fn app_version(&self) -> &'static str {
@@ -304,26 +291,23 @@ impl Engine {
     pub async fn apply_update(
         &self,
         info: &UpdateInfo,
+        locale: Locale,
         cancel: Option<CancellationToken>,
         progress: tokio::sync::mpsc::UnboundedSender<volvid_core::FileProgress>,
     ) -> Result<()> {
-        crate::update::apply_update(&self.client, info, cancel, progress).await
-    }
-
-    pub fn save_config_only(&self, config: &Config) -> Result<()> {
-        save_config(config, &self.paths)?;
-        if let Ok(mut current) = self.config.write() {
-            *current = config.clone();
-        }
-        Ok(())
+        crate::update::apply_update(&self.client, info, locale, cancel, progress).await
     }
 
     pub fn open_folder(&self, path: &std::path::Path) -> Result<()> {
         crate::platform::open_folder(path)
     }
 
-    pub async fn pick_folder(&self, current: Option<PathBuf>) -> Result<Option<PathBuf>> {
-        crate::platform::pick_folder(current).await
+    pub async fn pick_folder(
+        &self,
+        current: Option<PathBuf>,
+        title: &str,
+    ) -> Result<Option<PathBuf>> {
+        crate::platform::pick_folder(current, title).await
     }
 
     pub async fn install_dependency(

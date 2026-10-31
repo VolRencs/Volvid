@@ -1,6 +1,6 @@
 use volvid_core::{
-    DefaultQualityChoices, DownloadMode, FragmentError, Locale, OutputProfile, QualityChoice,
-    SelectionError, SubtitleMode, YTDLP_BEST_FORMAT,
+    DownloadMode, FragmentError, Locale, OutputProfile, QualityChoice, SelectionError,
+    YTDLP_BEST_FORMAT, default_quality_choices,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -12,7 +12,6 @@ pub struct Strings {
 
     pub home_title: &'static str,
     pub home_subtitle: &'static str,
-    pub home_input_title: &'static str,
     pub url_placeholder: &'static str,
     pub paste: &'static str,
     pub analyze: &'static str,
@@ -23,7 +22,6 @@ pub struct Strings {
     pub recent: &'static str,
     pub no_history: &'static str,
     pub deps_missing: &'static str,
-    pub install_deps: &'static str,
     pub drag_hint: &'static str,
     pub clipboard_empty: &'static str,
 
@@ -32,16 +30,13 @@ pub struct Strings {
     pub theme_system: &'static str,
     pub theme_dark: &'static str,
     pub theme_light: &'static str,
-    pub settings: &'static str,
     pub about: &'static str,
     pub version: &'static str,
     pub check_updates: &'static str,
-    pub updates: &'static str,
     pub update_available: &'static str,
     pub install_update: &'static str,
     pub later: &'static str,
     pub update_applied: &'static str,
-    pub restart_hint: &'static str,
     pub close: &'static str,
     pub back: &'static str,
     pub continue_label: &'static str,
@@ -49,31 +44,23 @@ pub struct Strings {
     pub retry: &'static str,
     pub open: &'static str,
     pub clear: &'static str,
-    pub refresh: &'static str,
     pub error: &'static str,
     pub warning: &'static str,
     pub success: &'static str,
 
     pub deps_title: &'static str,
-    pub deps_subtitle: &'static str,
     pub dep_required: &'static str,
     pub dep_optional: &'static str,
     pub dep_missing: &'static str,
     pub dep_available: &'static str,
-    pub dep_active: &'static str,
-    pub dep_inactive: &'static str,
     pub dep_checking: &'static str,
     pub dep_system: &'static str,
     pub dep_managed: &'static str,
     pub dep_install: &'static str,
     pub dep_update: &'static str,
     pub dep_refresh: &'static str,
-    pub dep_continue: &'static str,
     pub cookies: &'static str,
     pub js_runtime: &'static str,
-    pub no_cookies: &'static str,
-    pub browser_profile: &'static str,
-    pub deps_ready: &'static str,
     pub deps_settings_hint: &'static str,
     pub audio_original_hint: &'static str,
     pub environment: &'static str,
@@ -82,8 +69,16 @@ pub struct Strings {
     pub downloading_count: &'static str,
     pub waiting_count: &'static str,
     pub errors_count: &'static str,
-    pub stop_all: &'static str,
     pub clear_finished: &'static str,
+    pub pause: &'static str,
+    pub resume: &'static str,
+    pub pause_all: &'static str,
+    pub resume_all: &'static str,
+    pub paused: &'static str,
+    pub cancelled: &'static str,
+    pub remove: &'static str,
+    pub queued_message: &'static str,
+    pub remaining: &'static str,
 
     pub playlist_title: &'static str,
     pub videos_count: &'static str,
@@ -123,7 +118,6 @@ pub struct Strings {
     pub subtitles_title: &'static str,
     pub no_audio_tracks: &'static str,
     pub no_subtitles: &'static str,
-    pub original_audio: &'static str,
     pub auto_subtitle: &'static str,
     pub workers: &'static str,
     pub output_folder: &'static str,
@@ -132,10 +126,7 @@ pub struct Strings {
     pub loading_quality: &'static str,
     pub loading_tracks: &'static str,
     pub quality_failed: &'static str,
-    pub tracks_failed: &'static str,
     pub advanced: &'static str,
-    pub single_video: &'static str,
-    pub playlist_job: &'static str,
 
     pub video_original: &'static str,
     pub video_h264: &'static str,
@@ -150,7 +141,6 @@ pub struct Strings {
     pub audio_opus_best: &'static str,
     pub audio_flac: &'static str,
 
-    pub downloads_title: &'static str,
     pub queue: &'static str,
     pub no_downloads: &'static str,
     pub active: &'static str,
@@ -160,33 +150,22 @@ pub struct Strings {
     pub speed: &'static str,
     pub elapsed: &'static str,
     pub cancel_download: &'static str,
-    pub cancel_all: &'static str,
     pub downloading: &'static str,
     pub merging: &'static str,
-    pub converting_video: &'static str,
     pub converting_audio: &'static str,
     pub thumbnail_proc: &'static str,
     pub fallback_format: &'static str,
     pub download_failed: &'static str,
-    pub download_complete: &'static str,
-    pub partial: &'static str,
-    pub all_failed: &'static str,
-    pub summary_title: &'static str,
     pub history_title: &'static str,
-    pub saved_to: &'static str,
     pub session_history: &'static str,
     pub clear_history: &'static str,
-    pub no_active_downloads: &'static str,
     pub job_items: &'static str,
-    pub item_failed: &'static str,
 
     pub search_title: &'static str,
     pub search_prompt: &'static str,
     pub search_placeholder: &'static str,
     pub searching: &'static str,
-    pub results: &'static str,
     pub no_results: &'static str,
-    pub search_failed: &'static str,
     pub query_empty: &'static str,
 
     pub invalid_url: &'static str,
@@ -198,49 +177,31 @@ pub struct Strings {
     pub fragment_out_of_range: &'static str,
     pub fragment_duration_required: &'static str,
     pub fragment_bounds: &'static str,
-    pub fragment_url_out_of_range: &'static str,
     pub pick_folder_failed: &'static str,
     pub open_folder_failed: &'static str,
     pub install_failed: &'static str,
     pub update_failed: &'static str,
-    pub network_error: &'static str,
     pub operation_cancelled: &'static str,
-    pub timed_out: &'static str,
     pub config_save_failed: &'static str,
-    pub copy_error: &'static str,
 
     pub settings_title: &'static str,
-    pub max_parallel: &'static str,
     pub playlist_workers: &'static str,
     pub logs: &'static str,
     pub open_logs: &'static str,
     pub config_dir: &'static str,
     pub data_dir: &'static str,
     pub downloads_dir: &'static str,
-    pub reset: &'static str,
     pub current_version: &'static str,
     pub latest_version: &'static str,
     pub check_now: &'static str,
-    pub no_updates: &'static str,
-    pub update_check_failed: &'static str,
-    pub updates_checked: &'static str,
     pub select_language: &'static str,
     pub appearance: &'static str,
     pub behavior: &'static str,
     pub paths: &'static str,
-    pub danger_zone: &'static str,
-    pub clear_history_hint: &'static str,
 
-    pub ready: &'static str,
     pub checking: &'static str,
     pub loading: &'static str,
     pub cancel: &'static str,
-    pub copy: &'static str,
-    pub dismiss: &'static str,
-    pub close_esc: &'static str,
-    pub items_selected: &'static str,
-    pub playlist_summary: &'static str,
-    pub single_summary: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -251,7 +212,6 @@ pub static EN: Strings = Strings {
 
     home_title: "Download video & music from YouTube",
     home_subtitle: "Paste a link, choose what you want, and Volvid handles the rest.",
-    home_input_title: "Target",
     url_placeholder: "https://www.youtube.com/watch?v=...",
     paste: "Paste",
     analyze: "Analyze",
@@ -262,7 +222,6 @@ pub static EN: Strings = Strings {
     recent: "Recent downloads",
     no_history: "Nothing downloaded yet.",
     deps_missing: "Required dependencies are missing.",
-    install_deps: "Manage dependencies",
     drag_hint: "Drop a YouTube link here",
     clipboard_empty: "Clipboard is empty",
 
@@ -271,16 +230,13 @@ pub static EN: Strings = Strings {
     theme_system: "System",
     theme_dark: "Dark",
     theme_light: "Light",
-    settings: "Settings",
     about: "About",
     version: "Version",
     check_updates: "Check for updates",
-    updates: "Updates",
     update_available: "Update available",
     install_update: "Install update",
     later: "Later",
     update_applied: "Update applied. Restart Volvid to use the new version.",
-    restart_hint: "Restart the app to finish the update.",
     close: "Close",
     back: "Back",
     continue_label: "Continue",
@@ -288,31 +244,23 @@ pub static EN: Strings = Strings {
     retry: "Retry",
     open: "Open",
     clear: "Clear",
-    refresh: "Refresh",
     error: "Error",
     warning: "Warning",
     success: "Success",
 
     deps_title: "Dependencies",
-    deps_subtitle: "yt-dlp · ffmpeg · node · browser cookies · JS runtime",
     dep_required: "required",
     dep_optional: "optional",
     dep_missing: "missing",
     dep_available: "available",
-    dep_active: "active",
-    dep_inactive: "not active",
     dep_checking: "checking...",
     dep_system: "system",
     dep_managed: "managed",
     dep_install: "Install",
     dep_update: "Update",
     dep_refresh: "Refresh status",
-    dep_continue: "Continue",
     cookies: "Cookies",
     js_runtime: "JS runtime",
-    no_cookies: "No supported browser profile found",
-    browser_profile: "Browser profile",
-    deps_ready: "All required dependencies are ready.",
     deps_settings_hint: "Open Settings → Dependencies to install them.",
     audio_original_hint: "Leave empty to keep the original audio only.",
     environment: "Environment",
@@ -321,8 +269,16 @@ pub static EN: Strings = Strings {
     downloading_count: "Downloading %d",
     waiting_count: "Waiting %d",
     errors_count: "Errors %d",
-    stop_all: "Stop all",
     clear_finished: "Clear completed",
+    pause: "Pause",
+    resume: "Resume",
+    pause_all: "Pause all",
+    resume_all: "Resume all",
+    paused: "Paused",
+    cancelled: "Cancelled",
+    remove: "Remove",
+    queued_message: "Added to the download queue.",
+    remaining: "left",
 
     playlist_title: "Playlist",
     videos_count: "%d videos",
@@ -362,7 +318,6 @@ pub static EN: Strings = Strings {
     subtitles_title: "Subtitles",
     no_audio_tracks: "No alternate audio tracks.",
     no_subtitles: "No subtitles available.",
-    original_audio: "Original audio",
     auto_subtitle: "auto",
     workers: "Parallel workers",
     output_folder: "Output folder",
@@ -371,10 +326,7 @@ pub static EN: Strings = Strings {
     loading_quality: "Scanning qualities…",
     loading_tracks: "Loading audio tracks and subtitles…",
     quality_failed: "Could not scan qualities; fallback presets are used.",
-    tracks_failed: "Could not load tracks for this video.",
     advanced: "Audio & subtitles",
-    single_video: "Video",
-    playlist_job: "Playlist · %d items",
 
     video_original: "Original MP4",
     video_h264: "MP4 · H.264/AAC",
@@ -389,7 +341,6 @@ pub static EN: Strings = Strings {
     audio_opus_best: "Opus Best",
     audio_flac: "FLAC Lossless",
 
-    downloads_title: "Downloads",
     queue: "Queue",
     no_downloads: "No downloads in the queue.",
     active: "Active",
@@ -399,33 +350,22 @@ pub static EN: Strings = Strings {
     speed: "Speed",
     elapsed: "Elapsed",
     cancel_download: "Cancel",
-    cancel_all: "Cancel all",
     downloading: "Downloading",
     merging: "Merging video and audio",
-    converting_video: "Converting video",
     converting_audio: "Converting audio",
     thumbnail_proc: "Downloading thumbnail",
     fallback_format: "Trying fallback format #%d: %s",
     download_failed: "Download failed",
-    download_complete: "Download complete",
-    partial: "Completed with issues",
-    all_failed: "Download failed",
-    summary_title: "Summary",
     history_title: "History",
-    saved_to: "Saved to",
     session_history: "Session history",
     clear_history: "Clear history",
-    no_active_downloads: "No active downloads.",
     job_items: "%d items",
-    item_failed: "failed",
 
     search_title: "Search YouTube",
     search_prompt: "Enter a video title or keywords",
     search_placeholder: "lofi hip hop mix",
     searching: "Searching YouTube…",
-    results: "Results",
     no_results: "Nothing found.",
-    search_failed: "Search failed",
     query_empty: "Search query cannot be empty.",
 
     invalid_url: "Does not look like a YouTube URL",
@@ -437,49 +377,31 @@ pub static EN: Strings = Strings {
     fragment_out_of_range: "Range must stay within the video duration.",
     fragment_duration_required: "Trimming is unavailable because the video duration is unknown.",
     fragment_bounds: "Start time must be less than end time.",
-    fragment_url_out_of_range: "The URL timestamp is outside the video duration.",
     pick_folder_failed: "Failed to choose download folder",
     open_folder_failed: "Failed to open folder",
     install_failed: "Dependency installation failed",
     update_failed: "Update failed",
-    network_error: "Network error",
     operation_cancelled: "Operation cancelled",
-    timed_out: "Operation timed out",
     config_save_failed: "Could not save settings",
-    copy_error: "Could not copy to clipboard",
 
     settings_title: "Settings",
-    max_parallel: "Parallel download batches",
     playlist_workers: "Playlist workers",
     logs: "Logs",
     open_logs: "Open logs",
     config_dir: "Config directory",
     data_dir: "Data directory",
     downloads_dir: "Downloads directory",
-    reset: "Reset",
     current_version: "Current version",
     latest_version: "Latest version",
     check_now: "Check now",
-    no_updates: "You are up to date.",
-    update_check_failed: "Could not check for updates.",
-    updates_checked: "Update check complete.",
     select_language: "Language",
     appearance: "Appearance",
     behavior: "Behavior",
     paths: "Paths",
-    danger_zone: "Data",
-    clear_history_hint: "This removes local history records only.",
 
-    ready: "Ready",
     checking: "Checking…",
     loading: "Loading…",
     cancel: "Cancel",
-    copy: "Copy",
-    dismiss: "Dismiss",
-    close_esc: "Close (Esc)",
-    items_selected: "%d selected",
-    playlist_summary: "Playlist summary",
-    single_summary: "Download summary",
 };
 
 pub static RU: Strings = Strings {
@@ -490,7 +412,6 @@ pub static RU: Strings = Strings {
 
     home_title: "Скачивайте видео и музыку с YouTube",
     home_subtitle: "Вставьте ссылку, выберите формат — остальное Volvid сделает сам.",
-    home_input_title: "Источник",
     url_placeholder: "https://www.youtube.com/watch?v=...",
     paste: "Вставить",
     analyze: "Анализировать",
@@ -501,7 +422,6 @@ pub static RU: Strings = Strings {
     recent: "Последние загрузки",
     no_history: "В этой сессии ещё не было загрузок.",
     deps_missing: "Не хватает обязательных зависимостей.",
-    install_deps: "Управление зависимостями",
     drag_hint: "Перетащите ссылку YouTube сюда",
     clipboard_empty: "Буфер обмена пуст",
 
@@ -510,16 +430,13 @@ pub static RU: Strings = Strings {
     theme_system: "Системная",
     theme_dark: "Тёмная",
     theme_light: "Светлая",
-    settings: "Настройки",
     about: "О программе",
     version: "Версия",
     check_updates: "Проверить обновления",
-    updates: "Обновления",
     update_available: "Доступно обновление",
     install_update: "Установить обновление",
     later: "Позже",
     update_applied: "Обновление применено. Перезапустите Volvid.",
-    restart_hint: "Перезапустите приложение, чтобы завершить обновление.",
     close: "Закрыть",
     back: "Назад",
     continue_label: "Продолжить",
@@ -527,31 +444,23 @@ pub static RU: Strings = Strings {
     retry: "Повторить",
     open: "Открыть",
     clear: "Очистить",
-    refresh: "Обновить",
     error: "Ошибка",
     warning: "Внимание",
     success: "Готово",
 
     deps_title: "Зависимости",
-    deps_subtitle: "yt-dlp · ffmpeg · node · cookies браузера · JS runtime",
     dep_required: "обязательно",
     dep_optional: "опционально",
     dep_missing: "не найден",
     dep_available: "доступен",
-    dep_active: "активно",
-    dep_inactive: "не активно",
     dep_checking: "проверяю...",
     dep_system: "система",
     dep_managed: "в комплекте",
     dep_install: "Установить",
     dep_update: "Обновить",
     dep_refresh: "Обновить статус",
-    dep_continue: "Продолжить",
     cookies: "Cookies",
     js_runtime: "JS runtime",
-    no_cookies: "Поддерживаемый профиль браузера не найден",
-    browser_profile: "Профиль браузера",
-    deps_ready: "Все обязательные зависимости готовы.",
     deps_settings_hint: "Откройте «Настройки» → «Зависимости», чтобы установить их.",
     audio_original_hint: "Оставьте пустым, чтобы сохранить только оригинальное аудио.",
     environment: "Окружение",
@@ -560,8 +469,16 @@ pub static RU: Strings = Strings {
     downloading_count: "Загружается %d",
     waiting_count: "В ожидании %d",
     errors_count: "Ошибок %d",
-    stop_all: "Остановить все",
     clear_finished: "Очистить завершённые",
+    pause: "Пауза",
+    resume: "Продолжить",
+    pause_all: "Приостановить все",
+    resume_all: "Продолжить все",
+    paused: "На паузе",
+    cancelled: "Отменено",
+    remove: "Удалить",
+    queued_message: "Добавлено в очередь загрузок.",
+    remaining: "осталось",
 
     playlist_title: "Плейлист",
     videos_count: "%d видео",
@@ -601,7 +518,6 @@ pub static RU: Strings = Strings {
     subtitles_title: "Субтитры",
     no_audio_tracks: "Дополнительных аудиодорожек нет.",
     no_subtitles: "Субтитры недоступны.",
-    original_audio: "Оригинальное аудио",
     auto_subtitle: "авто",
     workers: "Параллельные потоки",
     output_folder: "Папка назначения",
@@ -610,10 +526,7 @@ pub static RU: Strings = Strings {
     loading_quality: "Сканирую качества…",
     loading_tracks: "Загружаю аудиодорожки и субтитры…",
     quality_failed: "Не удалось просканировать качества; используются стандартные пресеты.",
-    tracks_failed: "Не удалось загрузить дорожки для этого видео.",
     advanced: "Аудио и субтитры",
-    single_video: "Видео",
-    playlist_job: "Плейлист · %d видео",
 
     video_original: "Оригинал MP4",
     video_h264: "MP4 · H.264/AAC",
@@ -628,7 +541,6 @@ pub static RU: Strings = Strings {
     audio_opus_best: "Opus Лучшее",
     audio_flac: "FLAC Lossless",
 
-    downloads_title: "Загрузки",
     queue: "Очередь",
     no_downloads: "В очереди нет загрузок.",
     active: "Активно",
@@ -638,33 +550,22 @@ pub static RU: Strings = Strings {
     speed: "Скорость",
     elapsed: "Прошло",
     cancel_download: "Отменить",
-    cancel_all: "Отменить все",
     downloading: "Загрузка",
     merging: "Объединение видео и аудио",
-    converting_video: "Конвертация видео",
     converting_audio: "Конвертация аудио",
     thumbnail_proc: "Загрузка превью",
     fallback_format: "Пробую запасной формат #%d: %s",
     download_failed: "Загрузка не удалась",
-    download_complete: "Загрузка завершена",
-    partial: "Завершено с ошибками",
-    all_failed: "Загрузка не удалась",
-    summary_title: "Итог",
     history_title: "История",
-    saved_to: "Сохранено в",
     session_history: "История сессии",
     clear_history: "Очистить историю",
-    no_active_downloads: "Нет активных загрузок.",
     job_items: "%d видео",
-    item_failed: "ошибка",
 
     search_title: "Поиск YouTube",
     search_prompt: "Введите название видео или ключевые слова",
     search_placeholder: "lofi hip hop mix",
     searching: "Ищу на YouTube…",
-    results: "Результаты",
     no_results: "Ничего не найдено.",
-    search_failed: "Не удалось выполнить поиск",
     query_empty: "Поисковый запрос не может быть пустым.",
 
     invalid_url: "Не похоже на YouTube-ссылку",
@@ -676,49 +577,31 @@ pub static RU: Strings = Strings {
     fragment_out_of_range: "Диапазон должен укладываться в длительность видео.",
     fragment_duration_required: "Обрезка недоступна: длительность видео неизвестна.",
     fragment_bounds: "Начало должно быть меньше конца.",
-    fragment_url_out_of_range: "Таймкод из URL выходит за длительность видео.",
     pick_folder_failed: "Не удалось выбрать папку загрузки",
     open_folder_failed: "Не удалось открыть папку",
     install_failed: "Не удалось установить зависимость",
     update_failed: "Не удалось обновить приложение",
-    network_error: "Сетевая ошибка",
     operation_cancelled: "Операция отменена",
-    timed_out: "Превышено время ожидания",
     config_save_failed: "Не удалось сохранить настройки",
-    copy_error: "Не удалось скопировать в буфер обмена",
 
     settings_title: "Настройки",
-    max_parallel: "Параллельных пакетов загрузки",
     playlist_workers: "Потоков для плейлиста",
     logs: "Логи",
     open_logs: "Открыть логи",
     config_dir: "Каталог конфигурации",
     data_dir: "Каталог данных",
     downloads_dir: "Каталог загрузок",
-    reset: "Сбросить",
     current_version: "Текущая версия",
     latest_version: "Последняя версия",
     check_now: "Проверить сейчас",
-    no_updates: "У вас последняя версия.",
-    update_check_failed: "Не удалось проверить обновления.",
-    updates_checked: "Проверка обновлений завершена.",
     select_language: "Язык",
     appearance: "Внешний вид",
     behavior: "Поведение",
     paths: "Пути",
-    danger_zone: "Данные",
-    clear_history_hint: "Удаляются только локальные записи истории.",
 
-    ready: "Готово",
     checking: "Проверяю…",
     loading: "Загрузка…",
     cancel: "Отмена",
-    copy: "Копировать",
-    dismiss: "Скрыть",
-    close_esc: "Закрыть (Esc)",
-    items_selected: "Выбрано %d",
-    playlist_summary: "Итог по плейлисту",
-    single_summary: "Итог загрузки",
 };
 
 pub fn strings(locale: Locale) -> &'static Strings {
@@ -755,12 +638,20 @@ pub fn format_speed(bytes_per_sec: i64, locale: Locale) -> String {
     )
 }
 
-pub fn format_elapsed(seconds: i64) -> String {
+pub fn format_elapsed(seconds: i64, locale: Locale) -> String {
     let seconds = seconds.max(0);
     let h = seconds / 3600;
     let m = (seconds % 3600) / 60;
     let s = seconds % 60;
-    if h > 0 {
+    if locale.is_ru() {
+        if h > 0 {
+            format!("{h} ч {m:02} мин {s:02} с")
+        } else if m > 0 {
+            format!("{m} мин {s:02} с")
+        } else {
+            format!("{s} с")
+        }
+    } else if h > 0 {
         format!("{h}h {m:02}m {s:02}s")
     } else if m > 0 {
         format!("{m}m {s:02}s")
@@ -919,34 +810,13 @@ pub fn thumbnail_profile(locale: Locale) -> OutputProfile {
     }
 }
 
-pub fn default_profile_for_mode(mode: DownloadMode, locale: Locale) -> OutputProfile {
-    match mode {
-        DownloadMode::Audio => audio_output_profiles(locale)
-            .into_iter()
-            .next()
-            .unwrap_or_default(),
-        DownloadMode::Thumbnail => thumbnail_profile(locale),
-        DownloadMode::Video => default_video_profile(locale),
-    }
-}
-
 pub fn default_quality(locale: Locale) -> Vec<QualityChoice> {
-    let mut choices = DefaultQualityChoices();
+    let mut choices = default_quality_choices();
     if let Some(first) = choices.first_mut() {
         first.fmt_chain = vec![YTDLP_BEST_FORMAT.to_owned()];
         first.fmt_labels = vec![strings(locale).best_quality.to_owned()];
     }
     choices
-}
-
-pub fn apply_subtitle_selection(profile: &mut OutputProfile, langs: &[String]) {
-    if langs.is_empty() {
-        profile.sub_mode = SubtitleMode::Off;
-        profile.sub_langs.clear();
-    } else {
-        profile.sub_mode = SubtitleMode::Embed;
-        profile.sub_langs = langs.to_vec();
-    }
 }
 
 pub fn fragment_error_text(err: FragmentError, media_duration: i64, locale: Locale) -> String {

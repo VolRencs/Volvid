@@ -119,11 +119,8 @@ where
 
     // Drain output that was produced just before the process exited. The
     // process can exit before the reader tasks have forwarded the last lines.
-    loop {
-        match tokio::time::timeout(Duration::from_secs(2), rx.recv()).await {
-            Ok(Some(line)) => on_line(line),
-            Ok(None) | Err(_) => break,
-        }
+    while let Ok(Some(line)) = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await {
+        on_line(line);
     }
     Ok(status.expect("status set in loop"))
 }
@@ -182,13 +179,9 @@ pub async fn run_capture(
             }
         } else if output.stderr.len() < stderr_limit {
             let room = stderr_limit - output.stderr.len();
-            let text = &line.text;
-            if text.len() > room {
-                output.stderr.push_str(&text[..room]);
-                truncated = true;
-            } else {
-                output.stderr.push_str(text);
-            }
+            let text = truncate_utf8(&line.text, room);
+            truncated |= text.len() < line.text.len();
+            output.stderr.push_str(text);
             output.stderr.push('\n');
         }
     })
@@ -202,6 +195,17 @@ pub async fn run_capture(
     Ok(output)
 }
 
+fn truncate_utf8(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
 pub async fn command_output(
     program: impl AsRef<OsStr>,
     args: &[String],
@@ -210,10 +214,26 @@ pub async fn command_output(
     run_capture(program, args, timeout, None, 64 << 20, 8 << 10).await
 }
 
-pub async fn command_combined_output(
+pub async fn command_output_cancellable(
     program: impl AsRef<OsStr>,
     args: &[String],
     timeout: Option<Duration>,
+    cancel: Option<CancellationToken>,
 ) -> Result<CaptureOutput, ProcessError> {
-    command_output(program, args, timeout).await
+    run_capture(program, args, timeout, cancel, 64 << 20, 8 << 10).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_utf8;
+
+    #[test]
+    fn truncates_utf8_on_char_boundary() {
+        let text = "ошибка";
+        for limit in 0..=text.len() {
+            let truncated = truncate_utf8(text, limit);
+            assert!(truncated.len() <= limit);
+            assert!(text.starts_with(truncated));
+        }
+    }
 }

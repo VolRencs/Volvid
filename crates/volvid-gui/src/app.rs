@@ -5,40 +5,61 @@ use eframe::egui;
 use egui::{Align, Align2, Color32, Key, Layout, Modifiers, Stroke};
 use tracing_appender::non_blocking::WorkerGuard;
 use volvid_app::{Controller, Route, ToastKind};
-use volvid_engine::Theme;
+use volvid_engine::Theme as ConfigTheme;
 
 use crate::pages;
 use crate::theme::{self, Palette};
+
+const SIDEBAR_WIDTH: f32 = 228.0;
 
 pub struct VolvidApp {
     pub controller: Controller,
     clipboard: Option<Clipboard>,
     _log_guard: Option<WorkerGuard>,
-    last_theme: Theme,
+    last_config_theme: ConfigTheme,
+    current_theme: egui::Theme,
     started: Instant,
     preview_texture: Option<egui::TextureHandle>,
     preview_source: String,
     preview_error: Option<String>,
     last_route: Route,
-    scroll_reset: bool,
+    pub(crate) scroll_reset: bool,
+    dragging_url: bool,
+    session_nonce: u64,
+    startup_focus_cleared: bool,
 }
 
 impl VolvidApp {
     pub fn new(controller: Controller, log_guard: Option<WorkerGuard>) -> Self {
-        let last_theme = controller.state.theme();
+        let config_theme = controller.state.theme();
+        let current_theme = match config_theme {
+            ConfigTheme::Light => egui::Theme::Light,
+            _ => egui::Theme::Dark,
+        };
         let clipboard = Clipboard::new().ok();
         Self {
             controller,
             clipboard,
             _log_guard: log_guard,
-            last_theme,
+            last_config_theme: config_theme,
+            current_theme,
             started: Instant::now(),
             preview_texture: None,
             preview_source: String::new(),
             preview_error: None,
             last_route: Route::Home,
             scroll_reset: true,
+            dragging_url: false,
+            session_nonce: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos() as u64)
+                .unwrap_or(1),
+            startup_focus_cleared: false,
         }
+    }
+
+    pub(crate) fn session_nonce(&self) -> u64 {
+        self.session_nonce
     }
 
     fn update_preview(&mut self, ctx: &egui::Context) {
@@ -71,12 +92,20 @@ impl VolvidApp {
         self.preview_texture.as_ref()
     }
 
+    pub fn preview_error(&self) -> Option<&str> {
+        self.preview_error.as_deref()
+    }
+
     pub fn s(&self) -> &'static volvid_i18n::Strings {
         self.controller.state.s()
     }
 
     pub fn palette(&self) -> &'static Palette {
-        theme::palette(self.controller.state.theme())
+        theme::palette(self.current_theme)
+    }
+
+    pub fn is_light(&self) -> bool {
+        self.current_theme == egui::Theme::Light
     }
 
     pub fn paste_clipboard(&mut self) {
@@ -96,30 +125,27 @@ impl VolvidApp {
     }
 
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
+        let text_focused = ctx.text_edit_focused();
+        let modal_open = self.controller.state.search_modal
+            || self.controller.state.update_modal
+            || self.controller.state.mixed_choice.is_some();
         let (paste, search, folder, deps, settings, escape) = ctx.input_mut(|input| {
             (
-                input.consume_key(Modifiers::CTRL, Key::V),
+                !text_focused && input.consume_key(Modifiers::CTRL, Key::V),
                 input.consume_key(Modifiers::CTRL, Key::G),
                 input.consume_key(Modifiers::CTRL, Key::O),
                 input.consume_key(Modifiers::CTRL, Key::U),
                 input.consume_key(Modifiers::CTRL, Key::Comma),
-                input.consume_key(Modifiers::NONE, Key::Escape),
+                !text_focused && !modal_open && input.consume_key(Modifiers::NONE, Key::Escape),
             )
         });
-        if escape {
-            if self.controller.state.route == Route::Settings {
-                self.controller.set_route(Route::Home);
-            } else if self.controller.state.search_modal {
-                self.controller.state.search_modal = false;
-            } else if self.controller.state.update_modal {
-                self.controller.state.update_modal = false;
-            } else if self.controller.state.mixed_choice.is_some() {
-                self.controller.state.mixed_choice = None;
-            } else if self.controller.state.route != Route::Home {
+        if escape && self.controller.state.route != Route::Home {
+            self.controller.set_route(Route::Home);
+        }
+        if paste {
+            if self.controller.state.route != Route::Home {
                 self.controller.set_route(Route::Home);
             }
-        }
-        if paste && !self.controller.state.search_modal {
             self.paste_clipboard();
         }
         if search {
@@ -129,12 +155,67 @@ impl VolvidApp {
         if folder {
             self.controller.pick_folder();
         }
-        if deps {
+        if deps || settings {
             self.controller.set_route(Route::Settings);
         }
-        if settings {
-            self.controller.set_route(Route::Settings);
+    }
+
+    fn handle_drag_and_drop(&mut self, ctx: &egui::Context) {
+        let (hovered, dropped) = ctx.input(|input| {
+            (
+                !input.raw.hovered_files.is_empty(),
+                input.raw.dropped_files.clone(),
+            )
+        });
+        self.dragging_url = hovered;
+        if dropped.is_empty() {
+            return;
         }
+        for file in dropped {
+            if let Some(text) = dropped_file_text(&file)
+                && let Some(url) = extract_url(&text)
+            {
+                self.controller.state.url = url;
+                self.controller.state.url_error = None;
+                self.controller.set_route(Route::Home);
+                self.controller.analyze_url();
+                return;
+            }
+        }
+        self.controller
+            .state
+            .toast(self.s().unsupported_url, ToastKind::Warn);
+    }
+
+    fn drag_overlay(&self, ctx: &egui::Context) {
+        if !self.dragging_url {
+            return;
+        }
+        let p = self.palette();
+        let rect = ctx.content_rect().shrink(28.0);
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::unique("volvid-drop-overlay"),
+        ));
+        painter.rect_filled(
+            ctx.content_rect(),
+            0.0,
+            Color32::from_black_alpha(if self.is_light() { 90 } else { 150 }),
+        );
+        painter.rect_filled(rect, egui::CornerRadius::same(20), p.card);
+        painter.rect_stroke(
+            rect,
+            egui::CornerRadius::same(20),
+            Stroke::new(2.0, p.accent),
+            egui::StrokeKind::Inside,
+        );
+        painter.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            self.s().drag_hint,
+            theme::semibold(19.0),
+            p.text,
+        );
     }
 
     fn top_controls(&mut self, ui: &mut egui::Ui) {
@@ -143,44 +224,38 @@ impl VolvidApp {
         let locale = self.controller.state.locale;
         let width = ui.available_width();
         ui.allocate_ui_with_layout(
-            egui::vec2(width, 32.0),
+            egui::vec2(width, 44.0),
             Layout::right_to_left(Align::Center),
             |ui| {
-                if let Some(update) = self.controller.state.update.clone() {
-                    if ui
+                if let Some(update) = self.controller.state.update.clone()
+                    && ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new(format!("↑ {}", update.latest))
-                                    .color(p.warning)
-                                    .strong()
-                                    .size(12.0),
+                                theme::strong_text(format!("↑ {}", update.latest), 12.0)
+                                    .color(p.warning),
                             )
                             .fill(p.warning.gamma_multiply(0.12))
                             .stroke(Stroke::new(1.0, p.warning.gamma_multiply(0.35)))
                             .corner_radius(egui::CornerRadius::same(255))
-                            .min_size(egui::vec2(0.0, 30.0)),
+                            .min_size(egui::vec2(0.0, 34.0)),
                         )
                         .on_hover_text(s.update_available)
                         .clicked()
-                    {
-                        self.controller.state.update_modal = true;
-                    }
+                {
+                    self.controller.state.update_modal = true;
                 }
                 let language = ui.add(
                     egui::Button::new(
-                        egui::RichText::new(locale.code().to_uppercase())
-                            .size(12.0)
-                            .strong()
-                            .color(p.text),
+                        theme::strong_text(locale.code().to_uppercase(), 12.0).color(p.text),
                     )
                     .fill(p.card_hover)
                     .stroke(Stroke::new(1.0, p.border))
                     .corner_radius(egui::CornerRadius::same(255))
-                    .min_size(egui::vec2(44.0, 30.0)),
+                    .min_size(egui::vec2(42.0, 42.0)),
                 );
                 theme::press_overlay(ui, &language, 255);
                 if language.on_hover_text(s.language).clicked() {
-                    self.controller.set_locale(volvid_core::NextLocale(locale));
+                    self.controller.set_locale(volvid_core::next_locale(locale));
                 }
             },
         );
@@ -191,21 +266,27 @@ impl VolvidApp {
         let p = self.palette();
         let s = self.s();
         let route = self.controller.state.route;
-        let active_jobs = self.controller.state.active_jobs();
+        let pending_jobs = self.controller.state.pending_jobs();
         ui.add_space(10.0);
-        let logo_source = if matches!(self.controller.state.theme(), Theme::Light) {
+        let logo_source = if self.is_light() {
             egui::include_image!("../../../assets/icons/volvid-logo-light.svg")
         } else {
             egui::include_image!("../../../assets/icons/volvid-logo.svg")
         };
-        ui.add(egui::Image::new(logo_source).fit_to_exact_size(egui::vec2(150.0, 31.6)));
+        ui.horizontal(|ui| {
+            ui.add_space(8.0);
+            ui.add(egui::Image::new(logo_source).fit_to_exact_size(egui::vec2(150.0, 31.6)));
+        });
         ui.add_space(3.0);
-        ui.label(
-            egui::RichText::new(format!("v{}", self.controller.app_version()))
-                .size(11.5)
-                .color(p.muted),
-        );
-        ui.add_space(22.0);
+        ui.horizontal(|ui| {
+            ui.add_space(8.0);
+            ui.label(
+                egui::RichText::new(format!("v{}", self.controller.app_version()))
+                    .size(11.5)
+                    .color(p.muted),
+            );
+        });
+        ui.add_space(24.0);
 
         nav_item(
             ui,
@@ -222,7 +303,7 @@ impl VolvidApp {
             route == Route::Downloads,
             egui::include_image!("../../../assets/icons/queue.svg"),
             s.nav_queue,
-            (active_jobs > 0).then_some(active_jobs),
+            (pending_jobs > 0).then_some(pending_jobs),
             || self.controller.set_route(Route::Downloads),
         );
         nav_item(
@@ -251,7 +332,9 @@ impl VolvidApp {
         let mut scroll = egui::ScrollArea::vertical()
             .id_salt(format!("volvid-page-{route:?}"))
             .auto_shrink([false, false]);
-        if self.scroll_reset {
+        let reset_page = self.scroll_reset
+            || (route == Route::Playlist && self.controller.state.playlist_scroll_reset);
+        if reset_page {
             scroll = scroll.vertical_scroll_offset(0.0);
         }
         scroll.show(ui, |ui| {
@@ -264,7 +347,7 @@ impl VolvidApp {
                 Route::Summary => pages::summary::show(self, ui),
                 Route::Settings => pages::settings::show(self, ui),
             }
-            ui.add_space(24.0);
+            ui.add_space(8.0);
         });
         self.scroll_reset = false;
     }
@@ -305,6 +388,12 @@ impl VolvidApp {
                     .stroke(Stroke::new(1.0, color.gamma_multiply(0.5)))
                     .corner_radius(egui::CornerRadius::same(12))
                     .inner_margin(egui::Margin::same(14))
+                    .shadow(egui::epaint::Shadow {
+                        offset: [0, 10],
+                        blur: 28,
+                        spread: 0,
+                        color: Color32::from_black_alpha(90),
+                    })
                     .show(ui, |ui| {
                         ui.set_max_width(440.0);
                         ui.horizontal(|ui| {
@@ -329,22 +418,35 @@ impl VolvidApp {
 
 impl eframe::App for VolvidApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if !self.startup_focus_cleared {
+            if let Some(focused) = ctx.memory(|memory| memory.focused()) {
+                ctx.memory_mut(|memory| memory.surrender_focus(focused));
+            }
+            ctx.memory_mut(|memory| memory.stop_text_input());
+            self.startup_focus_cleared = true;
+        }
         self.controller.poll();
         self.update_preview(ctx);
+        self.handle_drag_and_drop(ctx);
         if self.controller.state.route != self.last_route {
             self.last_route = self.controller.state.route;
             self.scroll_reset = true;
             ctx.request_repaint();
         }
-        let theme = self.controller.state.theme();
-        if theme != self.last_theme {
-            theme::apply_theme(ctx, theme);
-            self.last_theme = theme;
+        let config_theme = self.controller.state.theme();
+        if config_theme != self.last_config_theme {
+            theme::apply_theme(ctx, config_theme);
+            self.last_config_theme = config_theme;
         }
-        if let Some(toast) = &self.controller.state.toast {
-            if toast.created.elapsed() > Duration::from_secs(7) {
-                self.controller.state.toast = None;
-            }
+        let effective_theme = theme::resolve_theme(ctx, config_theme);
+        if effective_theme != self.current_theme {
+            self.current_theme = effective_theme;
+            ctx.request_repaint();
+        }
+        if let Some(toast) = &self.controller.state.toast
+            && toast.created.elapsed() > Duration::from_secs(7)
+        {
+            self.controller.state.toast = None;
         }
         let state = &self.controller.state;
         let busy = state.deps_checking
@@ -373,7 +475,7 @@ impl eframe::App for VolvidApp {
 
         egui::Panel::left("volvid-nav")
             .resizable(false)
-            .exact_size(244.0)
+            .exact_size(SIDEBAR_WIDTH)
             .frame(
                 egui::Frame::new()
                     .fill(p.panel)
@@ -389,6 +491,7 @@ impl eframe::App for VolvidApp {
             )
             .show(ui, |ui| self.central(ui));
 
+        self.drag_overlay(&ctx);
         self.modals(&ctx);
         self.toast(&ctx);
     }
@@ -412,26 +515,17 @@ fn nav_item(
     } else {
         Color32::TRANSPARENT
     };
-    let stroke = Stroke::NONE;
-    let text_color = if active {
-        Color32::from_rgb(15, 17, 21)
-    } else {
-        p.muted
-    };
-    let image = egui::Image::new(icon).fit_to_exact_size(egui::vec2(18.0, 18.0));
+    let text_color = if active { p.on_accent } else { p.muted };
+    let image = egui::Image::new(icon)
+        .fit_to_exact_size(egui::vec2(18.0, 18.0))
+        .tint(text_color);
     let response = ui.add(
-        egui::Button::new((
-            image,
-            egui::RichText::new(label)
-                .color(text_color)
-                .size(14.5)
-                .strong(),
-        ))
-        .image_tint_follows_text_color(true)
-        .fill(fill)
-        .stroke(stroke)
-        .corner_radius(egui::CornerRadius::same(11))
-        .min_size(egui::vec2(ui.available_width(), 44.0)),
+        egui::Button::new((image, theme::strong_text(label, 14.5).color(text_color)))
+            .image_tint_follows_text_color(true)
+            .fill(fill)
+            .stroke(Stroke::NONE)
+            .corner_radius(egui::CornerRadius::same(11))
+            .min_size(egui::vec2(ui.available_width(), 44.0)),
     );
     theme::press_overlay(ui, &response, 11);
     if response.clicked() {
@@ -439,11 +533,7 @@ fn nav_item(
     }
     if let Some(badge) = badge {
         let rect = response.rect;
-        let color = if active {
-            Color32::from_rgb(15, 17, 21)
-        } else {
-            p.accent
-        };
+        let color = if active { p.on_accent } else { p.accent };
         let text_color = if active { p.accent } else { Color32::WHITE };
         ui.painter().circle_filled(
             egui::pos2(rect.right() - 18.0, rect.center().y),
@@ -454,7 +544,7 @@ fn nav_item(
             egui::pos2(rect.right() - 18.0, rect.center().y),
             Align2::CENTER_CENTER,
             badge.to_string(),
-            egui::FontId::proportional(11.0),
+            theme::semibold(11.0),
             text_color,
         );
     }
@@ -469,4 +559,45 @@ fn texture_from_bytes(
     let size = [image.width() as usize, image.height() as usize];
     let color = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
     Some(ctx.load_texture(name, color, egui::TextureOptions::LINEAR))
+}
+
+fn dropped_file_text(file: &egui::DroppedFileHandle) -> Option<String> {
+    let path = file.path();
+    if let Ok(metadata) = std::fs::metadata(path)
+        && metadata.is_file()
+        && metadata.len() <= 1 << 20
+        && let Ok(text) = std::fs::read_to_string(path)
+    {
+        return Some(text);
+    }
+    file.bytes().ok().and_then(|bytes| {
+        (bytes.len() <= 1 << 20)
+            .then(|| String::from_utf8(bytes).ok())
+            .flatten()
+    })
+}
+
+fn extract_url(text: &str) -> Option<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .find_map(|line| {
+            let candidate = line.strip_prefix("URL:").unwrap_or(line).trim();
+            volvid_core::parse_target(candidate)
+                .ok()
+                .map(|_| candidate.to_owned())
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_url;
+
+    #[test]
+    fn extracts_url_from_uri_list() {
+        assert_eq!(
+            extract_url("# comment\r\nURL:https://youtu.be/abc\r\n").as_deref(),
+            Some("https://youtu.be/abc")
+        );
+    }
 }

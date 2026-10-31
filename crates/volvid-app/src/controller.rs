@@ -16,6 +16,8 @@ pub struct Controller {
     pub state: AppState,
     pub backend: Backend,
     next_op: u64,
+    next_search_op: u64,
+    next_job: u64,
 }
 
 impl Controller {
@@ -29,6 +31,8 @@ impl Controller {
             state,
             backend,
             next_op: 1,
+            next_search_op: 1,
+            next_job: 1,
         };
         controller.backend.startup();
         Ok(controller)
@@ -67,6 +71,7 @@ impl Controller {
         if save_config {
             self.backend.save_config(self.state.config.clone());
         }
+        self.pump_queue();
     }
 
     fn next_op(&mut self) -> u64 {
@@ -91,6 +96,11 @@ impl Controller {
         self.state.url_error = None;
         self.state.target = Some(target.clone());
         self.state.force_single = false;
+        self.state.playlist_loading = false;
+        self.state.quality_loading = false;
+        self.state.probe_loading = false;
+        self.state.mixed_choice = None;
+        self.backend.cancel_metadata();
         let op = self.next_op();
         self.state.op_id = op;
         match target.kind {
@@ -121,6 +131,7 @@ impl Controller {
         if video_only {
             self.start_configure(Some(choice.target), true);
         } else {
+            self.backend.cancel_metadata();
             let op = self.next_op();
             self.state.op_id = op;
             self.state.playlist_loading = true;
@@ -150,7 +161,6 @@ impl Controller {
         self.state.media_title.clear();
         self.state.media_thumbnail.clear();
         self.state.thumbnail_bytes.clear();
-        self.state.thumbnail_error = None;
         self.state.audio_tracks.clear();
         self.state.sub_tracks.clear();
         self.state.tracks_error = None;
@@ -175,7 +185,7 @@ impl Controller {
             let url = target.download_url(force_single);
             (url.clone(), vec![url])
         };
-        self.backend.load_media(target, probe_url, quality_urls, op);
+        self.backend.load_media(probe_url, quality_urls, op);
     }
 
     pub fn continue_playlist(&mut self) {
@@ -194,9 +204,12 @@ impl Controller {
             self.state.search_error = Some(self.state.s().query_empty.to_owned());
             return;
         }
+        let op = self.next_search_op;
+        self.next_search_op += 1;
+        self.state.search_op = op;
         self.state.search_loading = true;
         self.state.search_error = None;
-        self.backend.search(query);
+        self.backend.search(query, op);
     }
 
     pub fn select_search_result(&mut self, index: usize) {
@@ -305,7 +318,20 @@ impl Controller {
             return;
         }
 
+        let quality = self
+            .state
+            .draft
+            .quality
+            .as_ref()
+            .map(|quality| quality.height)
+            .unwrap_or(0);
         let detail = match request.profile.mode {
+            DownloadMode::Video if quality > 0 => format!(
+                "{} · {}p · {}",
+                s.mode_video,
+                quality,
+                request.profile.video_container.to_uppercase()
+            ),
             DownloadMode::Video => format!(
                 "{} · {}",
                 s.mode_video,
@@ -343,6 +369,7 @@ impl Controller {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn enqueue_request(
         &mut self,
         request: DownloadRequest,
@@ -353,14 +380,8 @@ impl Controller {
         detail: String,
         entries: usize,
     ) {
-        let job_id = self.backend.start_download(
-            request.clone(),
-            self.state.deps.clone(),
-            title.clone(),
-            url.clone(),
-            is_playlist,
-            workers,
-        );
+        let job_id = self.next_job;
+        self.next_job += 1;
         let slots = if is_playlist {
             (0..workers).map(|_| SlotView::default()).collect()
         } else {
@@ -379,62 +400,165 @@ impl Controller {
             done: 0,
             failed: 0,
             slots,
-            status: JobStatus::Active,
+            status: JobStatus::Queued,
             error: None,
+            run_id: 0,
+            started: false,
             started_at: std::time::Instant::now(),
             elapsed: std::time::Duration::ZERO,
             recorded: false,
         });
         self.state.route = Route::Downloads;
         self.state
-            .toast(self.state.s().downloading, ToastKind::Info);
+            .toast(self.state.s().queued_message, ToastKind::Info);
+        self.pump_queue();
     }
 
-    pub fn retry_job(&mut self, job_id: u64) {
-        let Some(job) = self.state.jobs.iter().find(|job| job.id == job_id) else {
+    fn pump_queue(&mut self) {
+        let limit = self.state.config.max_parallel_batches.clamp(1, 3);
+        loop {
+            let running = self.state.active_jobs();
+            if running >= limit {
+                break;
+            }
+            let Some(job_id) = self
+                .state
+                .jobs
+                .iter()
+                .filter(|job| job.status == JobStatus::Queued)
+                .map(|job| job.id)
+                .min()
+            else {
+                break;
+            };
+            self.start_job(job_id);
+        }
+    }
+
+    fn start_job(&mut self, job_id: u64) {
+        let Some(job) = self.state.jobs.iter_mut().find(|job| job.id == job_id) else {
             return;
         };
         let Some(request) = job.request.clone() else {
             return;
         };
-        let title = job.title.clone();
-        let url = job.url.clone();
-        let is_playlist = job.is_playlist;
-        let workers = job.slots.len().max(1);
-        let detail = job.detail.clone();
-        let entries = job.total;
-        self.enqueue_request(request, title, url, is_playlist, workers, detail, entries);
+        job.status = JobStatus::Active;
+        job.started = true;
+        job.run_id += 1;
+        job.started_at = std::time::Instant::now();
+        job.elapsed = std::time::Duration::ZERO;
+        job.done = 0;
+        job.failed = 0;
+        job.error = None;
+        job.recorded = false;
+        let slots = if job.is_playlist {
+            request.workers.max(1)
+        } else {
+            1
+        };
+        job.slots = (0..slots).map(|_| SlotView::default()).collect();
+        let run_id = job.run_id;
+        self.backend
+            .start_download(job_id, run_id, request, self.state.deps.clone());
     }
 
-    pub fn clear_finished_jobs(&mut self) {
-        self.state
-            .jobs
-            .retain(|job| job.status == JobStatus::Active);
+    pub fn retry_job(&mut self, job_id: u64) {
+        if let Some(job) = self.state.jobs.iter_mut().find(|job| job.id == job_id)
+            && job.status == JobStatus::Failed
+        {
+            job.status = JobStatus::Queued;
+            job.error = None;
+            job.recorded = false;
+            self.pump_queue();
+        }
     }
 
-    pub fn stop_all_jobs(&mut self) {
+    pub fn pause_job(&mut self, job_id: u64) {
+        if let Some(job) = self.state.jobs.iter_mut().find(|job| job.id == job_id) {
+            match job.status {
+                JobStatus::Active => {
+                    self.backend.cancel_download(job_id);
+                    job.status = JobStatus::Paused;
+                }
+                JobStatus::Queued => job.status = JobStatus::Paused,
+                _ => {}
+            }
+        }
+    }
+
+    pub fn resume_job(&mut self, job_id: u64) {
+        if let Some(job) = self.state.jobs.iter_mut().find(|job| job.id == job_id)
+            && job.status == JobStatus::Paused
+        {
+            job.status = JobStatus::Queued;
+            job.error = None;
+            self.pump_queue();
+        }
+    }
+
+    pub fn pause_all_jobs(&mut self) {
         let ids: Vec<u64> = self
             .state
             .jobs
             .iter()
-            .filter(|job| job.status == JobStatus::Active)
+            .filter(|job| matches!(job.status, JobStatus::Active | JobStatus::Queued))
             .map(|job| job.id)
             .collect();
         for id in ids {
-            self.cancel_job(id);
+            self.pause_job(id);
         }
+    }
+
+    pub fn resume_all_jobs(&mut self) {
+        let ids: Vec<u64> = self
+            .state
+            .jobs
+            .iter()
+            .filter(|job| job.status == JobStatus::Paused)
+            .map(|job| job.id)
+            .collect();
+        for id in ids {
+            self.resume_job(id);
+        }
+    }
+
+    pub fn dismiss_job(&mut self, job_id: u64) {
+        let removable = self
+            .state
+            .jobs
+            .iter()
+            .find(|job| job.id == job_id)
+            .is_some_and(|job| !matches!(job.status, JobStatus::Active));
+        if removable {
+            self.state.jobs.retain(|job| job.id != job_id);
+        }
+    }
+
+    pub fn clear_finished_jobs(&mut self) {
+        self.state.jobs.retain(|job| job.status.is_pending());
     }
 
     pub fn cancel_job(&mut self, job_id: u64) {
-        self.backend.cancel_download(job_id);
+        let active = self
+            .state
+            .jobs
+            .iter()
+            .find(|job| job.id == job_id)
+            .is_some_and(|job| job.status == JobStatus::Active);
+        if active {
+            self.backend.cancel_download(job_id);
+        }
         if let Some(job) = self.state.jobs.iter_mut().find(|job| job.id == job_id) {
             job.status = JobStatus::Cancelled;
+            job.error = None;
         }
+        self.pump_queue();
     }
 
     pub fn pick_folder(&mut self) {
+        let title = self.state.s().choose_folder.to_owned();
         self.backend
-            .pick_folder(Some(self.state.downloads_dir.clone()));
+            .pick_folder(Some(self.state.downloads_dir.clone()), title);
     }
 
     pub fn open_folder(&self, path: PathBuf) {
@@ -477,25 +601,9 @@ impl Controller {
         self.backend.save_config(self.state.config.clone());
     }
 
-    pub fn set_downloads_dir(&mut self, path: PathBuf) {
-        self.state.downloads_dir = path.clone();
-        self.state.config.set_downloads_dir(path);
-        self.backend.save_config(self.state.config.clone());
-    }
-
-    pub fn save_config(&mut self) {
-        self.backend.save_config(self.state.config.clone());
-    }
-
     pub fn clear_history(&mut self) {
         self.state.history.clear();
         let _ = self.backend.clear_history();
-    }
-
-    pub fn back_home(&mut self) {
-        self.state.route = Route::Home;
-        self.state.mixed_choice = None;
-        self.state.url_error = None;
     }
 
     pub fn set_route(&mut self, route: Route) {

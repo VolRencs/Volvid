@@ -9,7 +9,6 @@ pub enum DlEventType {
     Done,
     Reset,
     Fallback,
-    Closed,
 }
 
 #[derive(Clone, Debug)]
@@ -22,6 +21,7 @@ pub struct DlUpdate {
     pub done_b: i64,
     pub total_b: i64,
     pub speed: String,
+    pub speed_bps: i64,
     pub ok: bool,
 }
 
@@ -36,6 +36,7 @@ impl Default for DlUpdate {
             done_b: 0,
             total_b: 0,
             speed: String::new(),
+            speed_bps: 0,
             ok: false,
         }
     }

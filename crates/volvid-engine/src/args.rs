@@ -11,6 +11,8 @@ pub fn stream_protocol_args() -> Vec<String> {
     vec![
         "--newline".to_owned(),
         "--progress".to_owned(),
+        "--progress-delta".to_owned(),
+        "0.25".to_owned(),
         "--print".to_owned(),
         format!("before_dl:{MARK_START}\t%(title|)j\t%(_filename|)j"),
         "--print".to_owned(),

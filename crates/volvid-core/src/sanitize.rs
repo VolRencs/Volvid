@@ -41,21 +41,6 @@ pub fn sanitize_dirname(name: &str) -> String {
     sanitize(name, "playlist", true, true)
 }
 
-/// Shared invalid-character replacement with a fallback.
-pub fn sanitize_file_stem(name: &str, fallback: &str) -> String {
-    sanitize(name, fallback, false, false)
-}
-
-#[allow(non_snake_case)]
-pub fn SanitizeDirname(name: &str) -> String {
-    sanitize_dirname(name)
-}
-
-#[allow(non_snake_case)]
-pub fn SanitizeFileStem(name: &str, fallback: &str) -> String {
-    sanitize_file_stem(name, fallback)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

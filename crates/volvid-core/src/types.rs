@@ -57,7 +57,6 @@ pub struct MediaProbe {
     pub title: String,
     pub thumbnail: String,
     pub formats: Vec<MediaFormat>,
-    pub has_video: bool,
     pub subtitles: Vec<SubtitleTrack>,
     pub audio_tracks: Vec<AudioTrack>,
 }

@@ -22,10 +22,6 @@ pub struct ParsedTarget {
 }
 
 impl ParsedTarget {
-    pub fn is_video(&self) -> bool {
-        matches!(self.kind, TargetKind::Video | TargetKind::Mixed)
-    }
-
     pub fn is_playlist(&self) -> bool {
         matches!(self.kind, TargetKind::Playlist | TargetKind::Mixed)
     }
@@ -188,12 +184,6 @@ fn parse_url_start(url: &Url) -> Option<(i64, bool)> {
     parse_flexible_timestamp(fragment)
         .filter(|seconds| *seconds > 0)
         .map(|seconds| (seconds, true))
-}
-
-/// Alias kept for readability at call sites.
-#[allow(non_snake_case)]
-pub fn ParseTarget(raw: &str) -> Result<ParsedTarget, TargetError> {
-    parse_target(raw)
 }
 
 #[cfg(test)]

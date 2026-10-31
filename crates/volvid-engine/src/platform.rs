@@ -21,8 +21,9 @@ pub fn open_folder(path: &Path) -> Result<()> {
 
 pub async fn pick_folder(
     current: Option<std::path::PathBuf>,
+    title: &str,
 ) -> Result<Option<std::path::PathBuf>> {
-    let mut dialog = rfd::AsyncFileDialog::new().set_title("Choose download folder");
+    let mut dialog = rfd::AsyncFileDialog::new().set_title(title);
     if let Some(current) = current.filter(|path| path.is_dir()) {
         dialog = dialog.set_directory(current);
     }
@@ -34,18 +35,4 @@ pub async fn pick_folder(
         bail!("selected path is not a directory");
     }
     Ok(Some(path))
-}
-
-pub fn is_windows() -> bool {
-    cfg!(windows)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn platform_flag_matches_cfg() {
-        let _ = is_windows();
-    }
 }

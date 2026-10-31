@@ -1,9 +1,8 @@
-use std::path::Path;
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 use volvid_core::{
-    BrowserCookiesInfo, CheckDepsResult, DependencyInfo, DependencySource, JSRuntimeInfo, Locale,
+    BrowserCookiesInfo, CheckDepsResult, DependencyInfo, DependencySource, JSRuntimeInfo,
     STATUS_ACTIVE, STATUS_NOT_FOUND,
 };
 
@@ -39,15 +38,6 @@ pub const FFMPEG_SPEC: DepSpec = DepSpec {
     downloadable: true,
     version_args: &["-version"],
     managed: AppPaths::ffmpeg_bin,
-};
-
-pub const FFPROBE_SPEC: DepSpec = DepSpec {
-    key: "ffprobe",
-    name: "ffprobe",
-    required: false,
-    downloadable: false,
-    version_args: &["-version"],
-    managed: AppPaths::ffprobe_bin,
 };
 
 pub const NODE_SPEC: DepSpec = DepSpec {
@@ -196,10 +186,10 @@ pub async fn probe_version(
     }
     for _ in 0..2 {
         let output = command_output(path, args, Some(VERSION_TIMEOUT)).await;
-        if let Ok(output) = output {
-            if let Some(line) = first_non_empty_line(&String::from_utf8_lossy(&output.stdout)) {
-                return parse_version(&line, args);
-            }
+        if let Ok(output) = output
+            && let Some(line) = first_non_empty_line(&String::from_utf8_lossy(&output.stdout))
+        {
+            return parse_version(&line, args);
         }
         if cancel.as_ref().is_some_and(|token| token.is_cancelled()) {
             break;
@@ -209,15 +199,15 @@ pub async fn probe_version(
 }
 
 fn parse_version(line: &str, args: &[String]) -> String {
-    if args.first().is_some_and(|arg| arg == "-version") {
-        if let Some(rest) = line.to_ascii_lowercase().strip_prefix("ffmpeg version ") {
-            return rest
-                .split_whitespace()
-                .next()
-                .unwrap_or_default()
-                .trim_matches(|c: char| " \t\r\n,;:()[]{}\"'".contains(c))
-                .to_owned();
-        }
+    if args.first().is_some_and(|arg| arg == "-version")
+        && let Some(rest) = line.to_ascii_lowercase().strip_prefix("ffmpeg version ")
+    {
+        return rest
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .trim_matches(|c: char| " \t\r\n,;:()[]{}\"'".contains(c))
+            .to_owned();
     }
     line.trim().to_owned()
 }
@@ -232,7 +222,7 @@ pub fn first_non_empty_line(text: &str) -> Option<String> {
 
 pub fn ytdlp_base_args(deps: &CheckDepsResult) -> Vec<String> {
     let mut args = vec!["--ignore-config".to_owned(), "--no-warnings".to_owned()];
-    args.extend(volvid_core::FFmpegArgs(deps));
+    args.extend(volvid_core::ffmpeg_args(deps));
     if deps.cookies.status == STATUS_ACTIVE {
         let mut cookie_arg = deps.cookies.browser.trim().to_owned();
         let profile = deps.cookies.ytdlp_profile.trim();
@@ -270,15 +260,6 @@ pub fn ffmpeg_bin(deps: &CheckDepsResult, paths: &AppPaths) -> String {
     } else {
         paths.ffmpeg_bin().to_string_lossy().into_owned()
     }
-}
-
-pub fn path_is_file(path: &Path) -> bool {
-    path.is_file()
-}
-
-#[allow(dead_code)]
-pub fn locale_from_config(locale: Locale) -> &'static str {
-    locale.code()
 }
 
 #[cfg(test)]
