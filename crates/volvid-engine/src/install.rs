@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use sha2::{Digest, Sha256};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -10,7 +10,7 @@ use volvid_core::{FileProgress, Locale};
 
 use crate::deps::probe_version;
 use crate::http::{download_file, fetch_text};
-use crate::paths::{AppPaths, binary_name};
+use crate::paths::{AppPaths, binary_name, replace_file};
 
 const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/";
 const NODE_BASE: &str = "https://nodejs.org/download/release/latest/";
@@ -32,11 +32,7 @@ pub async fn install_dependency(
         other => bail!("unsupported dependency: {other}"),
     };
     if let Err(err) = &result {
-        let _ = progress.send(FileProgress {
-            done: true,
-            err: Some(err.to_string()),
-            ..FileProgress::default()
-        });
+        let _ = progress.send(FileProgress::failed(err.to_string()));
     }
     result
 }
@@ -65,7 +61,7 @@ async fn install_ytdlp(
     .await?;
     verify_sha256(&staged, &checksum)?;
     make_executable(&staged)?;
-    if probe_version(&staged.to_string_lossy(), &["--version".to_owned()], cancel)
+    if probe_version(&staged.to_string_lossy(), &["--version"], cancel)
         .await
         .is_empty()
     {
@@ -116,17 +112,13 @@ async fn install_ffmpeg(
     )?;
     make_executable(&ffmpeg)?;
     make_executable(&ffprobe)?;
-    if probe_version(
-        &ffmpeg.to_string_lossy(),
-        &["-version".to_owned()],
-        cancel.clone(),
-    )
-    .await
-    .is_empty()
+    if probe_version(&ffmpeg.to_string_lossy(), &["-version"], cancel.clone())
+        .await
+        .is_empty()
     {
         bail!("downloaded ffmpeg does not run");
     }
-    if probe_version(&ffprobe.to_string_lossy(), &["-version".to_owned()], cancel)
+    if probe_version(&ffprobe.to_string_lossy(), &["-version"], cancel)
         .await
         .is_empty()
     {
@@ -163,7 +155,7 @@ async fn install_node(
     let node = staging.path().join(binary_name("node"));
     extract_binaries(&archive, &[(binary_name("node"), node.clone())])?;
     make_executable(&node)?;
-    if probe_version(&node.to_string_lossy(), &["--version".to_owned()], cancel)
+    if probe_version(&node.to_string_lossy(), &["--version"], cancel)
         .await
         .is_empty()
     {
@@ -204,32 +196,6 @@ fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
         bail!("sha256 mismatch for {}", path.display());
     }
     Ok(())
-}
-
-fn replace_file(source: &Path, destination: &Path) -> Result<()> {
-    if let Some(parent) = destination.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let backup = destination.with_extension("bak-volvid");
-    if destination.exists() {
-        let _ = std::fs::remove_file(&backup);
-        if let Err(err) = std::fs::rename(destination, &backup) {
-            // On Windows, a running binary may block the rename; report it.
-            bail!("cannot replace {}: {err}", destination.display());
-        }
-    }
-    match std::fs::rename(source, destination) {
-        Ok(()) => {
-            let _ = std::fs::remove_file(&backup);
-            Ok(())
-        }
-        Err(err) => {
-            if backup.exists() {
-                let _ = std::fs::rename(&backup, destination);
-            }
-            Err(err).with_context(|| format!("replace {}", destination.display()))
-        }
-    }
 }
 
 fn checksum_from_manifest(manifest: &str, asset: &str) -> Result<String> {

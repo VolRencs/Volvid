@@ -12,7 +12,7 @@ const QUALITY_CHAINS: [&[&str]; 2] = [
 ];
 
 /// Returns a cloned static format chain, or `None` if out of bounds.
-pub fn quality_chain_at(index: usize) -> Option<Vec<String>> {
+fn quality_chain_at(index: usize) -> Option<Vec<String>> {
     QUALITY_CHAINS
         .get(index)
         .map(|chain| chain.iter().map(|s| (*s).to_owned()).collect())
@@ -107,7 +107,7 @@ impl OutputProfile {
                 || !self.audio_bitrate.trim().is_empty())
     }
 
-    pub fn requires_video_postprocessing(&self) -> bool {
+    fn requires_video_postprocessing(&self) -> bool {
         self.mode == DownloadMode::Video && (self.remux_only || self.needs_video_transcode())
     }
 

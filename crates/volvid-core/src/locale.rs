@@ -36,10 +36,15 @@ pub fn parse_locale(raw: &str) -> Locale {
     }
 }
 
-/// Toggles between the supported UI languages.
-pub fn next_locale(locale: Locale) -> Locale {
-    match locale {
-        Locale::En => Locale::Ru,
-        Locale::Ru => Locale::En,
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_and_displays_locale_codes() {
+        assert_eq!(parse_locale(" RU "), Locale::Ru);
+        assert_eq!(parse_locale("english"), Locale::En);
+        assert_eq!(Locale::En.code(), "en");
+        assert_eq!(Locale::Ru.to_string(), "ru");
     }
 }

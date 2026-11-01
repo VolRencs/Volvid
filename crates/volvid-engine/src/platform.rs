@@ -1,7 +1,9 @@
 use std::path::Path;
-use std::process::Command;
+use std::process::Stdio;
 
 use anyhow::{Context, Result, bail};
+
+use crate::process::std_command;
 
 pub fn open_folder(path: &Path) -> Result<()> {
     std::fs::create_dir_all(path).with_context(|| format!("prepare folder {}", path.display()))?;
@@ -12,8 +14,11 @@ pub fn open_folder(path: &Path) -> Result<()> {
     } else {
         "xdg-open"
     };
-    Command::new(program)
+    std_command(program)
         .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .with_context(|| format!("open {} with {program}", path.display()))?;
     Ok(())

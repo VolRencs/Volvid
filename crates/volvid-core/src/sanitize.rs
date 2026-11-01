@@ -44,7 +44,8 @@ pub fn sanitize_dirname(name: &str) -> String {
     sanitize(name, "playlist", true, true)
 }
 
-fn truncate_utf8(text: &str, max_bytes: usize) -> &str {
+/// Truncates `text` to at most `max_bytes`, never splitting a UTF-8 character.
+pub fn truncate_utf8(text: &str, max_bytes: usize) -> &str {
     if text.len() <= max_bytes {
         return text;
     }
@@ -77,5 +78,15 @@ mod tests {
         assert!(sanitized.len() <= 180);
         assert!(sanitized.is_char_boundary(sanitized.len()));
         assert_eq!(sanitize_dirname("a\nb\tc"), "abc");
+    }
+
+    #[test]
+    fn truncates_utf8_on_char_boundary() {
+        let text = "ошибка";
+        for limit in 0..=text.len() {
+            let truncated = truncate_utf8(text, limit);
+            assert!(truncated.len() <= limit);
+            assert!(text.starts_with(truncated));
+        }
     }
 }

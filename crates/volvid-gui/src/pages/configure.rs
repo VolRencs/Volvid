@@ -12,12 +12,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let s = app.s();
     let title = app.controller.state.title_for_configure();
     let duration = app.controller.state.media_duration;
-    let is_playlist = app
-        .controller
-        .state
-        .target
-        .as_ref()
-        .is_some_and(|target| target.is_playlist() && !app.controller.state.force_single);
+    let is_playlist = app.controller.state.is_playlist_mode();
 
     ui.horizontal(|ui| {
         if theme::icon_button(
@@ -134,14 +129,7 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
                     }
                 }
                 if let Some(error) = app.controller.state.quality_error.clone() {
-                    ui.add(
-                        egui::Label::new(
-                            RichText::new(error)
-                                .color(p.warning)
-                                .size(theme::FONT_SMALL),
-                        )
-                        .wrap(),
-                    );
+                    theme::warning_text(ui, p, error);
                 }
             });
             ui.add_space(12.0);
@@ -200,12 +188,7 @@ fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
         ui.add_space(4.0);
         let path = app.controller.state.downloads_dir.to_string_lossy();
         theme::text_chip(ui, p, &path, 12.5, ui.available_width(), false);
-        let is_playlist = app
-            .controller
-            .state
-            .target
-            .as_ref()
-            .is_some_and(|target| target.is_playlist() && !app.controller.state.force_single);
+        let is_playlist = app.controller.state.is_playlist_mode();
         if is_playlist {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -271,7 +254,7 @@ fn advanced(app: &mut VolvidApp, ui: &mut egui::Ui) {
                     }
                 }
                 if let Some(error) = app.controller.state.tracks_error.clone() {
-                    ui.label(RichText::new(error).color(p.warning).size(12.0));
+                    theme::warning_text(ui, p, error);
                 }
             });
     });
@@ -284,10 +267,7 @@ fn fragment(app: &mut VolvidApp, ui: &mut egui::Ui) {
     let s = app.s();
     let target = app.controller.state.target.clone();
     let duration = app.controller.state.media_duration;
-    if target
-        .as_ref()
-        .is_some_and(|target| target.is_playlist() && !app.controller.state.force_single)
-    {
+    if app.controller.state.is_playlist_mode() {
         theme::muted(ui, p, s.trim_playlist_unavailable);
         return;
     }
@@ -362,17 +342,10 @@ fn fragment(app: &mut VolvidApp, ui: &mut egui::Ui) {
             .draft
             .fragment(target.as_ref(), duration)
         {
-            ui.add(
-                egui::Label::new(
-                    RichText::new(fragment_error_text(
-                        error,
-                        duration,
-                        app.controller.state.locale,
-                    ))
-                    .color(p.danger)
-                    .size(theme::FONT_SMALL),
-                )
-                .wrap(),
+            theme::error_text(
+                ui,
+                p,
+                fragment_error_text(error, duration, app.controller.state.locale),
             );
         }
     });
@@ -432,14 +405,7 @@ fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
             ui.add_space(12.0);
         }
         if thumbnail_error {
-            ui.add(
-                egui::Label::new(
-                    RichText::new(s.thumbnail_failed)
-                        .color(p.warning)
-                        .size(theme::FONT_SMALL),
-                )
-                .wrap(),
-            );
+            theme::warning_text(ui, p, s.thumbnail_failed);
             ui.add_space(6.0);
         }
         theme::section_title(ui, p, s.configure_title);
@@ -473,10 +439,7 @@ fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
             .color(p.text),
         );
         ui.add_space(4.0);
-        let is_playlist = target
-            .as_ref()
-            .is_some_and(|target| target.is_playlist() && !app.controller.state.force_single);
-        if is_playlist {
+        if app.controller.state.is_playlist_mode() {
             theme::muted(
                 ui,
                 p,
@@ -562,11 +525,7 @@ fn estimate_size(app: &VolvidApp) -> i64 {
                 .as_ref()
                 .map(|quality| quality.size_bytes)
                 .unwrap_or(0);
-            let is_playlist =
-                app.controller.state.target.as_ref().is_some_and(|target| {
-                    target.is_playlist() && !app.controller.state.force_single
-                });
-            if is_playlist {
+            if app.controller.state.is_playlist_mode() {
                 size.saturating_mul(app.controller.state.selected_entries.len().max(1) as i64)
             } else {
                 size

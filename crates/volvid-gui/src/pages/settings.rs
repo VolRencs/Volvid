@@ -222,7 +222,6 @@ fn about_actions(
         }
         theme::badge(
             ui,
-            p,
             &format!("{} {}", s.latest_version, update.latest),
             p.warning,
         );
@@ -261,23 +260,12 @@ fn setting_row(
         });
     } else {
         ui.horizontal(|ui| {
-            let label_width = if ui.available_width() >= 720.0 {
+            let label_width = if ui.available_width() >= theme::SETTINGS_BREAKPOINT {
                 theme::SETTINGS_LABEL_W
             } else {
                 theme::SETTINGS_LABEL_W_NARROW
             };
-            ui.allocate_ui_with_layout(
-                egui::vec2(label_width, 32.0),
-                Layout::left_to_right(Align::Center),
-                |ui| {
-                    ui.add(
-                        egui::Label::new(
-                            RichText::new(label).color(p.text).size(theme::FONT_LABEL),
-                        )
-                        .truncate(),
-                    );
-                },
-            );
+            label_cell(ui, p, label, label_width);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     add_contents(ui);
@@ -285,6 +273,19 @@ fn setting_row(
             });
         });
     }
+}
+
+fn label_cell(ui: &mut egui::Ui, p: &crate::theme::Palette, label: &str, width: f32) {
+    ui.allocate_ui_with_layout(
+        egui::vec2(width, 32.0),
+        Layout::left_to_right(Align::Center),
+        |ui| {
+            ui.add(
+                egui::Label::new(RichText::new(label).color(p.text).size(theme::FONT_LABEL))
+                    .truncate(),
+            );
+        },
+    );
 }
 
 fn path_row(
@@ -299,18 +300,7 @@ fn path_row(
     let wide = ui.available_width() >= 780.0;
     if wide {
         ui.horizontal(|ui| {
-            ui.allocate_ui_with_layout(
-                egui::vec2(theme::SETTINGS_LABEL_W, 32.0),
-                Layout::left_to_right(Align::Center),
-                |ui| {
-                    ui.add(
-                        egui::Label::new(
-                            RichText::new(label).color(p.text).size(theme::FONT_LABEL),
-                        )
-                        .truncate(),
-                    );
-                },
-            );
+            label_cell(ui, p, label, theme::SETTINGS_LABEL_W);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if let Some(second) = second_action
                     && secondary_button(ui, p, second).clicked()
@@ -433,11 +423,10 @@ fn dependency_row(
                 });
             }
             if !source.is_empty() {
-                theme::badge(ui, p, source, p.muted);
+                theme::badge(ui, source, p.muted);
             }
             theme::badge(
                 ui,
-                p,
                 role_text,
                 if dep.required { p.selection } else { p.muted },
             );
@@ -491,7 +480,7 @@ fn access_row(
             );
         },
         |ui| {
-            theme::badge(ui, p, status, color);
+            theme::badge(ui, status, color);
         },
     );
 }

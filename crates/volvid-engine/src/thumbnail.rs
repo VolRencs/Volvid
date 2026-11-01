@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use futures_util::StreamExt;
 use image::{ImageReader, Limits};
 use tokio_util::sync::CancellationToken;
 
@@ -62,31 +61,13 @@ pub async fn fetch_preview(
         bail!("unexpected thumbnail content type: {content_type}");
     }
 
-    let mut bytes = Vec::with_capacity(
-        response
-            .content_length()
-            .unwrap_or(64 * 1024)
-            .min(MAX_THUMBNAIL_BYTES as u64) as usize,
-    );
-    let mut stream = response.bytes_stream();
-    loop {
-        let next = if let Some(cancel) = cancel {
-            tokio::select! {
-                _ = cancel.cancelled() => bail!("operation cancelled"),
-                next = stream.next() => next,
-            }
-        } else {
-            stream.next().await
-        };
-        let Some(chunk) = next else {
-            break;
-        };
-        let chunk = chunk?;
-        if bytes.len() + chunk.len() > MAX_THUMBNAIL_BYTES {
-            bail!("thumbnail is too large");
-        }
-        bytes.extend_from_slice(&chunk);
-    }
+    let bytes = crate::http::read_body(
+        response,
+        MAX_THUMBNAIL_BYTES,
+        cancel,
+        "thumbnail is too large",
+    )
+    .await?;
     if bytes.is_empty() {
         bail!("thumbnail response is empty");
     }

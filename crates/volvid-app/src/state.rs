@@ -12,9 +12,11 @@ use volvid_core::{
 };
 use volvid_engine::{AppPaths, Config, PreviewImage, Theme};
 use volvid_i18n::{
-    audio_output_profiles, default_quality, quality_profile, strings, thumbnail_profile,
-    video_output_profiles,
+    audio_output_profiles, default_quality, engine_error_text, quality_profile, strings,
+    thumbnail_profile, video_output_profiles,
 };
+
+pub const MAX_HISTORY_ITEMS: usize = 100;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Route {
@@ -66,8 +68,16 @@ impl Default for Draft {
     }
 }
 
+fn pick_profile(profiles: &[OutputProfile], index: usize) -> OutputProfile {
+    profiles
+        .get(index)
+        .cloned()
+        .or_else(|| profiles.first().cloned())
+        .unwrap_or_default()
+}
+
 impl Draft {
-    pub fn selected_quality(&self, locale: Locale) -> QualityChoice {
+    fn selected_quality(&self, locale: Locale) -> QualityChoice {
         self.quality
             .clone()
             .or_else(|| default_quality(locale).into_iter().next())
@@ -86,18 +96,10 @@ impl Draft {
     pub fn profile(&self, locale: Locale) -> OutputProfile {
         let mut profile = match self.mode {
             DownloadMode::Video => {
-                let profiles = self.video_profiles(locale);
-                profiles
-                    .get(self.video_profile_index)
-                    .cloned()
-                    .unwrap_or_else(|| profiles.first().cloned().unwrap_or_default())
+                pick_profile(&self.video_profiles(locale), self.video_profile_index)
             }
             DownloadMode::Audio => {
-                let profiles = self.audio_profiles(locale);
-                profiles
-                    .get(self.audio_profile_index)
-                    .cloned()
-                    .unwrap_or_else(|| profiles.first().cloned().unwrap_or_default())
+                pick_profile(&self.audio_profiles(locale), self.audio_profile_index)
             }
             DownloadMode::Thumbnail => thumbnail_profile(locale),
         };
@@ -304,7 +306,7 @@ pub struct HistoryItem {
 }
 
 impl HistoryItem {
-    pub fn from_job(job: &JobView) -> Self {
+    fn from_job(job: &JobView) -> Self {
         Self {
             label: job.title.clone(),
             url: job.url.clone(),
@@ -406,6 +408,7 @@ pub struct MixedChoice {
     pub url: String,
 }
 
+#[derive(Default)]
 pub struct AppState {
     pub route: Route,
     pub locale: Locale,
@@ -472,67 +475,19 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: Config, paths: &AppPaths, history: Vec<HistoryItem>) -> Self {
-        let downloads_dir = config.downloads_dir(paths);
-        let locale = config.locale;
-        let workers = config.playlist_workers;
-        Self {
-            route: Route::Home,
-            locale,
-            downloads_dir,
+        let mut state = Self {
+            locale: config.locale,
+            downloads_dir: config.downloads_dir(paths),
             logs_dir: paths.logs_dir(),
             config,
-            deps: CheckDepsResult::default(),
-            deps_checking: true,
-            deps_progress: None,
-            installing_dep: None,
-            update: None,
-            update_checking: true,
-            update_modal: false,
-            update_progress: None,
-            updating: false,
-            search_modal: false,
-            url: String::new(),
-            url_error: None,
-            target: None,
-            mixed_choice: None,
-            force_single: false,
-            playlist: None,
-            playlist_loading: false,
-            playlist_scroll_reset: true,
-            playlist_filter: String::new(),
-            playlist_filtered: Arc::new(Vec::new()),
-            playlist_filter_key: String::new(),
-            selected_entries: BTreeSet::new(),
-            range_input: String::new(),
-            range_error: None,
-            draft: Draft {
-                workers,
-                ..Draft::default()
-            },
-            media_duration: 0,
-            media_title: String::new(),
-            media_thumbnail: String::new(),
-            preview_image: None,
-            preview_generation: 0,
-            thumbnail_loading: false,
-            thumbnail_error: false,
-            audio_tracks: Vec::new(),
-            sub_tracks: Vec::new(),
-            quality_choices: Vec::new(),
-            quality_loading: false,
-            probe_loading: false,
-            quality_error: None,
-            tracks_error: None,
-            search_query: String::new(),
-            search_results: Vec::new(),
-            search_loading: false,
-            search_error: None,
-            search_op: 0,
-            jobs: Vec::new(),
             history,
-            toast: None,
-            op_id: 0,
-        }
+            deps_checking: true,
+            update_checking: true,
+            playlist_scroll_reset: true,
+            ..Self::default()
+        };
+        state.draft.workers = state.config.playlist_workers;
+        state
     }
 
     pub fn s(&self) -> &'static volvid_i18n::Strings {
@@ -547,26 +502,19 @@ impl AppState {
         });
     }
 
-    pub fn apply(&mut self, event: AppEvent) -> bool {
+    pub fn apply(&mut self, event: AppEvent) {
         match event {
-            AppEvent::Deps(deps) => {
+            AppEvent::Deps(deps) | AppEvent::DepsEnriched(deps) => {
                 self.deps_checking = false;
                 self.deps = deps;
-                true
-            }
-            AppEvent::DepsEnriched(deps) => {
-                self.deps_checking = false;
-                self.deps = deps;
-                true
             }
             AppEvent::UpdateChecked(info) => {
                 self.update_checking = false;
                 self.update = info;
-                true
             }
             AppEvent::Playlist { op, result } => {
                 if op != self.op_id {
-                    return false;
+                    return;
                 }
                 self.playlist_loading = false;
                 match result {
@@ -580,15 +528,14 @@ impl AppState {
                         self.route = Route::Playlist;
                     }
                     Err(err) => {
-                        self.toast(err, ToastKind::Error);
+                        self.toast(engine_error_text(&err, self.locale), ToastKind::Error);
                         self.route = Route::Home;
                     }
                 }
-                true
             }
             AppEvent::Probe { op, result } => {
                 if op != self.op_id {
-                    return false;
+                    return;
                 }
                 self.probe_loading = false;
                 match result {
@@ -601,15 +548,15 @@ impl AppState {
                         self.tracks_error = None;
                     }
                     Err(err) => {
+                        let err = engine_error_text(&err, self.locale);
                         self.tracks_error = Some(err.clone());
                         self.toast(err, ToastKind::Warn);
                     }
                 }
-                true
             }
             AppEvent::Thumbnail { op, stage, result } => {
                 if op != self.op_id {
-                    return false;
+                    return;
                 }
                 self.thumbnail_loading = false;
                 match result {
@@ -631,11 +578,10 @@ impl AppState {
                         }
                     }
                 }
-                true
             }
             AppEvent::Quality { op, result } => {
                 if op != self.op_id {
-                    return false;
+                    return;
                 }
                 self.quality_loading = false;
                 match result {
@@ -650,16 +596,16 @@ impl AppState {
                         self.draft.quality = self.quality_choices.first().cloned();
                     }
                     Err(err) => {
-                        self.quality_error = Some(format!("{}: {err}", self.s().quality_failed));
+                        let detail = engine_error_text(&err, self.locale);
+                        self.quality_error = Some(format!("{}: {detail}", self.s().quality_failed));
                         self.quality_choices = default_quality(self.locale);
                         self.draft.quality = self.quality_choices.first().cloned();
                     }
                 }
-                true
             }
             AppEvent::Search { op, result } => {
                 if op != self.search_op {
-                    return false;
+                    return;
                 }
                 self.search_loading = false;
                 match result {
@@ -668,24 +614,23 @@ impl AppState {
                         self.search_error = None;
                     }
                     Err(err) => {
-                        self.search_error = Some(err);
+                        self.search_error = Some(engine_error_text(&err, self.locale));
                         self.search_results.clear();
                     }
                 }
-                true
             }
             AppEvent::Download {
                 job_id,
                 run_id,
-                update,
+                mut update,
             } => {
+                update.err_text = engine_error_text(&update.err_text, self.locale);
                 if let Some(job) = self.jobs.iter_mut().find(|job| job.id == job_id)
                     && job.run_id == run_id
                     && job.status == JobStatus::Active
                 {
                     job.apply(&update);
                 }
-                true
             }
             AppEvent::JobThumbnail { job_id, result } => {
                 if let Some(job) = self.jobs.iter_mut().find(|job| job.id == job_id)
@@ -693,69 +638,15 @@ impl AppState {
                 {
                     job.thumbnail = Some(image);
                 }
-                true
             }
             AppEvent::DownloadFinished {
                 job_id,
                 run_id,
                 result,
-            } => {
-                let failure_text = self.s().download_failed.to_owned();
-                let history_item =
-                    if let Some(job) = self.jobs.iter_mut().find(|job| job.id == job_id) {
-                        if job.run_id != run_id {
-                            None
-                        } else if job.status == JobStatus::Paused && job.pending_resume {
-                            job.pending_resume = false;
-                            job.status = JobStatus::Queued;
-                            job.elapsed = job.started_at.elapsed();
-                            None
-                        } else if !matches!(
-                            job.status,
-                            JobStatus::Active | JobStatus::Completed | JobStatus::Failed
-                        ) {
-                            None
-                        } else {
-                            if job.status == JobStatus::Active {
-                                job.status = if result.is_ok() && job.failed == 0 {
-                                    JobStatus::Completed
-                                } else {
-                                    JobStatus::Failed
-                                };
-                            }
-                            job.elapsed = job.started_at.elapsed();
-                            if let Err(err) = result
-                                && job.error.is_none()
-                            {
-                                job.error = Some(err);
-                            }
-                            if job.status == JobStatus::Failed && job.error.is_none() {
-                                job.error = Some(failure_text);
-                            }
-                            if matches!(job.status, JobStatus::Failed | JobStatus::Completed)
-                                && !job.recorded
-                            {
-                                job.recorded = true;
-                                Some(HistoryItem::from_job(job))
-                            } else {
-                                None
-                            }
-                        }
-                    } else {
-                        None
-                    };
-                if let Some(item) = history_item {
-                    self.history.push(item);
-                    if self.history.len() > 100 {
-                        self.history.drain(..self.history.len() - 100);
-                    }
-                }
-                true
-            }
+            } => self.finish_download(job_id, run_id, result),
             AppEvent::InstallProgress { key, progress } => {
                 self.installing_dep = Some(key);
                 self.deps_progress = Some(progress);
-                true
             }
             AppEvent::InstallFinished { key, result } => {
                 self.installing_dep = None;
@@ -765,16 +656,18 @@ impl AppState {
                         self.toast(format!("{} {}", self.s().success, key), ToastKind::Success);
                     }
                     Err(err) => self.toast(
-                        format!("{}: {err}", self.s().install_failed),
+                        format!(
+                            "{}: {}",
+                            self.s().install_failed,
+                            engine_error_text(&err, self.locale)
+                        ),
                         ToastKind::Error,
                     ),
                 }
-                true
             }
             AppEvent::UpdateProgress(progress) => {
                 self.updating = !progress.done;
                 self.update_progress = Some(progress);
-                true
             }
             AppEvent::UpdateFinished(result) => {
                 self.updating = false;
@@ -785,56 +678,119 @@ impl AppState {
                         self.update_modal = false;
                     }
                     Err(err) => self.toast(
-                        format!("{}: {err}", self.s().update_failed),
+                        format!(
+                            "{}: {}",
+                            self.s().update_failed,
+                            engine_error_text(&err, self.locale)
+                        ),
                         ToastKind::Error,
                     ),
                 }
-                true
             }
-            AppEvent::FolderPicked(result) => {
-                match result {
-                    Ok(Some(path)) => {
-                        self.downloads_dir = path.clone();
-                        self.config.set_downloads_dir(path);
-                    }
-                    Ok(None) => {}
-                    Err(err) => self.toast(
-                        format!("{}: {err}", self.s().pick_folder_failed),
-                        ToastKind::Error,
-                    ),
+            AppEvent::FolderPicked(result) => match result {
+                Ok(Some(path)) => {
+                    self.downloads_dir = path.clone();
+                    self.config.set_downloads_dir(path);
                 }
-                true
-            }
+                Ok(None) => {}
+                Err(err) => self.toast(
+                    format!(
+                        "{}: {}",
+                        self.s().pick_folder_failed,
+                        engine_error_text(&err, self.locale)
+                    ),
+                    ToastKind::Error,
+                ),
+            },
             AppEvent::OpenFolder(result) => {
                 if let Err(err) = result {
                     self.toast(
-                        format!("{}: {err}", self.s().open_folder_failed),
+                        format!(
+                            "{}: {}",
+                            self.s().open_folder_failed,
+                            engine_error_text(&err, self.locale)
+                        ),
                         ToastKind::Error,
                     );
                 }
-                true
             }
             AppEvent::ConfigSaved(result) => {
                 if let Err(err) = result {
                     self.toast(
-                        format!("{}: {err}", self.s().config_save_failed),
+                        format!(
+                            "{}: {}",
+                            self.s().config_save_failed,
+                            engine_error_text(&err, self.locale)
+                        ),
                         ToastKind::Error,
                     );
                 }
-                true
             }
             AppEvent::HistorySaved(result) => {
                 if let Err(err) = result {
                     self.toast(
-                        format!("{}: {err}", self.s().history_save_failed),
+                        format!(
+                            "{}: {}",
+                            self.s().history_save_failed,
+                            engine_error_text(&err, self.locale)
+                        ),
                         ToastKind::Error,
                     );
                 }
-                true
             }
             AppEvent::Toast(text, kind) => {
                 self.toast(text, kind);
-                true
+            }
+        }
+    }
+
+    fn finish_download(&mut self, job_id: u64, run_id: u64, result: Result<(), String>) {
+        let result = result.map_err(|err| engine_error_text(&err, self.locale));
+        let failure_text = self.s().download_failed.to_owned();
+        let history_item = if let Some(job) = self.jobs.iter_mut().find(|job| job.id == job_id) {
+            if job.run_id != run_id {
+                None
+            } else if job.status == JobStatus::Paused && job.pending_resume {
+                job.pending_resume = false;
+                job.status = JobStatus::Queued;
+                job.elapsed = job.started_at.elapsed();
+                None
+            } else if !matches!(
+                job.status,
+                JobStatus::Active | JobStatus::Completed | JobStatus::Failed
+            ) {
+                None
+            } else {
+                if job.status == JobStatus::Active {
+                    job.status = if result.is_ok() && job.failed == 0 {
+                        JobStatus::Completed
+                    } else {
+                        JobStatus::Failed
+                    };
+                }
+                job.elapsed = job.started_at.elapsed();
+                if let Err(err) = result
+                    && job.error.is_none()
+                {
+                    job.error = Some(err);
+                }
+                if job.status == JobStatus::Failed && job.error.is_none() {
+                    job.error = Some(failure_text);
+                }
+                if matches!(job.status, JobStatus::Failed | JobStatus::Completed) && !job.recorded {
+                    job.recorded = true;
+                    Some(HistoryItem::from_job(job))
+                } else {
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if let Some(item) = history_item {
+            self.history.push(item);
+            if self.history.len() > MAX_HISTORY_ITEMS {
+                self.history.drain(..self.history.len() - MAX_HISTORY_ITEMS);
             }
         }
     }
@@ -929,11 +885,14 @@ impl AppState {
         }
     }
 
-    pub fn title_for_configure(&self) -> String {
-        if self
-            .target
+    pub fn is_playlist_mode(&self) -> bool {
+        self.target
             .as_ref()
             .is_some_and(|target| target.is_playlist() && !self.force_single)
+    }
+
+    pub fn title_for_configure(&self) -> String {
+        if self.is_playlist_mode()
             && let Some(playlist) = &self.playlist
             && !playlist.title.trim().is_empty()
         {
@@ -942,10 +901,28 @@ impl AppState {
         if !self.media_title.trim().is_empty() {
             return self.media_title.clone();
         }
-        if let Some(target) = &self.target {
-            return target.canonical_url.clone();
+        self.target
+            .as_ref()
+            .map(|target| target.canonical_url.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn title_for_download(&self) -> String {
+        if self.is_playlist_mode() {
+            self.playlist
+                .as_ref()
+                .map(|playlist| playlist.title.trim())
+                .filter(|title| !title.is_empty())
+                .map(str::to_owned)
+                .unwrap_or_else(|| self.s().playlist_title.to_owned())
+        } else if !self.media_title.trim().is_empty() {
+            self.media_title.clone()
+        } else {
+            self.target
+                .as_ref()
+                .map(|target| target.canonical_url.clone())
+                .unwrap_or_default()
         }
-        String::new()
     }
 
     pub fn theme(&self) -> Theme {

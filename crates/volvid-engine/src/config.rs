@@ -116,10 +116,6 @@ pub enum ConfigError {
     Serialize(toml::ser::Error),
 }
 
-pub fn load_config(paths: &AppPaths) -> Config {
-    Config::load(paths)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

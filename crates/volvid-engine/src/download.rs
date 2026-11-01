@@ -22,19 +22,6 @@ use crate::ytdlp::{format_progress_speed, postprocess_label};
 
 const SLOT_RESET_DELAY: Duration = Duration::from_millis(300);
 
-#[derive(Clone, Debug, Default)]
-struct DownloadResult {
-    err: String,
-}
-
-impl DownloadResult {
-    fn failure(message: impl Into<String>) -> Self {
-        Self {
-            err: message.into(),
-        }
-    }
-}
-
 pub async fn run_download(
     paths: Arc<AppPaths>,
     deps: CheckDepsResult,
@@ -89,17 +76,13 @@ async fn run_single(
         DlUpdate {
             event_type: DlEventType::Done,
             slot: 0,
-            ok: result.err.is_empty(),
-            err_text: result.err.clone(),
+            ok: result.is_ok(),
+            err_text: result.as_ref().err().cloned().unwrap_or_default(),
             pct: 100.0,
             ..DlUpdate::default()
         },
     );
-    if result.err.is_empty() {
-        Ok(())
-    } else {
-        bail!("{}", result.err)
-    }
+    result.map_err(|err| anyhow!("{err}"))
 }
 
 async fn run_playlist(
@@ -158,8 +141,8 @@ async fn run_playlist(
                     encoders.as_deref(),
                 )
                 .await;
-                if !result.err.is_empty() {
-                    tracing::debug!(err = %result.err, "playlist entry failed");
+                if let Err(err) = &result {
+                    tracing::debug!(%err, "playlist entry failed");
                 }
             }
         }));
@@ -195,7 +178,7 @@ async fn run_playlist_entry(
     tx: &mpsc::UnboundedSender<DlUpdate>,
     cancel: &CancellationToken,
     encoders: Option<&HashSet<String>>,
-) -> DownloadResult {
+) -> Result<(), String> {
     send(
         tx,
         DlUpdate {
@@ -215,8 +198,8 @@ async fn run_playlist_entry(
         DlUpdate {
             event_type: DlEventType::Done,
             slot,
-            ok: result.err.is_empty(),
-            err_text: result.err.clone(),
+            ok: result.is_ok(),
+            err_text: result.as_ref().err().cloned().unwrap_or_default(),
             pct: 100.0,
             ..DlUpdate::default()
         },
@@ -244,17 +227,17 @@ async fn run_one(
     tx: &mpsc::UnboundedSender<DlUpdate>,
     cancel: &CancellationToken,
     encoders: Option<&HashSet<String>>,
-) -> DownloadResult {
+) -> Result<(), String> {
     let (formats, labels) = download_formats(request);
     if formats.is_empty() {
-        return DownloadResult::failure("no download formats configured");
+        return Err("no download formats configured".to_owned());
     }
-    let mut last_result = DownloadResult::failure("download failed");
+    let mut last_result: Result<(), String> = Err("download failed".to_owned());
     for (index, format) in formats.iter().enumerate() {
         if cancel.is_cancelled() {
-            return DownloadResult::failure(
-                volvid_i18n::strings(request.locale).operation_cancelled,
-            );
+            return Err(volvid_i18n::strings(request.locale)
+                .operation_cancelled
+                .to_owned());
         }
         if request.profile.mode == DownloadMode::Video && index > 0 {
             let label = format_label(format, &labels, index);
@@ -281,9 +264,8 @@ async fn run_one(
             &["--no-playlist".to_owned()],
         );
         let mut progress = ProgressState::default();
-        let ytdlp = match ytdlp_bin(&deps) {
-            Some(bin) => bin,
-            None => return DownloadResult::failure("yt-dlp is required"),
+        let Some(ytdlp) = ytdlp_bin(&deps) else {
+            return Err("yt-dlp is required".to_owned());
         };
         let result = run_ytdlp_download(
             ytdlp,
@@ -296,12 +278,12 @@ async fn run_one(
         )
         .await;
         if let Err(err) = result {
-            last_result = DownloadResult::failure(err.to_string());
+            last_result = Err(err.to_string());
             continue;
         }
         let mut output_path = progress.output_path;
         if output_path.as_os_str().is_empty() {
-            last_result = DownloadResult::failure("downloaded file path is unknown");
+            last_result = Err("downloaded file path is unknown".to_owned());
             continue;
         }
         match transcode_video(
@@ -317,7 +299,7 @@ async fn run_one(
             Ok(Some(final_path)) => output_path = final_path,
             Ok(None) => {}
             Err(err) => {
-                last_result = DownloadResult::failure(err.to_string());
+                last_result = Err(err.to_string());
                 continue;
             }
         }
@@ -337,7 +319,7 @@ async fn run_one(
         {
             tracing::warn!(%err, "could not retag audio languages");
         }
-        return DownloadResult { err: String::new() };
+        return Ok(());
     }
     last_result
 }
@@ -362,7 +344,7 @@ async fn run_ytdlp_download(
         handle_line(line, slot, locale, tx, progress)
     })
     .await
-    .map_err(map_process_error)?;
+    .map_err(ProcessError::into_anyhow)?;
     if !status.success() {
         let message = if progress.error_text.is_empty() {
             format!("yt-dlp exited with status {status}")
@@ -503,14 +485,6 @@ fn playlist_output_dir(output_dir: &Path, title: &str) -> PathBuf {
         }
     }
     output_dir.to_path_buf()
-}
-
-fn map_process_error(err: ProcessError) -> anyhow::Error {
-    match err {
-        ProcessError::Cancelled => anyhow!("operation cancelled"),
-        ProcessError::TimedOut => anyhow!("operation timed out"),
-        other => anyhow!(other),
-    }
 }
 
 pub fn validate_request(request: &DownloadRequest, deps: &CheckDepsResult) -> Result<()> {

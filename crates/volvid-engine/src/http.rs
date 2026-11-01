@@ -8,6 +8,41 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use volvid_core::{FileProgress, Locale};
 
+/// Reads a response body while enforcing a byte limit and cancellation.
+pub async fn read_body(
+    response: reqwest::Response,
+    max_bytes: usize,
+    cancel: Option<&CancellationToken>,
+    too_large_message: &str,
+) -> Result<Vec<u8>> {
+    let mut bytes = Vec::with_capacity(
+        response
+            .content_length()
+            .unwrap_or(64 * 1024)
+            .min(max_bytes as u64) as usize,
+    );
+    let mut stream = response.bytes_stream();
+    loop {
+        let next = if let Some(token) = cancel {
+            tokio::select! {
+                _ = token.cancelled() => bail!("operation cancelled"),
+                next = stream.next() => next,
+            }
+        } else {
+            stream.next().await
+        };
+        let Some(chunk) = next else {
+            break;
+        };
+        let chunk = chunk.context("read response stream")?;
+        if bytes.len() + chunk.len() > max_bytes {
+            bail!("{too_large_message}");
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
 pub async fn download_file(
     client: &reqwest::Client,
     url: &str,
@@ -16,14 +51,7 @@ pub async fn download_file(
     progress: Option<&mpsc::UnboundedSender<FileProgress>>,
     cancel: Option<CancellationToken>,
 ) -> Result<PathBuf> {
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .with_context(|| format!("GET {url}"))?;
-    if !response.status().is_success() {
-        bail!("download failed with HTTP {}", response.status());
-    }
+    let response = get_ok(client, url).await?;
     let total = response.content_length().unwrap_or(0) as i64;
     let mut stream = response.bytes_stream();
     let dir = destination.parent().unwrap_or_else(|| Path::new("."));
@@ -36,17 +64,14 @@ pub async fn download_file(
     let mut file = tokio::fs::File::from_std(temp.reopen()?);
     let mut done = 0i64;
     let started = Instant::now();
-    let mut last_emit = Instant::now() - Duration::from_secs(1);
+    let mut last_emit = Instant::now()
+        .checked_sub(Duration::from_secs(1))
+        .unwrap_or_else(Instant::now);
     loop {
         let next = if let Some(token) = &cancel {
             tokio::select! {
                 _ = token.cancelled() => {
                     drop(file);
-                    send_progress(progress, FileProgress {
-                        done: true,
-                        err: Some("operation cancelled".to_owned()),
-                        ..FileProgress::default()
-                    });
                     bail!("operation cancelled");
                 }
                 next = stream.next() => next,
@@ -110,7 +135,7 @@ fn send_progress(progress: Option<&mpsc::UnboundedSender<FileProgress>>, value: 
     }
 }
 
-pub async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String> {
+async fn get_ok(client: &reqwest::Client, url: &str) -> Result<reqwest::Response> {
     let response = client
         .get(url)
         .send()
@@ -119,17 +144,13 @@ pub async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String> {
     if !response.status().is_success() {
         bail!("HTTP {} for {url}", response.status());
     }
-    Ok(response.text().await?)
+    Ok(response)
+}
+
+pub async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String> {
+    Ok(get_ok(client, url).await?.text().await?)
 }
 
 pub async fn fetch_json(client: &reqwest::Client, url: &str) -> Result<serde_json::Value> {
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .with_context(|| format!("GET {url}"))?;
-    if !response.status().is_success() {
-        bail!("HTTP {} for {url}", response.status());
-    }
-    Ok(response.json().await?)
+    Ok(get_ok(client, url).await?.json().await?)
 }

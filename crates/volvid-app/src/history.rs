@@ -1,4 +1,4 @@
-use crate::state::HistoryItem;
+use crate::state::{HistoryItem, MAX_HISTORY_ITEMS};
 use volvid_engine::{AppPaths, paths::write_atomic};
 
 pub fn load_history(paths: &AppPaths) -> Vec<HistoryItem> {
@@ -16,8 +16,8 @@ pub fn load_history(paths: &AppPaths) -> Vec<HistoryItem> {
             Vec::new()
         }
     };
-    if items.len() > 100 {
-        items.drain(..items.len() - 100);
+    if items.len() > MAX_HISTORY_ITEMS {
+        items.drain(..items.len() - MAX_HISTORY_ITEMS);
     }
     items
 }

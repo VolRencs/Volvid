@@ -3,636 +3,215 @@ use volvid_core::{
     YTDLP_BEST_FORMAT, default_quality_choices,
 };
 
-#[derive(Clone, Copy, Debug)]
-pub struct Strings {
-    pub nav_new: &'static str,
-    pub nav_queue: &'static str,
-    pub nav_history: &'static str,
-    pub nav_settings: &'static str,
+macro_rules! define_strings {
+    ($($field:ident: $en:expr, $ru:expr;)*) => {
+        #[derive(Clone, Copy, Debug)]
+        pub struct Strings {
+            $(pub $field: &'static str,)*
+        }
 
-    pub home_title: &'static str,
-    pub home_subtitle: &'static str,
-    pub url_placeholder: &'static str,
-    pub paste: &'static str,
-    pub analyze: &'static str,
-    pub search_youtube: &'static str,
-    pub choose_folder: &'static str,
-    pub open_folder: &'static str,
-    pub download_location: &'static str,
-    pub recent: &'static str,
-    pub no_history: &'static str,
-    pub deps_missing: &'static str,
-    pub drag_hint: &'static str,
-    pub clipboard_empty: &'static str,
-
-    pub language: &'static str,
-    pub theme: &'static str,
-    pub theme_system: &'static str,
-    pub theme_dark: &'static str,
-    pub theme_light: &'static str,
-    pub about: &'static str,
-    pub version: &'static str,
-    pub check_updates: &'static str,
-    pub update_available: &'static str,
-    pub install_update: &'static str,
-    pub later: &'static str,
-    pub update_applied: &'static str,
-    pub close: &'static str,
-    pub back: &'static str,
-    pub continue_label: &'static str,
-    pub download: &'static str,
-    pub retry: &'static str,
-    pub open: &'static str,
-    pub clear: &'static str,
-    pub error: &'static str,
-    pub warning: &'static str,
-    pub success: &'static str,
-
-    pub deps_title: &'static str,
-    pub dep_required: &'static str,
-    pub dep_optional: &'static str,
-    pub dep_missing: &'static str,
-    pub dep_available: &'static str,
-    pub dep_checking: &'static str,
-    pub dep_system: &'static str,
-    pub dep_managed: &'static str,
-    pub dep_install: &'static str,
-    pub dep_update: &'static str,
-    pub dep_refresh: &'static str,
-    pub cookies: &'static str,
-    pub js_runtime: &'static str,
-    pub deps_settings_hint: &'static str,
-    pub audio_original_hint: &'static str,
-    pub environment: &'static str,
-    pub table_name: &'static str,
-    pub table_duration: &'static str,
-    pub downloading_count: &'static str,
-    pub waiting_count: &'static str,
-    pub errors_count: &'static str,
-    pub clear_finished: &'static str,
-    pub pause: &'static str,
-    pub resume: &'static str,
-    pub pause_all: &'static str,
-    pub resume_all: &'static str,
-    pub paused: &'static str,
-    pub cancelled: &'static str,
-    pub remove: &'static str,
-    pub queued_message: &'static str,
-    pub remaining: &'static str,
-
-    pub playlist_title: &'static str,
-    pub videos_count: &'static str,
-    pub selected_count: &'static str,
-    pub filter_placeholder: &'static str,
-    pub select_all: &'static str,
-    pub select_none: &'static str,
-    pub apply_range: &'static str,
-    pub range_placeholder: &'static str,
-    pub loading_playlist: &'static str,
-    pub playlist_empty: &'static str,
-    pub video_title_fmt: &'static str,
-    pub mixed_title: &'static str,
-    pub mixed_hint: &'static str,
-    pub video_only: &'static str,
-    pub full_playlist: &'static str,
-    pub no_selection: &'static str,
-
-    pub configure_title: &'static str,
-    pub mode_video: &'static str,
-    pub mode_audio: &'static str,
-    pub mode_thumbnail: &'static str,
-    pub quality_title: &'static str,
-    pub best_quality: &'static str,
-    pub economy_quality: &'static str,
-    pub format_title: &'static str,
-    pub audio_title: &'static str,
-    pub thumbnail_title: &'static str,
-    pub thumbnail_hint: &'static str,
-    pub thumbnail_failed: &'static str,
-    pub trim_title: &'static str,
-    pub trim_playlist_unavailable: &'static str,
-    pub trim_enable: &'static str,
-    pub from_url_timestamp: &'static str,
-    pub custom_range: &'static str,
-    pub full_media: &'static str,
-    pub trim_hint: &'static str,
-    pub duration: &'static str,
-    pub audio_tracks_title: &'static str,
-    pub subtitles_title: &'static str,
-    pub no_audio_tracks: &'static str,
-    pub no_subtitles: &'static str,
-    pub auto_subtitle: &'static str,
-    pub workers: &'static str,
-    pub output_folder: &'static str,
-    pub estimated_size: &'static str,
-    pub download_button: &'static str,
-    pub loading_quality: &'static str,
-    pub loading_tracks: &'static str,
-    pub quality_failed: &'static str,
-    pub advanced: &'static str,
-
-    pub video_original: &'static str,
-    pub video_h264: &'static str,
-    pub video_h265: &'static str,
-    pub video_vp9: &'static str,
-    pub video_av1: &'static str,
-    pub video_mkv_copy: &'static str,
-
-    pub audio_mp3_320: &'static str,
-    pub audio_mp3_192: &'static str,
-    pub audio_m4a_best: &'static str,
-    pub audio_opus_best: &'static str,
-    pub audio_flac: &'static str,
-
-    pub queue: &'static str,
-    pub no_downloads: &'static str,
-    pub active: &'static str,
-    pub completed: &'static str,
-    pub failed: &'static str,
-    pub queued: &'static str,
-    pub speed: &'static str,
-    pub elapsed: &'static str,
-    pub cancel_download: &'static str,
-    pub downloading: &'static str,
-    pub merging: &'static str,
-    pub converting_audio: &'static str,
-    pub thumbnail_proc: &'static str,
-    pub fallback_format: &'static str,
-    pub download_failed: &'static str,
-    pub history_title: &'static str,
-    pub session_history: &'static str,
-    pub clear_history: &'static str,
-    pub job_items: &'static str,
-
-    pub search_title: &'static str,
-    pub search_prompt: &'static str,
-    pub search_placeholder: &'static str,
-    pub searching: &'static str,
-    pub no_results: &'static str,
-    pub query_empty: &'static str,
-
-    pub invalid_url: &'static str,
-    pub empty_url: &'static str,
-    pub unsupported_url: &'static str,
-    pub missing_ytdlp: &'static str,
-    pub missing_ffmpeg: &'static str,
-    pub invalid_fragment: &'static str,
-    pub fragment_out_of_range: &'static str,
-    pub fragment_duration_required: &'static str,
-    pub fragment_bounds: &'static str,
-    pub pick_folder_failed: &'static str,
-    pub open_folder_failed: &'static str,
-    pub install_failed: &'static str,
-    pub update_failed: &'static str,
-    pub operation_cancelled: &'static str,
-    pub config_save_failed: &'static str,
-
-    pub settings_title: &'static str,
-    pub playlist_workers: &'static str,
-    pub logs: &'static str,
-    pub open_logs: &'static str,
-    pub config_dir: &'static str,
-    pub data_dir: &'static str,
-    pub downloads_dir: &'static str,
-    pub current_version: &'static str,
-    pub latest_version: &'static str,
-    pub check_now: &'static str,
-    pub updating: &'static str,
-    pub history_save_failed: &'static str,
-    pub paused_count: &'static str,
-    pub failed_items: &'static str,
-    pub status_active: &'static str,
-    pub status_not_found: &'static str,
-    pub status_no_profile: &'static str,
-    pub select_language: &'static str,
-    pub appearance: &'static str,
-    pub behavior: &'static str,
-    pub paths: &'static str,
-
-    pub checking: &'static str,
-    pub loading: &'static str,
-    pub cancel: &'static str,
+        static EN: Strings = Strings { $($field: $en,)* };
+        static RU: Strings = Strings { $($field: $ru,)* };
+    };
 }
 
-pub static EN: Strings = Strings {
-    nav_new: "New download",
-    nav_queue: "Queue",
-    nav_history: "History",
-    nav_settings: "Settings",
+define_strings! {
+    nav_new: "New download", "Новая загрузка";
+    nav_queue: "Queue", "Очередь";
+    nav_history: "History", "История";
+    nav_settings: "Settings", "Настройки";
 
-    home_title: "Download video & music from YouTube",
-    home_subtitle: "Paste a link, choose what you want, and Volvid handles the rest.",
-    url_placeholder: "https://www.youtube.com/watch?v=...",
-    paste: "Paste",
-    analyze: "Analyze",
-    search_youtube: "Search YouTube",
-    choose_folder: "Choose folder",
-    open_folder: "Open folder",
-    download_location: "Download location",
-    recent: "Recent downloads",
-    no_history: "Nothing downloaded yet.",
-    deps_missing: "Required dependencies are missing.",
-    drag_hint: "Drop a YouTube link here",
-    clipboard_empty: "Clipboard is empty",
+    home_title: "Download video & music from YouTube", "Скачивайте видео и музыку с YouTube";
+    home_subtitle: "Paste a link, choose what you want, and Volvid handles the rest.", "Вставьте ссылку, выберите формат — остальное Volvid сделает сам.";
+    url_placeholder: "https://www.youtube.com/watch?v=...", "https://www.youtube.com/watch?v=...";
+    paste: "Paste", "Вставить";
+    analyze: "Analyze", "Анализировать";
+    search_youtube: "Search YouTube", "Поиск на YouTube";
+    choose_folder: "Choose folder", "Выбрать папку";
+    open_folder: "Open folder", "Открыть папку";
+    download_location: "Download location", "Папка загрузки";
+    recent: "Recent downloads", "Последние загрузки";
+    no_history: "Nothing downloaded yet.", "В этой сессии ещё не было загрузок.";
+    deps_missing: "Required dependencies are missing.", "Не хватает обязательных зависимостей.";
+    drag_hint: "Drop a YouTube link here", "Перетащите ссылку YouTube сюда";
+    clipboard_empty: "Clipboard is empty", "Буфер обмена пуст";
 
-    language: "Language",
-    theme: "Theme",
-    theme_system: "System",
-    theme_dark: "Dark",
-    theme_light: "Light",
-    about: "About",
-    version: "Version",
-    check_updates: "Check for updates",
-    update_available: "Update available",
-    install_update: "Install update",
-    later: "Later",
-    update_applied: "Update applied. Restart Volvid to use the new version.",
-    close: "Close",
-    back: "Back",
-    continue_label: "Continue",
-    download: "Download",
-    retry: "Retry",
-    open: "Open",
-    clear: "Clear",
-    error: "Error",
-    warning: "Warning",
-    success: "Success",
+    theme: "Theme", "Тема";
+    theme_system: "System", "Системная";
+    theme_dark: "Dark", "Тёмная";
+    theme_light: "Light", "Светлая";
+    about: "About", "О программе";
+    update_available: "Update available", "Доступно обновление";
+    install_update: "Install update", "Установить обновление";
+    later: "Later", "Позже";
+    update_applied: "Update applied. Restart Volvid to use the new version.", "Обновление применено. Перезапустите Volvid.";
+    close: "Close", "Закрыть";
+    back: "Back", "Назад";
+    continue_label: "Continue", "Продолжить";
+    retry: "Retry", "Повторить";
+    open: "Open", "Открыть";
+    success: "Success", "Готово";
 
-    deps_title: "Dependencies",
-    dep_required: "required",
-    dep_optional: "optional",
-    dep_missing: "missing",
-    dep_available: "available",
-    dep_checking: "checking...",
-    dep_system: "system",
-    dep_managed: "managed",
-    dep_install: "Install",
-    dep_update: "Update",
-    dep_refresh: "Refresh status",
-    cookies: "Cookies",
-    js_runtime: "JS runtime",
-    deps_settings_hint: "Open Settings → Dependencies to install them.",
-    audio_original_hint: "Leave empty to keep the original audio only.",
-    environment: "Environment",
-    table_name: "Name",
-    table_duration: "Duration",
-    downloading_count: "Downloading %d",
-    waiting_count: "Waiting %d",
-    errors_count: "Errors %d",
-    clear_finished: "Clear completed",
-    pause: "Pause",
-    resume: "Resume",
-    pause_all: "Pause all",
-    resume_all: "Resume all",
-    paused: "Paused",
-    cancelled: "Cancelled",
-    remove: "Remove",
-    queued_message: "Added to the download queue.",
-    remaining: "left",
+    deps_title: "Dependencies", "Зависимости";
+    dep_required: "required", "обязательно";
+    dep_optional: "optional", "опционально";
+    dep_missing: "missing", "не найден";
+    dep_available: "available", "доступен";
+    dep_checking: "checking...", "проверяю...";
+    dep_system: "system", "система";
+    dep_managed: "managed", "в комплекте";
+    dep_install: "Install", "Установить";
+    dep_update: "Update", "Обновить";
+    dep_refresh: "Refresh status", "Обновить статус";
+    cookies: "Cookies", "Cookies";
+    js_runtime: "JS runtime", "JS runtime";
+    deps_settings_hint: "Open Settings → Dependencies to install them.", "Откройте «Настройки» → «Зависимости», чтобы установить их.";
+    audio_original_hint: "Leave empty to keep the original audio only.", "Оставьте пустым, чтобы сохранить только оригинальное аудио.";
+    environment: "Environment", "Окружение";
+    table_name: "Name", "Название";
+    table_duration: "Duration", "Длительность";
+    downloading_count: "Downloading %d", "Загружается %d";
+    waiting_count: "Waiting %d", "В ожидании %d";
+    errors_count: "Errors %d", "Ошибок %d";
+    clear_finished: "Clear completed", "Очистить завершённые";
+    pause: "Pause", "Пауза";
+    resume: "Resume", "Продолжить";
+    pause_all: "Pause all", "Приостановить все";
+    resume_all: "Resume all", "Продолжить все";
+    paused: "Paused", "На паузе";
+    cancelled: "Cancelled", "Отменено";
+    remove: "Remove", "Удалить";
+    queued_message: "Added to the download queue.", "Добавлено в очередь загрузок.";
+    remaining: "left", "осталось";
 
-    playlist_title: "Playlist",
-    videos_count: "%d videos",
-    selected_count: "Selected %d / %d",
-    filter_placeholder: "Filter by title",
-    select_all: "Select all",
-    select_none: "Clear",
-    apply_range: "Apply range",
-    range_placeholder: "1-5, 8, 12-",
-    loading_playlist: "Loading playlist…",
-    playlist_empty: "Playlist is empty or unavailable.",
-    video_title_fmt: "Video %d",
-    mixed_title: "Video and playlist in one link",
-    mixed_hint: "What would you like to download?",
-    video_only: "This video only",
-    full_playlist: "Full playlist",
-    no_selection: "Select at least one video.",
+    playlist_title: "Playlist", "Плейлист";
+    videos_count: "%d videos", "%d видео";
+    selected_count: "Selected %d / %d", "Выбрано %d / %d";
+    filter_placeholder: "Filter by title", "Фильтр по названию";
+    select_all: "Select all", "Выбрать все";
+    select_none: "Clear", "Снять выбор";
+    apply_range: "Apply range", "Применить диапазон";
+    range_placeholder: "1-5, 8, 12-", "1-5, 8, 12-";
+    loading_playlist: "Loading playlist…", "Загружаю плейлист…";
+    playlist_empty: "Playlist is empty or unavailable.", "Плейлист пуст или недоступен.";
+    video_title_fmt: "Video %d", "Видео %d";
+    mixed_title: "Video and playlist in one link", "В ссылке есть видео и плейлист";
+    mixed_hint: "What would you like to download?", "Что скачать?";
+    video_only: "This video only", "Только это видео";
+    full_playlist: "Full playlist", "Весь плейлист";
+    no_selection: "Select at least one video.", "Выберите хотя бы одно видео.";
 
-    configure_title: "Download settings",
-    mode_video: "Video",
-    mode_audio: "Audio",
-    mode_thumbnail: "Thumbnail",
-    quality_title: "Quality",
-    best_quality: "Best quality (HD · 4K)",
-    economy_quality: "Economy quality (360p)",
-    format_title: "Video format",
-    audio_title: "Audio format",
-    thumbnail_title: "Thumbnail",
-    thumbnail_hint: "YouTube thumbnail in the best available resolution.",
-    thumbnail_failed: "Could not load the preview.",
-    trim_title: "Trim",
-    trim_playlist_unavailable: "Trimming is unavailable for playlists.",
-    trim_enable: "Download a fragment",
-    from_url_timestamp: "From URL timestamp",
-    custom_range: "Custom range",
-    full_media: "Full media",
-    trim_hint: "Example: 1:00-2:30, 1:00- or 1:00+",
-    duration: "Duration",
-    audio_tracks_title: "Audio tracks",
-    subtitles_title: "Subtitles",
-    no_audio_tracks: "No alternate audio tracks.",
-    no_subtitles: "No subtitles available.",
-    auto_subtitle: "auto",
-    workers: "Parallel workers",
-    output_folder: "Output folder",
-    estimated_size: "Estimated size",
-    download_button: "Download",
-    loading_quality: "Scanning qualities…",
-    loading_tracks: "Loading audio tracks and subtitles…",
-    quality_failed: "Could not scan qualities; fallback presets are used.",
-    advanced: "Audio & subtitles",
+    configure_title: "Download settings", "Параметры загрузки";
+    mode_video: "Video", "Видео";
+    mode_audio: "Audio", "Аудио";
+    mode_thumbnail: "Thumbnail", "Превью";
+    quality_title: "Quality", "Качество";
+    best_quality: "Best quality (HD · 4K)", "Лучшее качество (HD · 4K)";
+    economy_quality: "Economy quality (360p)", "Экономичное качество (360p)";
+    format_title: "Video format", "Формат видео";
+    audio_title: "Audio format", "Формат аудио";
+    thumbnail_title: "Thumbnail", "Превью";
+    thumbnail_hint: "YouTube thumbnail in the best available resolution.", "Превью YouTube в максимальном доступном качестве.";
+    thumbnail_failed: "Could not load the preview.", "Не удалось загрузить превью.";
+    trim_title: "Trim", "Фрагмент";
+    trim_playlist_unavailable: "Trimming is unavailable for playlists.", "Обрезка недоступна для плейлистов.";
+    trim_enable: "Download a fragment", "Скачать фрагмент";
+    from_url_timestamp: "From URL timestamp", "С таймкода из URL";
+    custom_range: "Custom range", "Свой диапазон";
+    full_media: "Full media", "Полностью";
+    trim_hint: "Example: 1:00-2:30, 1:00- or 1:00+", "Пример: 1:00-2:30, 1:00- или 1:00+";
+    duration: "Duration", "Длительность";
+    audio_tracks_title: "Audio tracks", "Аудиодорожки";
+    subtitles_title: "Subtitles", "Субтитры";
+    no_audio_tracks: "No alternate audio tracks.", "Дополнительных аудиодорожек нет.";
+    no_subtitles: "No subtitles available.", "Субтитры недоступны.";
+    auto_subtitle: "auto", "авто";
+    workers: "Parallel workers", "Параллельные потоки";
+    output_folder: "Output folder", "Папка назначения";
+    estimated_size: "Estimated size", "Примерный размер";
+    download_button: "Download", "Скачать";
+    loading_quality: "Scanning qualities…", "Сканирую качества…";
+    loading_tracks: "Loading audio tracks and subtitles…", "Загружаю аудиодорожки и субтитры…";
+    quality_failed: "Could not scan qualities; fallback presets are used.", "Не удалось просканировать качества; используются стандартные пресеты.";
+    advanced: "Audio & subtitles", "Аудио и субтитры";
 
-    video_original: "Original MP4",
-    video_h264: "MP4 · H.264/AAC",
-    video_h265: "MP4 · H.265/AAC",
-    video_vp9: "WebM · VP9/Opus",
-    video_av1: "MKV · AV1/Opus",
-    video_mkv_copy: "MKV · copy streams",
+    video_original: "Original MP4", "Оригинал MP4";
+    video_h264: "MP4 · H.264/AAC", "MP4 · H.264/AAC";
+    video_h265: "MP4 · H.265/AAC", "MP4 · H.265/AAC";
+    video_vp9: "WebM · VP9/Opus", "WebM · VP9/Opus";
+    video_av1: "MKV · AV1/Opus", "MKV · AV1/Opus";
+    video_mkv_copy: "MKV · copy streams", "MKV · копия потоков";
 
-    audio_mp3_320: "MP3 320k",
-    audio_mp3_192: "MP3 192k",
-    audio_m4a_best: "M4A/AAC Best",
-    audio_opus_best: "Opus Best",
-    audio_flac: "FLAC Lossless",
+    audio_mp3_320: "MP3 320k", "MP3 320k";
+    audio_mp3_192: "MP3 192k", "MP3 192k";
+    audio_m4a_best: "M4A/AAC Best", "M4A/AAC Лучшее";
+    audio_opus_best: "Opus Best", "Opus Лучшее";
+    audio_flac: "FLAC Lossless", "FLAC Lossless";
 
-    queue: "Queue",
-    no_downloads: "No downloads in the queue.",
-    active: "Active",
-    completed: "Completed",
-    failed: "Failed",
-    queued: "Queued",
-    speed: "Speed",
-    elapsed: "Elapsed",
-    cancel_download: "Cancel",
-    downloading: "Downloading",
-    merging: "Merging video and audio",
-    converting_audio: "Converting audio",
-    thumbnail_proc: "Downloading thumbnail",
-    fallback_format: "Trying fallback format #%d: %s",
-    download_failed: "Download failed",
-    history_title: "History",
-    session_history: "Session history",
-    clear_history: "Clear history",
-    job_items: "%d items",
+    queue: "Queue", "Очередь";
+    no_downloads: "No downloads in the queue.", "В очереди нет загрузок.";
+    completed: "Completed", "Завершено";
+    failed: "Failed", "Ошибки";
+    queued: "Queued", "В очереди";
+    downloading: "Downloading", "Загрузка";
+    merging: "Merging video and audio", "Объединение видео и аудио";
+    converting_audio: "Converting audio", "Конвертация аудио";
+    thumbnail_proc: "Downloading thumbnail", "Загрузка превью";
+    fallback_format: "Trying fallback format #%d: %s", "Пробую запасной формат #%d: %s";
+    download_failed: "Download failed", "Загрузка не удалась";
+    history_title: "History", "История";
+    session_history: "Session history", "История сессии";
+    clear_history: "Clear history", "Очистить историю";
+    job_items: "%d items", "%d видео";
 
-    search_title: "Search YouTube",
-    search_prompt: "Enter a video title or keywords",
-    search_placeholder: "lofi hip hop mix",
-    searching: "Searching YouTube…",
-    no_results: "Nothing found.",
-    query_empty: "Search query cannot be empty.",
+    search_title: "Search YouTube", "Поиск YouTube";
+    search_prompt: "Enter a video title or keywords", "Введите название видео или ключевые слова";
+    search_placeholder: "lofi hip hop mix", "lofi hip hop mix";
+    searching: "Searching YouTube…", "Ищу на YouTube…";
+    no_results: "Nothing found.", "Ничего не найдено.";
+    query_empty: "Search query cannot be empty.", "Поисковый запрос не может быть пустым.";
 
-    invalid_url: "Does not look like a YouTube URL",
-    empty_url: "URL cannot be empty",
-    unsupported_url: "Unsupported YouTube URL",
-    missing_ytdlp: "yt-dlp is required.",
-    missing_ffmpeg: "ffmpeg is required for this mode.",
-    invalid_fragment: "Invalid fragment format.",
-    fragment_out_of_range: "Range must stay within the video duration.",
-    fragment_duration_required: "Trimming is unavailable because the video duration is unknown.",
-    fragment_bounds: "Start time must be less than end time.",
-    pick_folder_failed: "Failed to choose download folder",
-    open_folder_failed: "Failed to open folder",
-    install_failed: "Dependency installation failed",
-    update_failed: "Update failed",
-    operation_cancelled: "Operation cancelled",
-    config_save_failed: "Could not save settings",
+    invalid_url: "Does not look like a YouTube URL", "Не похоже на YouTube-ссылку";
+    empty_url: "URL cannot be empty", "Ссылка не может быть пустой";
+    unsupported_url: "Unsupported YouTube URL", "Неподдерживаемая YouTube-ссылка";
+    missing_ytdlp: "yt-dlp is required.", "Требуется yt-dlp.";
+    missing_ffmpeg: "ffmpeg is required for this mode.", "Для этого режима требуется ffmpeg.";
+    invalid_fragment: "Invalid fragment format.", "Неверный формат фрагмента.";
+    fragment_out_of_range: "Range must stay within the video duration.", "Диапазон должен укладываться в длительность видео.";
+    fragment_duration_required: "Trimming is unavailable because the video duration is unknown.", "Обрезка недоступна: длительность видео неизвестна.";
+    fragment_bounds: "Start time must be less than end time.", "Начало должно быть меньше конца.";
+    pick_folder_failed: "Failed to choose download folder", "Не удалось выбрать папку загрузки";
+    open_folder_failed: "Failed to open folder", "Не удалось открыть папку";
+    install_failed: "Dependency installation failed", "Не удалось установить зависимость";
+    update_failed: "Update failed", "Не удалось обновить приложение";
+    operation_cancelled: "Operation cancelled", "Операция отменена";
+    config_save_failed: "Could not save settings", "Не удалось сохранить настройки";
 
-    settings_title: "Settings",
-    playlist_workers: "Playlist workers",
-    logs: "Logs",
-    open_logs: "Open logs",
-    config_dir: "Config directory",
-    data_dir: "Data directory",
-    downloads_dir: "Downloads directory",
-    current_version: "Current version",
-    latest_version: "Latest version",
-    check_now: "Check now",
-    updating: "Updating…",
-    history_save_failed: "Could not save history",
-    paused_count: "Paused %d",
-    failed_items: "%d failed",
-    status_active: "active",
-    status_not_found: "not found",
-    status_no_profile: "no usable profile",
-    select_language: "Language",
-    appearance: "Appearance",
-    behavior: "Behavior",
-    paths: "Paths",
+    settings_title: "Settings", "Настройки";
+    playlist_workers: "Playlist workers", "Потоков для плейлиста";
+    logs: "Logs", "Логи";
+    open_logs: "Open logs", "Открыть логи";
+    config_dir: "Config directory", "Каталог конфигурации";
+    downloads_dir: "Downloads directory", "Каталог загрузок";
+    current_version: "Current version", "Текущая версия";
+    latest_version: "Latest version", "Последняя версия";
+    check_now: "Check now", "Проверить сейчас";
+    updating: "Updating…", "Обновляю…";
+    history_save_failed: "Could not save history", "Не удалось сохранить историю";
+    paused_count: "Paused %d", "На паузе %d";
+    failed_items: "%d failed", "%d с ошибкой";
+    status_active: "active", "активно";
+    status_not_found: "not found", "не найдено";
+    status_no_profile: "no usable profile", "нет подходящего профиля";
+    select_language: "Language", "Язык";
+    appearance: "Appearance", "Внешний вид";
+    behavior: "Behavior", "Поведение";
+    paths: "Paths", "Пути";
 
-    checking: "Checking…",
-    loading: "Loading…",
-    cancel: "Cancel",
-};
-
-pub static RU: Strings = Strings {
-    nav_new: "Новая загрузка",
-    nav_queue: "Очередь",
-    nav_history: "История",
-    nav_settings: "Настройки",
-
-    home_title: "Скачивайте видео и музыку с YouTube",
-    home_subtitle: "Вставьте ссылку, выберите формат — остальное Volvid сделает сам.",
-    url_placeholder: "https://www.youtube.com/watch?v=...",
-    paste: "Вставить",
-    analyze: "Анализировать",
-    search_youtube: "Поиск на YouTube",
-    choose_folder: "Выбрать папку",
-    open_folder: "Открыть папку",
-    download_location: "Папка загрузки",
-    recent: "Последние загрузки",
-    no_history: "В этой сессии ещё не было загрузок.",
-    deps_missing: "Не хватает обязательных зависимостей.",
-    drag_hint: "Перетащите ссылку YouTube сюда",
-    clipboard_empty: "Буфер обмена пуст",
-
-    language: "Язык",
-    theme: "Тема",
-    theme_system: "Системная",
-    theme_dark: "Тёмная",
-    theme_light: "Светлая",
-    about: "О программе",
-    version: "Версия",
-    check_updates: "Проверить обновления",
-    update_available: "Доступно обновление",
-    install_update: "Установить обновление",
-    later: "Позже",
-    update_applied: "Обновление применено. Перезапустите Volvid.",
-    close: "Закрыть",
-    back: "Назад",
-    continue_label: "Продолжить",
-    download: "Скачать",
-    retry: "Повторить",
-    open: "Открыть",
-    clear: "Очистить",
-    error: "Ошибка",
-    warning: "Внимание",
-    success: "Готово",
-
-    deps_title: "Зависимости",
-    dep_required: "обязательно",
-    dep_optional: "опционально",
-    dep_missing: "не найден",
-    dep_available: "доступен",
-    dep_checking: "проверяю...",
-    dep_system: "система",
-    dep_managed: "в комплекте",
-    dep_install: "Установить",
-    dep_update: "Обновить",
-    dep_refresh: "Обновить статус",
-    cookies: "Cookies",
-    js_runtime: "JS runtime",
-    deps_settings_hint: "Откройте «Настройки» → «Зависимости», чтобы установить их.",
-    audio_original_hint: "Оставьте пустым, чтобы сохранить только оригинальное аудио.",
-    environment: "Окружение",
-    table_name: "Название",
-    table_duration: "Длительность",
-    downloading_count: "Загружается %d",
-    waiting_count: "В ожидании %d",
-    errors_count: "Ошибок %d",
-    clear_finished: "Очистить завершённые",
-    pause: "Пауза",
-    resume: "Продолжить",
-    pause_all: "Приостановить все",
-    resume_all: "Продолжить все",
-    paused: "На паузе",
-    cancelled: "Отменено",
-    remove: "Удалить",
-    queued_message: "Добавлено в очередь загрузок.",
-    remaining: "осталось",
-
-    playlist_title: "Плейлист",
-    videos_count: "%d видео",
-    selected_count: "Выбрано %d / %d",
-    filter_placeholder: "Фильтр по названию",
-    select_all: "Выбрать все",
-    select_none: "Снять выбор",
-    apply_range: "Применить диапазон",
-    range_placeholder: "1-5, 8, 12-",
-    loading_playlist: "Загружаю плейлист…",
-    playlist_empty: "Плейлист пуст или недоступен.",
-    video_title_fmt: "Видео %d",
-    mixed_title: "В ссылке есть видео и плейлист",
-    mixed_hint: "Что скачать?",
-    video_only: "Только это видео",
-    full_playlist: "Весь плейлист",
-    no_selection: "Выберите хотя бы одно видео.",
-
-    configure_title: "Параметры загрузки",
-    mode_video: "Видео",
-    mode_audio: "Аудио",
-    mode_thumbnail: "Превью",
-    quality_title: "Качество",
-    best_quality: "Лучшее качество (HD · 4K)",
-    economy_quality: "Экономичное качество (360p)",
-    format_title: "Формат видео",
-    audio_title: "Формат аудио",
-    thumbnail_title: "Превью",
-    thumbnail_hint: "Превью YouTube в максимальном доступном качестве.",
-    thumbnail_failed: "Не удалось загрузить превью.",
-    trim_title: "Фрагмент",
-    trim_playlist_unavailable: "Обрезка недоступна для плейлистов.",
-    trim_enable: "Скачать фрагмент",
-    from_url_timestamp: "С таймкода из URL",
-    custom_range: "Свой диапазон",
-    full_media: "Полностью",
-    trim_hint: "Пример: 1:00-2:30, 1:00- или 1:00+",
-    duration: "Длительность",
-    audio_tracks_title: "Аудиодорожки",
-    subtitles_title: "Субтитры",
-    no_audio_tracks: "Дополнительных аудиодорожек нет.",
-    no_subtitles: "Субтитры недоступны.",
-    auto_subtitle: "авто",
-    workers: "Параллельные потоки",
-    output_folder: "Папка назначения",
-    estimated_size: "Примерный размер",
-    download_button: "Скачать",
-    loading_quality: "Сканирую качества…",
-    loading_tracks: "Загружаю аудиодорожки и субтитры…",
-    quality_failed: "Не удалось просканировать качества; используются стандартные пресеты.",
-    advanced: "Аудио и субтитры",
-
-    video_original: "Оригинал MP4",
-    video_h264: "MP4 · H.264/AAC",
-    video_h265: "MP4 · H.265/AAC",
-    video_vp9: "WebM · VP9/Opus",
-    video_av1: "MKV · AV1/Opus",
-    video_mkv_copy: "MKV · копия потоков",
-
-    audio_mp3_320: "MP3 320k",
-    audio_mp3_192: "MP3 192k",
-    audio_m4a_best: "M4A/AAC Лучшее",
-    audio_opus_best: "Opus Лучшее",
-    audio_flac: "FLAC Lossless",
-
-    queue: "Очередь",
-    no_downloads: "В очереди нет загрузок.",
-    active: "Активно",
-    completed: "Завершено",
-    failed: "Ошибки",
-    queued: "В очереди",
-    speed: "Скорость",
-    elapsed: "Прошло",
-    cancel_download: "Отменить",
-    downloading: "Загрузка",
-    merging: "Объединение видео и аудио",
-    converting_audio: "Конвертация аудио",
-    thumbnail_proc: "Загрузка превью",
-    fallback_format: "Пробую запасной формат #%d: %s",
-    download_failed: "Загрузка не удалась",
-    history_title: "История",
-    session_history: "История сессии",
-    clear_history: "Очистить историю",
-    job_items: "%d видео",
-
-    search_title: "Поиск YouTube",
-    search_prompt: "Введите название видео или ключевые слова",
-    search_placeholder: "lofi hip hop mix",
-    searching: "Ищу на YouTube…",
-    no_results: "Ничего не найдено.",
-    query_empty: "Поисковый запрос не может быть пустым.",
-
-    invalid_url: "Не похоже на YouTube-ссылку",
-    empty_url: "Ссылка не может быть пустой",
-    unsupported_url: "Неподдерживаемая YouTube-ссылка",
-    missing_ytdlp: "Требуется yt-dlp.",
-    missing_ffmpeg: "Для этого режима требуется ffmpeg.",
-    invalid_fragment: "Неверный формат фрагмента.",
-    fragment_out_of_range: "Диапазон должен укладываться в длительность видео.",
-    fragment_duration_required: "Обрезка недоступна: длительность видео неизвестна.",
-    fragment_bounds: "Начало должно быть меньше конца.",
-    pick_folder_failed: "Не удалось выбрать папку загрузки",
-    open_folder_failed: "Не удалось открыть папку",
-    install_failed: "Не удалось установить зависимость",
-    update_failed: "Не удалось обновить приложение",
-    operation_cancelled: "Операция отменена",
-    config_save_failed: "Не удалось сохранить настройки",
-
-    settings_title: "Настройки",
-    playlist_workers: "Потоков для плейлиста",
-    logs: "Логи",
-    open_logs: "Открыть логи",
-    config_dir: "Каталог конфигурации",
-    data_dir: "Каталог данных",
-    downloads_dir: "Каталог загрузок",
-    current_version: "Текущая версия",
-    latest_version: "Последняя версия",
-    check_now: "Проверить сейчас",
-    updating: "Обновляю…",
-    history_save_failed: "Не удалось сохранить историю",
-    paused_count: "На паузе %d",
-    failed_items: "%d с ошибкой",
-    status_active: "активно",
-    status_not_found: "не найдено",
-    status_no_profile: "нет подходящего профиля",
-    select_language: "Язык",
-    appearance: "Внешний вид",
-    behavior: "Поведение",
-    paths: "Пути",
-
-    checking: "Проверяю…",
-    loading: "Загрузка…",
-    cancel: "Отмена",
-};
+    checking: "Checking…", "Проверяю…";
+    loading: "Loading…", "Загрузка…";
+    cancel: "Cancel", "Отмена";
+}
 
 pub fn strings(locale: Locale) -> &'static Strings {
     match locale {
@@ -641,18 +220,58 @@ pub fn strings(locale: Locale) -> &'static Strings {
     }
 }
 
+/// Translates the most common engine error messages that reach the UI.
+pub fn engine_error_text(message: &str, locale: Locale) -> String {
+    let s = strings(locale);
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("yt-dlp is required") {
+        s.missing_ytdlp.to_owned()
+    } else if lower.contains("ffmpeg is required") {
+        s.missing_ffmpeg.to_owned()
+    } else if lower.contains("operation cancelled") {
+        s.operation_cancelled.to_owned()
+    } else if lower.contains("playlist empty or unavailable")
+        || lower.contains("playlist is empty or unavailable")
+    {
+        s.playlist_empty.to_owned()
+    } else if lower.contains("trimming is unavailable") {
+        s.trim_playlist_unavailable.to_owned()
+    } else if lower.contains("search returned no results") {
+        s.no_results.to_owned()
+    } else if lower.contains("download target is required") {
+        s.empty_url.to_owned()
+    } else if lower.contains("no download formats configured") {
+        s.download_failed.to_owned()
+    } else {
+        message.to_owned()
+    }
+}
+
+const BYTES_PER_TB: f64 = 1_099_511_627_776.0;
+const BYTES_PER_GB: f64 = 1_073_741_824.0;
+const BYTES_PER_MB: f64 = 1_048_576.0;
+
 pub fn format_bytes(n: i64, locale: Locale) -> String {
     let ru = locale.is_ru();
     let n = n.max(0);
-    const TB: f64 = 1_099_511_627_776.0;
-    const GB: f64 = 1_073_741_824.0;
-    const MB: f64 = 1_048_576.0;
-    if n as f64 >= TB {
-        format!("{:.2} {}", n as f64 / TB, if ru { "ТБ" } else { "TB" })
-    } else if n as f64 >= GB {
-        format!("{:.2} {}", n as f64 / GB, if ru { "ГБ" } else { "GB" })
-    } else if n as f64 >= MB {
-        format!("{:.1} {}", n as f64 / MB, if ru { "МБ" } else { "MB" })
+    if n as f64 >= BYTES_PER_TB {
+        format!(
+            "{:.2} {}",
+            n as f64 / BYTES_PER_TB,
+            if ru { "ТБ" } else { "TB" }
+        )
+    } else if n as f64 >= BYTES_PER_GB {
+        format!(
+            "{:.2} {}",
+            n as f64 / BYTES_PER_GB,
+            if ru { "ГБ" } else { "GB" }
+        )
+    } else if n as f64 >= BYTES_PER_MB {
+        format!(
+            "{:.1} {}",
+            n as f64 / BYTES_PER_MB,
+            if ru { "МБ" } else { "MB" }
+        )
     } else if n >= 1024 {
         format!("{} {}", n / 1024, if ru { "КБ" } else { "KB" })
     } else {
@@ -720,7 +339,7 @@ pub fn quality_profile(choice: &QualityChoice, locale: Locale) -> OutputProfile 
     }
 }
 
-pub fn default_video_profile(locale: Locale) -> OutputProfile {
+fn default_video_profile(locale: Locale) -> OutputProfile {
     let s = strings(locale);
     OutputProfile {
         label: s.best_quality.to_owned(),
@@ -872,12 +491,40 @@ pub fn fragment_error_text(err: FragmentError, media_duration: i64, locale: Loca
 pub fn selection_error_text(err: SelectionError, locale: Locale) -> String {
     let s = strings(locale);
     match err {
-        SelectionError::Empty => s.no_selection.to_owned(),
+        SelectionError::Empty | SelectionError::None => s.no_selection.to_owned(),
         SelectionError::RangeOutOfBounds { start, end, max } => {
             format!("{start}-{end}: 1–{max}")
         }
         SelectionError::NumberOutOfBounds { value, max } => format!("{value}: 1–{max}"),
         SelectionError::InvalidToken { token } => format!("{token:?}"),
-        SelectionError::None => s.no_selection.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formats_binary_byte_units() {
+        assert_eq!(format_bytes(0, Locale::En), "0 B");
+        assert_eq!(format_bytes(1024, Locale::En), "1 KB");
+        assert_eq!(format_bytes(1024, Locale::Ru), "1 КБ");
+        assert_eq!(format_bytes(1_048_576, Locale::En), "1.0 MB");
+    }
+
+    #[test]
+    fn localizes_common_engine_errors() {
+        assert_eq!(
+            engine_error_text("yt-dlp is required", Locale::Ru),
+            strings(Locale::Ru).missing_ytdlp
+        );
+        assert_eq!(
+            engine_error_text("operation cancelled", Locale::En),
+            strings(Locale::En).operation_cancelled
+        );
+        assert_eq!(
+            engine_error_text("custom error", Locale::En),
+            "custom error"
+        );
     }
 }

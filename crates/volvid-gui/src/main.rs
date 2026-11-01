@@ -18,7 +18,12 @@ use crate::app::VolvidApp;
 fn main() -> eframe::Result {
     let paths = volvid_engine::AppPaths::detect();
     let _ = std::fs::create_dir_all(paths.logs_dir());
-    let file_appender = tracing_appender::rolling::daily(paths.logs_dir(), "volvid.log");
+    let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix("volvid.log")
+        .max_log_files(7)
+        .build(paths.logs_dir())
+        .unwrap_or_else(|_| tracing_appender::rolling::daily(paths.logs_dir(), "volvid.log"));
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("volvid=info,warn"));
@@ -35,15 +40,17 @@ fn main() -> eframe::Result {
             std::process::exit(1);
         }
     };
-    if let Some(url) = std::env::args().skip(1).find(|arg| !arg.starts_with('-')) {
-        controller.state.url = url;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(url) = args.iter().find(|arg| !arg.starts_with('-')) {
+        controller.state.url = url.clone();
         controller.analyze_url();
     }
-    if std::env::args().any(|arg| arg == "--settings") {
+    if args.iter().any(|arg| arg == "--settings") {
         controller.set_route(Route::Settings);
     }
-    if let Some(page) =
-        std::env::args().find_map(|arg| arg.strip_prefix("--page=").map(str::to_owned))
+    if let Some(page) = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix("--page=").map(str::to_owned))
     {
         controller.set_route(match page.as_str() {
             "queue" => Route::Downloads,

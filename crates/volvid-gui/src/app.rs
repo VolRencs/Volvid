@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use arboard::Clipboard;
 use eframe::egui;
@@ -13,6 +13,7 @@ use crate::pages;
 use crate::theme::{self, Palette};
 
 const SIDEBAR_WIDTH: f32 = 228.0;
+const TOAST_LIFETIME: Duration = Duration::from_secs(7);
 
 /// A queue preview texture plus the identity of the image it was built from.
 struct JobPreview {
@@ -59,8 +60,8 @@ impl VolvidApp {
             last_route: Route::Home,
             scroll_reset: true,
             dragging_url: false,
-            session_nonce: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            session_nonce: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
                 .map(|duration| duration.as_nanos() as u64)
                 .unwrap_or(1),
             startup_focus_cleared: false,
@@ -101,7 +102,7 @@ impl VolvidApp {
 
     /// Uploads queue tile previews once per fetched image and drops stale ones.
     fn update_job_previews(&mut self, ctx: &egui::Context) {
-        let active: Vec<u64> = self
+        let active: HashSet<u64> = self
             .controller
             .state
             .jobs
@@ -160,7 +161,7 @@ impl VolvidApp {
         theme::palette(self.current_theme)
     }
 
-    pub fn is_light(&self) -> bool {
+    fn is_light(&self) -> bool {
         self.current_theme == egui::Theme::Light
     }
 
@@ -410,7 +411,7 @@ impl VolvidApp {
         let Some(toast) = self.controller.state.toast.clone() else {
             return;
         };
-        if toast.created.elapsed() > Duration::from_secs(7) {
+        if toast.created.elapsed() > TOAST_LIFETIME {
             self.controller.state.toast = None;
             return;
         }
@@ -502,11 +503,6 @@ impl eframe::App for VolvidApp {
         if effective_theme != self.current_theme {
             self.current_theme = effective_theme;
             ctx.request_repaint();
-        }
-        if let Some(toast) = &self.controller.state.toast
-            && toast.created.elapsed() > Duration::from_secs(7)
-        {
-            self.controller.state.toast = None;
         }
         let state = &self.controller.state;
         let busy = state.deps_checking

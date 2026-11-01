@@ -183,23 +183,26 @@ pub fn format_label(format: &str, labels: &[String], index: usize) -> String {
         .unwrap_or_else(|| format.to_owned())
 }
 
-pub fn single_output_template(output_dir: &std::path::Path) -> String {
+fn output_template(output_dir: &std::path::Path, filename: String) -> String {
     let directory = output_dir.to_string_lossy().replace('%', "%%");
     std::path::PathBuf::from(directory)
-        .join("%(title)s [%(id)s].%(ext)s")
+        .join(filename)
         .to_string_lossy()
         .into_owned()
+}
+
+pub fn single_output_template(output_dir: &std::path::Path) -> String {
+    output_template(output_dir, "%(title)s [%(id)s].%(ext)s".to_owned())
 }
 
 pub fn playlist_output_template(
     output_dir: &std::path::Path,
     entry: &volvid_core::PlaylistEntry,
 ) -> String {
-    let directory = output_dir.to_string_lossy().replace('%', "%%");
-    std::path::PathBuf::from(directory)
-        .join(format!("{:03} - %(title)s [%(id)s].%(ext)s", entry.index))
-        .to_string_lossy()
-        .into_owned()
+    output_template(
+        output_dir,
+        format!("{:03} - %(title)s [%(id)s].%(ext)s", entry.index),
+    )
 }
 
 pub fn parse_json_string(raw: &str) -> String {

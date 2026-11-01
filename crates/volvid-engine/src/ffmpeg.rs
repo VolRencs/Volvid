@@ -8,7 +8,7 @@ use volvid_core::{CheckDepsResult, OutputProfile};
 
 use crate::deps::ffmpeg_bin;
 use crate::paths::AppPaths;
-use crate::process::{ProcessError, command_output_cancellable};
+use crate::process::{ProcessError, command_output};
 
 const ENCODERS_TIMEOUT: Duration = Duration::from_secs(3);
 const DEFAULT_HARDWARE_CRF: &str = "23";
@@ -27,7 +27,7 @@ pub async fn detect_video_encoders(
 ) -> HashSet<String> {
     let ffmpeg = ffmpeg_bin(deps, paths);
     let args = vec!["-hide_banner".to_owned(), "-encoders".to_owned()];
-    let output = command_output_cancellable(&ffmpeg, &args, Some(ENCODERS_TIMEOUT), cancel).await;
+    let output = command_output(&ffmpeg, &args, Some(ENCODERS_TIMEOUT), cancel).await;
     let Ok(output) = output else {
         return HashSet::new();
     };
@@ -57,12 +57,11 @@ pub async fn transcode_video(
     let ffmpeg = ffmpeg_bin(deps, paths);
     let final_path = transcode_final_path(input, &profile.video_container);
     let detected;
-    let encoders = match encoders {
-        Some(encoders) => encoders,
-        None => {
-            detected = detect_video_encoders(paths, deps, cancel.clone()).await;
-            &detected
-        }
+    let encoders = if let Some(encoders) = encoders {
+        encoders
+    } else {
+        detected = detect_video_encoders(paths, deps, cancel.clone()).await;
+        &detected
     };
     let commands = transcode_commands(profile, encoders);
 
@@ -74,21 +73,8 @@ pub async fn transcode_video(
         let temp = create_temp_path(input, "transcode", extension_for(profile, input))?;
         let mut args = fill_transcode_input(&command, input);
         args.push(temp.to_string_lossy().into_owned());
-        let output = command_output_cancellable(&ffmpeg, &args, None, cancel.clone()).await;
-        let output = match output {
-            Ok(output) => output,
-            Err(ProcessError::Cancelled) => {
-                let _ = std::fs::remove_file(&temp);
-                bail!("operation cancelled");
-            }
-            Err(err) => {
-                let _ = std::fs::remove_file(&temp);
-                return Err(err.into());
-            }
-        };
-        if !output.success {
-            last_error = output.stderr.trim().to_owned();
-            let _ = std::fs::remove_file(&temp);
+        if let Some(error) = run_ffmpeg_to_temp(&ffmpeg, &args, &temp, cancel.clone()).await? {
+            last_error = error;
             continue;
         }
         finalize_file(&temp, &final_path)?;
@@ -152,25 +138,39 @@ fn create_temp_path(input: &Path, kind: &str, extension: String) -> Result<PathB
 }
 
 fn finalize_file(temp: &Path, final_path: &Path) -> Result<()> {
-    let backup = final_path.with_extension("bak-volvid");
-    if final_path.exists() {
-        let _ = std::fs::remove_file(&backup);
-        std::fs::rename(final_path, &backup)
-            .with_context(|| format!("backup {}", final_path.display()))?;
-    }
-    if let Err(err) = std::fs::rename(temp, final_path) {
-        if backup.exists() {
-            let _ = std::fs::rename(&backup, final_path);
-        }
-        return Err(err).with_context(|| format!("replace {}", final_path.display()));
-    }
-    let _ = std::fs::remove_file(&backup);
+    crate::paths::replace_file(temp, final_path)
+        .with_context(|| format!("replace {}", final_path.display()))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(final_path, std::fs::Permissions::from_mode(0o644));
     }
     Ok(())
+}
+
+/// Runs ffmpeg into `temp`. Returns the stderr text on a non-zero exit and
+/// removes the temporary file on every failure path.
+async fn run_ffmpeg_to_temp(
+    ffmpeg: &str,
+    args: &[String],
+    temp: &Path,
+    cancel: Option<CancellationToken>,
+) -> Result<Option<String>> {
+    match command_output(ffmpeg, args, None, cancel).await {
+        Ok(output) if output.success => Ok(None),
+        Ok(output) => {
+            let _ = std::fs::remove_file(temp);
+            Ok(Some(output.stderr.trim().to_owned()))
+        }
+        Err(ProcessError::Cancelled) => {
+            let _ = std::fs::remove_file(temp);
+            bail!("operation cancelled");
+        }
+        Err(err) => {
+            let _ = std::fs::remove_file(temp);
+            Err(err.into())
+        }
+    }
 }
 
 fn transcode_commands(profile: &OutputProfile, encoders: &HashSet<String>) -> Vec<Vec<String>> {
@@ -443,20 +443,8 @@ pub async fn retag_audio_languages(
         }
     }
     args.push(temp.to_string_lossy().into_owned());
-    let output = match command_output_cancellable(&ffmpeg, &args, None, cancel.clone()).await {
-        Ok(output) => output,
-        Err(ProcessError::Cancelled) => {
-            let _ = std::fs::remove_file(&temp);
-            bail!("operation cancelled");
-        }
-        Err(err) => {
-            let _ = std::fs::remove_file(&temp);
-            return Err(err.into());
-        }
-    };
-    if !output.success {
-        let _ = std::fs::remove_file(&temp);
-        bail!("retag audio languages: {}", output.stderr.trim());
+    if let Some(error) = run_ffmpeg_to_temp(&ffmpeg, &args, &temp, cancel.clone()).await? {
+        bail!("retag audio languages: {error}");
     }
     if cancel.as_ref().is_some_and(|token| token.is_cancelled()) {
         let _ = std::fs::remove_file(&temp);
@@ -479,10 +467,12 @@ pub fn cleanup_subtitle_sidecars(video_path: &Path, langs: &[String]) {
     let mut names = Vec::new();
     if langs.iter().any(|lang| lang == "all") {
         if let Ok(entries) = std::fs::read_dir(dir) {
+            let prefix = format!("{}.", base.to_ascii_lowercase());
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                if (name.starts_with(&format!("{base}.")) && name.ends_with(".srt"))
-                    || (name.starts_with(&format!("{base}.")) && name.ends_with(".vtt"))
+                let lower = name.to_ascii_lowercase();
+                if lower.starts_with(&prefix)
+                    && (lower.ends_with(".srt") || lower.ends_with(".vtt"))
                 {
                     names.push(name);
                 }

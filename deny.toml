@@ -11,13 +11,26 @@ allow = [
     "MPL-2.0",
     "OFL-1.1",
     "GPL-3.0-or-later",
+    "BSL-1.0",
+    "Ubuntu-font-1.0",
+    "bzip2-1.0.6",
+    "CC0-1.0",
+    "MIT-0",
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+allow-wildcard-paths = true
 
 [advisories]
 version = 2
 yanked = "deny"
+ignore = [
+    # Pulled in transitively by accesskit/eframe; no safe upgrade yet.
+    "RUSTSEC-2026-0370", # zvariant
+    "RUSTSEC-2026-0371", # zbus_names
+    "RUSTSEC-2026-0372", # zvariant_derive
+]

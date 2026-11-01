@@ -111,81 +111,45 @@ pub fn detect_dependency(spec: &DepSpec, paths: &AppPaths) -> DependencyInfo {
 }
 
 pub async fn enrich_deps(
-    deps: CheckDepsResult,
+    mut deps: CheckDepsResult,
     cancel: Option<CancellationToken>,
 ) -> CheckDepsResult {
-    let mut result = deps;
-    let ytdlp_path = result.ytdlp.path.clone();
-    let ytdlp_args: Vec<String> = YTDLP_SPEC
-        .version_args
-        .iter()
-        .map(|arg| (*arg).to_owned())
-        .collect();
-    let ffmpeg_path = result.ffmpeg.path.clone();
-    let ffmpeg_args: Vec<String> = FFMPEG_SPEC
-        .version_args
-        .iter()
-        .map(|arg| (*arg).to_owned())
-        .collect();
-    let node_path = result.node.path.clone();
-    let node_args: Vec<String> = NODE_SPEC
-        .version_args
-        .iter()
-        .map(|arg| (*arg).to_owned())
-        .collect();
-    let ytdlp_ready =
-        result.ytdlp.available && result.ytdlp.version.is_empty() && !ytdlp_path.is_empty();
-    let ffmpeg_ready =
-        result.ffmpeg.available && result.ffmpeg.version.is_empty() && !ffmpeg_path.is_empty();
-    let node_ready =
-        result.node.available && result.node.version.is_empty() && !node_path.is_empty();
-    let ytdlp_cancel = cancel.clone();
-    let ffmpeg_cancel = cancel.clone();
-    let node_cancel = cancel;
-    let ytdlp_fut = async move {
-        if ytdlp_ready {
-            probe_version(&ytdlp_path, &ytdlp_args, ytdlp_cancel).await
-        } else {
-            String::new()
-        }
-    };
-    let ffmpeg_fut = async move {
-        if ffmpeg_ready {
-            probe_version(&ffmpeg_path, &ffmpeg_args, ffmpeg_cancel).await
-        } else {
-            String::new()
-        }
-    };
-    let node_fut = async move {
-        if node_ready {
-            probe_version(&node_path, &node_args, node_cancel).await
-        } else {
-            String::new()
-        }
-    };
-    let (ytdlp, ffmpeg, node) = tokio::join!(ytdlp_fut, ffmpeg_fut, node_fut);
-    if result.ytdlp.version.is_empty() {
-        result.ytdlp.version = ytdlp;
+    let (ytdlp, ffmpeg, node) = tokio::join!(
+        probe_dep(&deps.ytdlp, YTDLP_SPEC.version_args, cancel.clone()),
+        probe_dep(&deps.ffmpeg, FFMPEG_SPEC.version_args, cancel.clone()),
+        probe_dep(&deps.node, NODE_SPEC.version_args, cancel),
+    );
+    if deps.ytdlp.version.is_empty() {
+        deps.ytdlp.version = ytdlp;
     }
-    if result.ffmpeg.version.is_empty() {
-        result.ffmpeg.version = ffmpeg;
+    if deps.ffmpeg.version.is_empty() {
+        deps.ffmpeg.version = ffmpeg;
     }
-    if result.node.version.is_empty() {
-        result.node.version = node;
+    if deps.node.version.is_empty() {
+        deps.node.version = node;
     }
-    result
+    deps
 }
 
-pub async fn probe_version(
-    path: &str,
-    args: &[String],
+async fn probe_dep(
+    dep: &DependencyInfo,
+    args: &[&str],
     cancel: Option<CancellationToken>,
 ) -> String {
+    if dep.available && dep.version.is_empty() && !dep.path.trim().is_empty() {
+        probe_version(&dep.path, args, cancel).await
+    } else {
+        String::new()
+    }
+}
+
+pub async fn probe_version(path: &str, args: &[&str], cancel: Option<CancellationToken>) -> String {
     if path.trim().is_empty() {
         return String::new();
     }
+    let owned_args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
     for _ in 0..2 {
-        let output = command_output(path, args, Some(VERSION_TIMEOUT)).await;
+        let output = command_output(path, &owned_args, Some(VERSION_TIMEOUT), cancel.clone()).await;
         if let Ok(output) = output
             && let Some(line) = first_non_empty_line(&String::from_utf8_lossy(&output.stdout))
         {
@@ -198,8 +162,8 @@ pub async fn probe_version(
     String::new()
 }
 
-fn parse_version(line: &str, args: &[String]) -> String {
-    if args.first().is_some_and(|arg| arg == "-version")
+fn parse_version(line: &str, args: &[&str]) -> String {
+    if args.first().is_some_and(|arg| *arg == "-version")
         && let Some(rest) = line.to_ascii_lowercase().strip_prefix("ffmpeg version ")
     {
         return rest
@@ -221,7 +185,12 @@ pub fn first_non_empty_line(text: &str) -> Option<String> {
 }
 
 pub fn ytdlp_base_args(deps: &CheckDepsResult) -> Vec<String> {
-    let mut args = vec!["--ignore-config".to_owned(), "--no-warnings".to_owned()];
+    let mut args = vec![
+        "--ignore-config".to_owned(),
+        "--no-warnings".to_owned(),
+        "--encoding".to_owned(),
+        "utf-8".to_owned(),
+    ];
     args.extend(volvid_core::ffmpeg_args(deps));
     if deps.cookies.status == STATUS_ACTIVE {
         let mut cookie_arg = deps.cookies.browser.trim().to_owned();
@@ -271,7 +240,7 @@ mod tests {
         assert_eq!(
             parse_version(
                 "ffmpeg version 8.0.1 Copyright (c) 2000-2025",
-                &["-version".to_owned()]
+                &["-version"]
             ),
             "8.0.1"
         );
@@ -285,5 +254,7 @@ mod tests {
         deps.cookies.ytdlp_profile = "/home/u/.mozilla/firefox/x.default".to_owned();
         let args = ytdlp_base_args(&deps);
         assert!(args.iter().any(|arg| arg == "--cookies-from-browser"));
+        let encoding = args.iter().position(|arg| arg == "--encoding").unwrap();
+        assert_eq!(args.get(encoding + 1).map(String::as_str), Some("utf-8"));
     }
 }

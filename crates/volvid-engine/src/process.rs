@@ -2,11 +2,18 @@ use std::ffi::OsStr;
 use std::process::Stdio;
 use std::time::Duration;
 
+use anyhow::anyhow;
 use process_wrap::tokio::*;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use volvid_core::truncate_utf8;
+#[cfg(windows)]
+use windows::Win32::System::Threading::CREATE_NO_WINDOW;
+
+const STDOUT_LIMIT: usize = 64 << 20;
+const STDERR_LIMIT: usize = 8 << 10;
 
 #[derive(Clone, Debug)]
 pub struct ProcessLine {
@@ -18,9 +25,7 @@ pub struct ProcessLine {
 pub struct CaptureOutput {
     pub stdout: Vec<u8>,
     pub stderr: String,
-    pub truncated: bool,
     pub success: bool,
-    pub code: Option<i32>,
 }
 
 #[derive(Debug, Error)]
@@ -39,6 +44,73 @@ pub enum ProcessError {
     TimedOut,
 }
 
+impl ProcessError {
+    pub fn into_anyhow(self) -> anyhow::Error {
+        match self {
+            Self::Cancelled => anyhow!("operation cancelled"),
+            Self::TimedOut => anyhow!("operation timed out"),
+            other => other.into(),
+        }
+    }
+}
+
+/// Hides the console window that Windows otherwise creates for console tools.
+pub(crate) trait HideConsole {
+    fn hide_console(&mut self) -> &mut Self;
+}
+
+impl HideConsole for std::process::Command {
+    fn hide_console(&mut self) -> &mut Self {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            self.creation_flags(CREATE_NO_WINDOW.0);
+        }
+        self
+    }
+}
+
+impl HideConsole for CommandWrap {
+    fn hide_console(&mut self) -> &mut Self {
+        #[cfg(windows)]
+        self.wrap(process_wrap::tokio::CreationFlags(CREATE_NO_WINDOW));
+        self
+    }
+}
+
+/// Creates a regular command with the shared Windows console policy applied.
+#[allow(clippy::disallowed_methods)]
+pub(crate) fn std_command(program: impl AsRef<OsStr>) -> std::process::Command {
+    let mut command = std::process::Command::new(program);
+    command.hide_console();
+    command
+}
+
+#[allow(clippy::disallowed_methods)]
+fn command_wrap(program: impl AsRef<OsStr>, args: &[String]) -> CommandWrap {
+    let mut command = CommandWrap::with_new(program, |cmd| {
+        cmd.args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            // Python tools such as yt-dlp must use UTF-8 even on a Windows
+            // console code page; native tools simply ignore these variables.
+            .env("PYTHONUTF8", "1")
+            .env("PYTHONIOENCODING", "utf-8");
+    });
+    command.hide_console();
+    #[cfg(unix)]
+    command.wrap(ProcessGroup::leader());
+    #[cfg(windows)]
+    {
+        // JobObject + KillOnDrop also terminates the whole child tree when the
+        // download is cancelled or the application exits.
+        command.wrap(JobObject);
+    }
+    command.wrap(KillOnDrop);
+    command
+}
+
 pub async fn run_lines<F>(
     program: impl AsRef<OsStr>,
     args: &[String],
@@ -50,17 +122,7 @@ where
     F: FnMut(ProcessLine),
 {
     let program_display = program.as_ref().to_string_lossy().into_owned();
-    let mut command = CommandWrap::with_new(program, |cmd| {
-        cmd.args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-    });
-    #[cfg(unix)]
-    command.wrap(ProcessGroup::leader());
-    #[cfg(windows)]
-    command.wrap(JobObject);
-    command.wrap(KillOnDrop);
+    let mut command = command_wrap(program, args);
 
     let mut child = command.spawn().map_err(|source| ProcessError::Spawn {
         program: program_display,
@@ -134,7 +196,7 @@ where
     loop {
         buffer.clear();
         match reader.read_until(b'\n', &mut buffer).await {
-            Ok(0) => break,
+            Ok(0) | Err(_) => break,
             Ok(_) => {
                 while buffer
                     .last()
@@ -147,93 +209,34 @@ where
                     break;
                 }
             }
-            Err(_) => break,
         }
     }
-}
-
-pub async fn run_capture(
-    program: impl AsRef<OsStr>,
-    args: &[String],
-    timeout: Option<Duration>,
-    cancel: Option<CancellationToken>,
-    stdout_limit: usize,
-    stderr_limit: usize,
-) -> Result<CaptureOutput, ProcessError> {
-    let mut output = CaptureOutput::default();
-    let mut truncated = false;
-    let status = run_lines(program, args, timeout, cancel, |line| {
-        if line.stdout {
-            if output.stdout.len() < stdout_limit {
-                let room = stdout_limit - output.stdout.len();
-                let bytes = line.text.as_bytes();
-                if bytes.len() > room {
-                    output.stdout.extend_from_slice(&bytes[..room]);
-                    truncated = true;
-                } else {
-                    output.stdout.extend_from_slice(bytes);
-                }
-                output.stdout.push(b'\n');
-            } else {
-                truncated = true;
-            }
-        } else if output.stderr.len() < stderr_limit {
-            let room = stderr_limit - output.stderr.len();
-            let text = truncate_utf8(&line.text, room);
-            truncated |= text.len() < line.text.len();
-            output.stderr.push_str(text);
-            output.stderr.push('\n');
-        }
-    })
-    .await?;
-    output.truncated = truncated;
-    output.success = status.success();
-    output.code = status.code();
-    if !status.success() {
-        // The caller decides how to interpret a non-zero exit; stderr is kept.
-    }
-    Ok(output)
-}
-
-fn truncate_utf8(text: &str, max_bytes: usize) -> &str {
-    if text.len() <= max_bytes {
-        return text;
-    }
-    let mut end = max_bytes;
-    while end > 0 && !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    &text[..end]
 }
 
 pub async fn command_output(
     program: impl AsRef<OsStr>,
     args: &[String],
     timeout: Option<Duration>,
-) -> Result<CaptureOutput, ProcessError> {
-    run_capture(program, args, timeout, None, 64 << 20, 8 << 10).await
-}
-
-pub async fn command_output_cancellable(
-    program: impl AsRef<OsStr>,
-    args: &[String],
-    timeout: Option<Duration>,
     cancel: Option<CancellationToken>,
 ) -> Result<CaptureOutput, ProcessError> {
-    run_capture(program, args, timeout, cancel, 64 << 20, 8 << 10).await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::truncate_utf8;
-
-    #[test]
-    fn truncates_utf8_on_char_boundary() {
-        let text = "ошибка";
-        for limit in 0..=text.len() {
-            let truncated = truncate_utf8(text, limit);
-            assert!(truncated.len() <= limit);
-            assert!(text.starts_with(truncated));
+    let mut output = CaptureOutput::default();
+    let status = run_lines(program, args, timeout, cancel, |line| {
+        if line.stdout {
+            if output.stdout.len() < STDOUT_LIMIT {
+                let room = STDOUT_LIMIT - output.stdout.len();
+                let bytes = line.text.as_bytes();
+                output
+                    .stdout
+                    .extend_from_slice(&bytes[..bytes.len().min(room)]);
+                output.stdout.push(b'\n');
+            }
+        } else if output.stderr.len() < STDERR_LIMIT {
+            let room = STDERR_LIMIT - output.stderr.len();
+            output.stderr.push_str(truncate_utf8(&line.text, room));
+            output.stderr.push('\n');
         }
-    }
+    })
+    .await?;
+    output.success = status.success();
+    Ok(output)
 }

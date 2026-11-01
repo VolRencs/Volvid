@@ -6,14 +6,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+publish = false
 build = "build.rs"
 
 [[bin]]
 name = "Volvid"
 path = "src/main.rs"
-
-[features]
-default = []
 
 [dependencies]
 volvid-app = { workspace = true }
@@ -38,3 +36,6 @@ winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "
 
 [build-dependencies]
 winresource = "0.1.34"
+
+[lints]
+workspace = true

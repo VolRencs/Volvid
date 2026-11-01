@@ -11,7 +11,7 @@ use volvid_core::{
 };
 
 use crate::deps::{ytdlp_bin, ytdlp_command_args};
-use crate::process::{ProcessError, run_capture, run_lines};
+use crate::process::{ProcessError, command_output, run_lines};
 
 const QUALITY_SCAN_TIMEOUT: Duration = Duration::from_secs(90);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(90);
@@ -34,15 +34,7 @@ pub async fn probe_media(
             url.to_owned(),
         ],
     );
-    let output = run_capture(
-        bin,
-        &args,
-        Some(QUALITY_SCAN_TIMEOUT),
-        cancel,
-        64 << 20,
-        8 << 10,
-    )
-    .await?;
+    let output = command_output(bin, &args, Some(QUALITY_SCAN_TIMEOUT), cancel).await?;
     if !output.success && output.stdout.is_empty() {
         bail!("yt-dlp probe failed: {}", output.stderr.trim());
     }
@@ -93,13 +85,14 @@ pub fn probe_from_value(payload: &Value) -> Result<MediaProbe> {
         .cloned()
         .unwrap_or_default();
 
+    let audio_tracks = audio_tracks(&formats);
     Ok(MediaProbe {
         duration,
         title,
         thumbnail,
-        formats: formats.clone(),
+        formats,
         subtitles: subtitle_tracks(&manual, &automatic),
-        audio_tracks: audio_tracks(&formats),
+        audio_tracks,
     })
 }
 
@@ -147,7 +140,7 @@ pub async fn fetch_playlist(
         }
     })
     .await
-    .map_err(map_process_error)?;
+    .map_err(ProcessError::into_anyhow)?;
     if !status.success() && entries.is_empty() {
         bail!(
             "{}",
@@ -203,16 +196,16 @@ pub async fn search_youtube(
         }
     })
     .await
-    .map_err(map_process_error)?;
+    .map_err(ProcessError::into_anyhow)?;
     if results.is_empty() {
-        bail!("search returned no results (exit: {})", status);
+        bail!("search returned no results (exit: {status})");
     }
     Ok(results)
 }
 
 /// Builds quality choices from an already fetched probe (no second yt-dlp run).
 pub fn quality_choices_from_probe(probe: &MediaProbe) -> Result<Vec<QualityChoice>> {
-    Ok(build_choices(vec![video_quality_info(probe)?]))
+    Ok(build_choices(&[video_quality_info(probe)?]))
 }
 
 pub async fn resolve_quality_choices(
@@ -267,7 +260,7 @@ pub async fn resolve_quality_choices(
         }
         bail!("quality scan: no formats found");
     }
-    Ok(build_choices(videos))
+    Ok(build_choices(&videos))
 }
 
 #[derive(Clone, Debug, Default)]
@@ -324,10 +317,10 @@ fn video_quality_info(probe: &MediaProbe) -> Result<VideoQualityInfo> {
     })
 }
 
-fn build_choices(videos: Vec<VideoQualityInfo>) -> Vec<QualityChoice> {
+fn build_choices(videos: &[VideoQualityInfo]) -> Vec<QualityChoice> {
     let mut counts = HashMap::<i64, usize>::new();
     let mut heights = Vec::<i64>::new();
-    for video in &videos {
+    for video in videos {
         for height in &video.heights {
             *counts.entry(*height).or_default() += 1;
             if !heights.contains(height) {
@@ -516,14 +509,6 @@ fn is_error_line(line: &str) -> bool {
     lower.starts_with("error:") || lower.starts_with("error ")
 }
 
-pub fn map_process_error(err: ProcessError) -> anyhow::Error {
-    match err {
-        ProcessError::Cancelled => anyhow!("operation cancelled"),
-        ProcessError::TimedOut => anyhow!("operation timed out"),
-        other => anyhow!(other),
-    }
-}
-
 pub fn postprocess_label(name: &str, locale: volvid_core::Locale) -> String {
     let name = name.to_ascii_lowercase();
     let strings = volvid_i18n::strings(locale);
@@ -554,7 +539,7 @@ mod tests {
             heights: vec![1080, 720],
             size_by_height: HashMap::from([(1080, 100), (720, 50)]),
         };
-        let choices = build_choices(vec![video]);
+        let choices = build_choices(&[video]);
         assert_eq!(choices[0].height, 1080);
         assert_eq!(choices[0].size_bytes, 100);
         assert_eq!(choices[1].size_bytes, 50);

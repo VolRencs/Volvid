@@ -8,7 +8,6 @@ pub const ENV_CONFIG_DIR: &str = "VOLVID_CONFIG_DIR";
 pub const ENV_DATA_DIR: &str = "VOLVID_DATA_DIR";
 pub const ENV_DEPS_DIR: &str = "VOLVID_DEPS_DIR";
 pub const ENV_DOWNLOADS_DIR: &str = "VOLVID_DOWNLOADS_DIR";
-pub const DOWNLOADS_FILE: &str = ".volvid_downloads_dir";
 
 #[derive(Clone, Debug)]
 pub struct AppPaths {
@@ -44,7 +43,6 @@ impl AppPaths {
         });
         let deps_dir = env_path(ENV_DEPS_DIR).unwrap_or_else(|| data_dir.join("deps"));
         let downloads_dir = env_path(ENV_DOWNLOADS_DIR)
-            .or_else(|| load_saved_downloads_dir(&config_dir))
             .or_else(|| UserDirs::new().and_then(|dirs| dirs.download_dir().map(Path::to_path_buf)))
             .or_else(|| base.as_ref().map(|dirs| dirs.home_dir().join("Downloads")))
             .unwrap_or_else(|| data_dir.join("downloads"));
@@ -101,26 +99,12 @@ fn env_path(key: &str) -> Option<PathBuf> {
         .map(clean_abs)
 }
 
-fn load_saved_downloads_dir(config_dir: &Path) -> Option<PathBuf> {
-    let content = std::fs::read_to_string(config_dir.join(DOWNLOADS_FILE)).ok()?;
-    let path = clean_abs(PathBuf::from(content.trim()));
-    path.is_dir().then_some(path)
-}
-
 pub fn clean_abs(path: impl Into<PathBuf>) -> PathBuf {
     let path = path.into();
     if path.as_os_str().is_empty() {
         return path;
     }
-    std::path::absolute(&path)
-        .map(|p| clean_path(&p))
-        .unwrap_or(path)
-}
-
-fn clean_path(path: &Path) -> PathBuf {
-    // `std::path::absolute` is enough for the app's purposes; keeping this
-    // helper makes the intent explicit and avoids platform-specific cleaning.
-    path.to_path_buf()
+    std::path::absolute(&path).unwrap_or(path)
 }
 
 pub fn binary_name(base: &str) -> String {
@@ -128,6 +112,31 @@ pub fn binary_name(base: &str) -> String {
         format!("{base}.exe")
     } else {
         base.to_owned()
+    }
+}
+
+/// Replaces `destination` with `source`, keeping a temporary backup for
+/// rollback if the final rename fails.
+pub fn replace_file(source: &Path, destination: &Path) -> std::io::Result<()> {
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let backup = destination.with_extension("bak-volvid");
+    if destination.exists() {
+        let _ = std::fs::remove_file(&backup);
+        std::fs::rename(destination, &backup)?;
+    }
+    match std::fs::rename(source, destination) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&backup);
+            Ok(())
+        }
+        Err(err) => {
+            if backup.exists() {
+                let _ = std::fs::rename(&backup, destination);
+            }
+            Err(err)
+        }
     }
 }
 
@@ -156,5 +165,20 @@ mod tests {
         } else {
             assert_eq!(name, "yt-dlp");
         }
+    }
+
+    #[test]
+    fn replaces_file_and_removes_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let destination = dir.path().join("destination");
+        std::fs::write(&source, b"new").unwrap();
+        std::fs::write(&destination, b"old").unwrap();
+
+        replace_file(&source, &destination).unwrap();
+
+        assert_eq!(std::fs::read(&destination).unwrap(), b"new");
+        assert!(!source.exists());
+        assert!(!destination.with_extension("bak-volvid").exists());
     }
 }

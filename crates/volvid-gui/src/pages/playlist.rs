@@ -152,10 +152,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
         }
         if let Some(error) = app.controller.state.range_error.clone() {
             ui.add_space(4.0);
-            ui.add(
-                egui::Label::new(RichText::new(error).color(p.danger).size(theme::FONT_SMALL))
-                    .wrap(),
-            );
+            theme::error_text(ui, p, error);
         }
         ui.add_space(10.0);
         ui.separator();

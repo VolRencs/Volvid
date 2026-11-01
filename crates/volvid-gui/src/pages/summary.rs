@@ -116,7 +116,7 @@ pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
                         DownloadMode::Audio => s.mode_audio,
                         DownloadMode::Thumbnail => s.mode_thumbnail,
                     };
-                    theme::badge(ui, p, mode, p.accent);
+                    theme::badge(ui, mode, p.accent);
                     if item.items > 1 {
                         let mut details = vec![s.job_items.replace("%d", &item.items.to_string())];
                         if item.failed > 0 {

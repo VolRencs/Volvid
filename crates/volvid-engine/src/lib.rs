@@ -15,12 +15,13 @@ pub mod thumbnail;
 pub mod update;
 pub mod ytdlp;
 
+use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
-use futures_util::StreamExt;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use volvid_core::{
@@ -30,9 +31,9 @@ use volvid_core::{
 
 pub use config::{Config, ConfigError, Theme};
 pub use paths::AppPaths;
-pub use thumbnail::{PreviewImage, fetch_preview, youtube_preview_url};
+use thumbnail::fetch_preview;
+pub use thumbnail::{PreviewImage, youtube_preview_url};
 
-use crate::config::load_config;
 use crate::deps::{detect_deps, enrich_deps};
 use crate::download::run_download;
 use crate::ffmpeg::detect_video_encoders;
@@ -52,22 +53,19 @@ pub struct Engine {
     pub paths: AppPaths,
     config: RwLock<Config>,
     pub client: reqwest::Client,
-    downloads_dir: RwLock<PathBuf>,
     deps_cache: RwLock<Option<(Instant, CheckDepsResult)>>,
     runtime_deps_cache: RwLock<Option<(Instant, CheckDepsResult)>>,
     runtime_deps_lock: Mutex<()>,
-    probe_cache: Mutex<std::collections::HashMap<String, (Instant, MediaProbe)>>,
-    thumbnail_cache:
-        Mutex<std::collections::HashMap<String, (Instant, Arc<thumbnail::PreviewImage>)>>,
-    ffmpeg_encoder_cache: Mutex<Option<Arc<std::collections::HashSet<String>>>>,
+    probe_cache: Mutex<HashMap<String, (Instant, MediaProbe)>>,
+    thumbnail_cache: Mutex<HashMap<String, (Instant, Arc<thumbnail::PreviewImage>)>>,
+    ffmpeg_encoder_cache: Mutex<Option<Arc<HashSet<String>>>>,
 }
 
 impl Engine {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let paths = AppPaths::detect();
         crate::update::cleanup_stale_update_files();
-        let config = load_config(&paths);
-        let downloads_dir = config.downloads_dir(&paths);
+        let config = Config::load(&paths);
         let client = reqwest::Client::builder()
             .user_agent(format!("Volvid/{}", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(30))
@@ -75,19 +73,18 @@ impl Engine {
             .redirect(reqwest::redirect::Policy::limited(10))
             .https_only(true)
             .build()
-            .expect("failed to create HTTP client");
-        Self {
+            .map_err(|err| anyhow::anyhow!("failed to create HTTP client: {err}"))?;
+        Ok(Self {
             paths,
             config: RwLock::new(config),
             client,
-            downloads_dir: RwLock::new(downloads_dir),
             deps_cache: RwLock::new(None),
             runtime_deps_cache: RwLock::new(None),
             runtime_deps_lock: Mutex::new(()),
-            probe_cache: Mutex::new(std::collections::HashMap::new()),
-            thumbnail_cache: Mutex::new(std::collections::HashMap::new()),
+            probe_cache: Mutex::new(HashMap::new()),
+            thumbnail_cache: Mutex::new(HashMap::new()),
             ffmpeg_encoder_cache: Mutex::new(None),
-        }
+        })
     }
 
     pub fn config(&self) -> Config {
@@ -106,26 +103,10 @@ impl Engine {
         if let Ok(mut current) = self.config.write() {
             *current = config.clone();
         }
-        if let Some(dir) = &config.downloads_dir
-            && let Ok(mut current) = self.downloads_dir.write()
-        {
-            *current = paths::clean_abs(dir.clone());
-        }
         Ok(())
     }
 
-    pub fn downloads_dir(&self) -> PathBuf {
-        self.downloads_dir
-            .read()
-            .map(|dir| dir.clone())
-            .unwrap_or_else(|_| self.paths.downloads_dir.clone())
-    }
-
-    pub fn detect_deps(&self) -> CheckDepsResult {
-        detect_deps(&self.paths)
-    }
-
-    pub fn cached_deps(&self) -> Option<CheckDepsResult> {
+    fn cached_deps(&self) -> Option<CheckDepsResult> {
         self.deps_cache
             .read()
             .ok()
@@ -217,16 +198,13 @@ impl Engine {
         let deps = self.runtime_deps().await;
         let probe = probe_media(&deps, url, cancel).await?;
         let mut cache = self.probe_cache.lock().await;
-        cache.retain(|_, (at, _)| at.elapsed() < PROBE_CACHE_TTL);
-        if cache.len() >= MAX_PROBE_CACHE
-            && let Some(oldest) = cache
-                .iter()
-                .min_by_key(|(_, (at, _))| *at)
-                .map(|(key, _)| key.clone())
-        {
-            cache.remove(&oldest);
-        }
-        cache.insert(key, (Instant::now(), probe.clone()));
+        insert_cached(
+            &mut cache,
+            key,
+            probe.clone(),
+            PROBE_CACHE_TTL,
+            MAX_PROBE_CACHE,
+        );
         Ok(probe)
     }
 
@@ -261,21 +239,7 @@ impl Engine {
         {
             bail!("response is too large");
         }
-        let mut bytes = Vec::with_capacity(
-            response
-                .content_length()
-                .unwrap_or(64 * 1024)
-                .min(MAX_BYTES as u64) as usize,
-        );
-        let mut stream = response.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            if bytes.len() + chunk.len() > MAX_BYTES {
-                bail!("response is too large");
-            }
-            bytes.extend_from_slice(&chunk);
-        }
-        Ok(bytes)
+        crate::http::read_body(response, MAX_BYTES, None, "response is too large").await
     }
 
     pub async fn fetch_thumbnail(
@@ -295,16 +259,13 @@ impl Engine {
         }
         let image = fetch_preview(&self.client, url, target_width, cancel.as_ref()).await?;
         let mut cache = self.thumbnail_cache.lock().await;
-        cache.retain(|_, (at, _)| at.elapsed() < THUMBNAIL_CACHE_TTL);
-        if cache.len() >= MAX_THUMBNAIL_CACHE
-            && let Some(oldest) = cache
-                .iter()
-                .min_by_key(|(_, (at, _))| *at)
-                .map(|(key, _)| key.clone())
-        {
-            cache.remove(&oldest);
-        }
-        cache.insert(key, (Instant::now(), image.clone()));
+        insert_cached(
+            &mut cache,
+            key,
+            image.clone(),
+            THUMBNAIL_CACHE_TTL,
+            MAX_THUMBNAIL_CACHE,
+        );
         Ok(image)
     }
 
@@ -354,10 +315,7 @@ impl Engine {
         .await
     }
 
-    pub async fn video_encoders(
-        &self,
-        deps: &CheckDepsResult,
-    ) -> Arc<std::collections::HashSet<String>> {
+    async fn video_encoders(&self, deps: &CheckDepsResult) -> Arc<HashSet<String>> {
         let mut cache = self.ffmpeg_encoder_cache.lock().await;
         if let Some(encoders) = cache.as_ref() {
             return encoders.clone();
@@ -420,10 +378,23 @@ impl Engine {
     }
 }
 
-impl Default for Engine {
-    fn default() -> Self {
-        Self::new()
+fn insert_cached<K: Eq + Hash + Clone, V>(
+    cache: &mut HashMap<K, (Instant, V)>,
+    key: K,
+    value: V,
+    ttl: Duration,
+    max_entries: usize,
+) {
+    cache.retain(|_, (at, _)| at.elapsed() < ttl);
+    if cache.len() >= max_entries
+        && let Some(oldest) = cache
+            .iter()
+            .min_by_key(|(_, (at, _))| *at)
+            .map(|(key, _)| key.clone())
+    {
+        cache.remove(&oldest);
     }
+    cache.insert(key, (Instant::now(), value));
 }
 
 fn probe_cache_key(url: &str) -> String {

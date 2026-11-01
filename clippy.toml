@@ -1,0 +1,5 @@
+disallowed-methods = [
+    { path = "std::process::Command::new", reason = "use volvid_engine::process::std_command" },
+    { path = "tokio::process::Command::new", reason = "use volvid_engine::process::run_lines" },
+    { path = "process_wrap::tokio::CommandWrap::with_new", reason = "use volvid_engine::process::run_lines" },
+]

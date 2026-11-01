@@ -1,4 +1,4 @@
-use std::fmt;
+use thiserror::Error;
 
 /// Formats seconds as `mm:ss` or `hh:mm:ss`.
 pub fn format_clock(total_seconds: i64) -> String {
@@ -112,30 +112,21 @@ pub fn parse_flexible_timestamp(raw: &str) -> Option<i64> {
     consumed.then_some(total)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum ClockError {
+    #[error("empty timestamp")]
     Empty,
+    #[error("timestamp must be mm:ss or hh:mm:ss")]
     Format,
+    #[error("invalid timestamp token")]
     Token,
+    #[error("seconds must be < 60")]
     Seconds,
+    #[error("minutes and seconds must be < 60")]
     Minutes,
+    #[error("timestamp is too large")]
     TooLarge,
 }
-
-impl fmt::Display for ClockError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Empty => "empty timestamp",
-            Self::Format => "timestamp must be mm:ss or hh:mm:ss",
-            Self::Token => "invalid timestamp token",
-            Self::Seconds => "seconds must be < 60",
-            Self::Minutes => "minutes and seconds must be < 60",
-            Self::TooLarge => "timestamp is too large",
-        })
-    }
-}
-
-impl std::error::Error for ClockError {}
 
 #[cfg(test)]
 mod tests {

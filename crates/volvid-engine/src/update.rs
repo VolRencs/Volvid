@@ -21,11 +21,7 @@ pub async fn check_update(client: &reqwest::Client) -> Result<Option<UpdateInfo>
     if latest.is_empty() || !version_gt(&latest, current) {
         return Ok(None);
     }
-    let asset_name = if cfg!(windows) {
-        "Volvid.exe"
-    } else {
-        "Volvid"
-    };
+    let asset_name = update_asset_name();
     let Some(assets) = data.get("assets").and_then(serde_json::Value::as_array) else {
         return Ok(None);
     };
@@ -46,6 +42,14 @@ pub async fn check_update(client: &reqwest::Client) -> Result<Option<UpdateInfo>
         }));
     }
     Ok(None)
+}
+
+fn update_asset_name() -> &'static str {
+    if cfg!(windows) {
+        "Volvid.exe"
+    } else {
+        "Volvid"
+    }
 }
 
 fn valid_update_url(raw: &str, asset_name: &str) -> bool {
@@ -85,12 +89,7 @@ pub async fn apply_update(
     if info.download_url.trim().is_empty() {
         bail!("update info is empty");
     }
-    let asset_name = if cfg!(windows) {
-        "Volvid.exe"
-    } else {
-        "Volvid"
-    };
-    if !valid_update_url(&info.download_url, asset_name) {
+    if !valid_update_url(&info.download_url, update_asset_name()) {
         bail!("invalid update URL");
     }
     let exe = std::env::current_exe().context("locate executable")?;
@@ -106,11 +105,7 @@ pub async fn apply_update(
     .await;
     if let Err(err) = result {
         let _ = std::fs::remove_file(&tmp);
-        let _ = progress.send(FileProgress {
-            done: true,
-            err: Some(err.to_string()),
-            ..FileProgress::default()
-        });
+        let _ = progress.send(FileProgress::failed(err.to_string()));
         return Err(err);
     }
     #[cfg(unix)]
@@ -120,11 +115,7 @@ pub async fn apply_update(
     }
     if let Err(err) = self_replace::self_replace(&tmp) {
         let _ = std::fs::remove_file(&tmp);
-        let _ = progress.send(FileProgress {
-            done: true,
-            err: Some(err.to_string()),
-            ..FileProgress::default()
-        });
+        let _ = progress.send(FileProgress::failed(err.to_string()));
         bail!("replace executable: {err}");
     }
     Ok(())

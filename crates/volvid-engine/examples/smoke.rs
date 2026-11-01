@@ -6,7 +6,7 @@ async fn main() -> anyhow::Result<()> {
     let url = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "https://www.youtube.com/watch?v=dQw4w9WgXcQ".to_owned());
-    let engine = Engine::new();
+    let engine = Engine::new()?;
     let deps = engine.runtime_deps().await;
     println!(
         "yt-dlp: {} {:?}\nffmpeg: {} {:?}\nnode: {} {:?}\ncookies: {:?}",

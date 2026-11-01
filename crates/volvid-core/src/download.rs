@@ -11,7 +11,7 @@ pub enum DlEventType {
     Fallback,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct DlUpdate {
     pub event_type: DlEventType,
     pub slot: usize,
@@ -25,23 +25,6 @@ pub struct DlUpdate {
     pub ok: bool,
 }
 
-impl Default for DlUpdate {
-    fn default() -> Self {
-        Self {
-            event_type: DlEventType::Start,
-            slot: 0,
-            text: String::new(),
-            err_text: String::new(),
-            pct: 0.0,
-            done_b: 0,
-            total_b: 0,
-            speed: String::new(),
-            speed_bps: 0,
-            ok: false,
-        }
-    }
-}
-
 /// Progress for managed-binary / update downloads.
 #[derive(Clone, Debug, Default)]
 pub struct FileProgress {
@@ -51,4 +34,14 @@ pub struct FileProgress {
     pub speed: String,
     pub done: bool,
     pub err: Option<String>,
+}
+
+impl FileProgress {
+    pub fn failed(message: impl Into<String>) -> Self {
+        Self {
+            done: true,
+            err: Some(message.into()),
+            ..Self::default()
+        }
+    }
 }

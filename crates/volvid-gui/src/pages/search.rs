@@ -46,10 +46,7 @@ pub fn show(app: &mut VolvidApp, ctx: &egui::Context) {
             });
             if let Some(error) = &error {
                 ui.add_space(4.0);
-                ui.add(
-                    egui::Label::new(RichText::new(error).color(p.danger).size(theme::FONT_SMALL))
-                        .wrap(),
-                );
+                theme::error_text(ui, p, error);
             }
             if loading {
                 ui.add_space(4.0);

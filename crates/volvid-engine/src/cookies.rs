@@ -12,123 +12,14 @@ struct Candidate {
 
 /// Detects the newest usable browser cookie database. This intentionally
 /// mirrors the old Go heuristic: use the most recently touched profile.
-// Windows detection uses APPDATA/LOCALAPPDATA instead of the home directory,
-// which leaves `home` unused there.
-#[cfg_attr(windows, allow(unused_variables))]
 pub fn detect_browser_cookies(home: &Path) -> BrowserCookiesInfo {
     let mut candidates = Vec::new();
     let mut found_root = false;
-
-    #[cfg(unix)]
-    {
-        let config_home = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home.join(".config"));
-        let specs = [
-            (
-                "firefox",
-                vec![
-                    config_home.join("mozilla/firefox"),
-                    home.join(".mozilla/firefox"),
-                    home.join(".librewolf"),
-                    home.join(".var/app/org.mozilla.firefox/config/mozilla/firefox"),
-                    home.join(".var/app/org.mozilla.firefox/.mozilla/firefox"),
-                    home.join("snap/firefox/common/.mozilla/firefox"),
-                ],
-            ),
-            (
-                "chrome",
-                vec![
-                    home.join(".config/google-chrome"),
-                    config_home.join("google-chrome"),
-                    config_home.join("google-chrome-beta"),
-                    config_home.join("google-chrome-unstable"),
-                    home.join(".var/app/com.google.Chrome/config/google-chrome"),
-                ],
-            ),
-            (
-                "chromium",
-                vec![
-                    config_home.join("chromium"),
-                    home.join(".var/app/org.chromium.Chromium/config/chromium"),
-                    home.join("snap/chromium/common/chromium"),
-                ],
-            ),
-            (
-                "brave",
-                vec![
-                    config_home.join("BraveSoftware/Brave-Browser"),
-                    config_home.join("BraveSoftware/Brave-Origin"),
-                    home.join(".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser"),
-                    home.join(".var/app/com.brave.Browser/config/BraveSoftware/Brave-Origin"),
-                ],
-            ),
-            ("vivaldi", vec![config_home.join("vivaldi")]),
-            (
-                "opera",
-                vec![
-                    config_home.join("opera"),
-                    config_home.join("opera-developer"),
-                    config_home.join("opera-beta"),
-                ],
-            ),
-        ];
-        for (browser, roots) in specs {
-            for root in roots {
-                if root.is_dir() {
-                    found_root = true;
-                    scan_browser_root(browser, &root, &mut candidates);
-                }
-            }
-        }
-    }
-
-    #[cfg(windows)]
-    {
-        let appdata = std::env::var_os("APPDATA").map(PathBuf::from);
-        let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
-        let mut specs: Vec<(&str, Vec<PathBuf>)> = Vec::new();
-        if let Some(appdata) = &appdata {
-            specs.push(("firefox", vec![appdata.join("Mozilla/Firefox/Profiles")]));
-            specs.push((
-                "opera",
-                vec![
-                    appdata.join("Opera Software/Opera Stable"),
-                    appdata.join("Opera Software/Opera GX Stable"),
-                    appdata.join("Opera Software/Opera Developer"),
-                ],
-            ));
-        }
-        if let Some(local) = &local {
-            specs.push((
-                "firefox",
-                vec![
-                    local.join(
-                        "Packages/Mozilla.Firefox/LocalCache/Roaming/Mozilla/Firefox/Profiles",
-                    ),
-                ],
-            ));
-            specs.push((
-                "chrome",
-                vec![
-                    local.join("Google/Chrome/User Data"),
-                    local.join("Google/Chrome Beta/User Data"),
-                    local.join("Google/Chrome SxS/User Data"),
-                ],
-            ));
-            specs.push(("chromium", vec![local.join("Chromium/User Data")]));
-            specs.push((
-                "brave",
-                vec![local.join("BraveSoftware/Brave-Browser/User Data")],
-            ));
-            specs.push(("vivaldi", vec![local.join("Vivaldi/User Data")]));
-        }
-        for (browser, roots) in specs {
-            for root in roots {
-                if root.is_dir() {
-                    found_root = true;
-                    scan_browser_root(browser, &root, &mut candidates);
-                }
+    for (browser, roots) in browser_roots(home) {
+        for root in roots {
+            if root.is_dir() {
+                found_root = true;
+                scan_browser_root(browser, &root, &mut candidates);
             }
         }
     }
@@ -160,6 +51,108 @@ pub fn detect_browser_cookies(home: &Path) -> BrowserCookiesInfo {
         profile_name,
         ytdlp_profile,
     }
+}
+
+#[cfg(unix)]
+fn browser_roots(home: &Path) -> Vec<(&'static str, Vec<PathBuf>)> {
+    let config_home = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"));
+    vec![
+        (
+            "firefox",
+            vec![
+                config_home.join("mozilla/firefox"),
+                home.join(".mozilla/firefox"),
+                home.join(".librewolf"),
+                home.join(".var/app/org.mozilla.firefox/config/mozilla/firefox"),
+                home.join(".var/app/org.mozilla.firefox/.mozilla/firefox"),
+                home.join("snap/firefox/common/.mozilla/firefox"),
+            ],
+        ),
+        (
+            "chrome",
+            vec![
+                home.join(".config/google-chrome"),
+                config_home.join("google-chrome"),
+                config_home.join("google-chrome-beta"),
+                config_home.join("google-chrome-unstable"),
+                home.join(".var/app/com.google.Chrome/config/google-chrome"),
+            ],
+        ),
+        (
+            "chromium",
+            vec![
+                config_home.join("chromium"),
+                home.join(".var/app/org.chromium.Chromium/config/chromium"),
+                home.join("snap/chromium/common/chromium"),
+            ],
+        ),
+        (
+            "brave",
+            vec![
+                config_home.join("BraveSoftware/Brave-Browser"),
+                config_home.join("BraveSoftware/Brave-Origin"),
+                home.join(".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser"),
+                home.join(".var/app/com.brave.Browser/config/BraveSoftware/Brave-Origin"),
+            ],
+        ),
+        ("vivaldi", vec![config_home.join("vivaldi")]),
+        (
+            "opera",
+            vec![
+                config_home.join("opera"),
+                config_home.join("opera-developer"),
+                config_home.join("opera-beta"),
+            ],
+        ),
+    ]
+}
+
+#[cfg(windows)]
+fn browser_roots(_home: &Path) -> Vec<(&'static str, Vec<PathBuf>)> {
+    let appdata = std::env::var_os("APPDATA").map(PathBuf::from);
+    let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    let mut roots: Vec<(&'static str, Vec<PathBuf>)> = Vec::new();
+    if let Some(appdata) = &appdata {
+        roots.push(("firefox", vec![appdata.join("Mozilla/Firefox/Profiles")]));
+        roots.push((
+            "opera",
+            vec![
+                appdata.join("Opera Software/Opera Stable"),
+                appdata.join("Opera Software/Opera GX Stable"),
+                appdata.join("Opera Software/Opera Developer"),
+            ],
+        ));
+    }
+    if let Some(local) = &local {
+        roots.push((
+            "firefox",
+            vec![
+                local.join("Packages/Mozilla.Firefox/LocalCache/Roaming/Mozilla/Firefox/Profiles"),
+            ],
+        ));
+        roots.push((
+            "chrome",
+            vec![
+                local.join("Google/Chrome/User Data"),
+                local.join("Google/Chrome Beta/User Data"),
+                local.join("Google/Chrome SxS/User Data"),
+            ],
+        ));
+        roots.push(("chromium", vec![local.join("Chromium/User Data")]));
+        roots.push((
+            "brave",
+            vec![local.join("BraveSoftware/Brave-Browser/User Data")],
+        ));
+        roots.push(("vivaldi", vec![local.join("Vivaldi/User Data")]));
+    }
+    roots
+}
+
+#[cfg(not(any(unix, windows)))]
+fn browser_roots(_home: &Path) -> Vec<(&'static str, Vec<PathBuf>)> {
+    Vec::new()
 }
 
 fn scan_browser_root(browser: &str, root: &Path, out: &mut Vec<Candidate>) {
@@ -200,7 +193,7 @@ fn scan_browser_root(browser: &str, root: &Path, out: &mut Vec<Candidate>) {
     profiles.sort();
     profiles.dedup();
     for profile in profiles {
-        if let Some((_cookie_path, modified)) = cookie_file(&profile) {
+        if let Some(modified) = cookie_modified(&profile) {
             out.push(Candidate {
                 browser: browser.to_owned(),
                 profile,
@@ -210,7 +203,7 @@ fn scan_browser_root(browser: &str, root: &Path, out: &mut Vec<Candidate>) {
     }
 }
 
-fn cookie_file(profile: &Path) -> Option<(PathBuf, SystemTime)> {
+fn cookie_modified(profile: &Path) -> Option<SystemTime> {
     for candidate in [
         profile.join("Network/Cookies"),
         profile.join("Cookies"),
@@ -219,8 +212,7 @@ fn cookie_file(profile: &Path) -> Option<(PathBuf, SystemTime)> {
         if let Ok(metadata) = std::fs::metadata(&candidate)
             && metadata.is_file()
         {
-            let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
-            return Some((candidate, modified));
+            return Some(metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH));
         }
     }
     None

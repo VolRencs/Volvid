@@ -14,7 +14,7 @@ pub mod selection;
 pub mod target;
 pub mod types;
 
-pub use clock::{format_clock, format_duration, parse_clock, parse_flexible_timestamp};
+pub use clock::{ClockError, format_clock, format_duration, parse_clock, parse_flexible_timestamp};
 pub use deps::{
     BrowserCookiesInfo, CheckDepsResult, DependencyInfo, DependencySource, JSRuntimeInfo,
     STATUS_ACTIVE, STATUS_NO_PROFILE, STATUS_NOT_FOUND, ffmpeg_args,
@@ -24,12 +24,12 @@ pub use fragment::{
     DownloadFragment, FragmentError, format_fragment_label, parse_bounded_fragment_range,
     parse_fragment_range, validate_fragment_duration,
 };
-pub use locale::{Locale, next_locale, parse_locale};
+pub use locale::{Locale, parse_locale};
 pub use profile::{
     DownloadMode, DownloadRequest, OutputProfile, QualityChoice, SubtitleMode, YTDLP_BEST_FORMAT,
-    default_quality_choices, quality_chain_at,
+    default_quality_choices,
 };
-pub use sanitize::sanitize_dirname;
+pub use sanitize::{sanitize_dirname, truncate_utf8};
 pub use selection::{SelectionError, parse_selection};
 pub use target::{ParsedTarget, TargetError, TargetKind, parse_target};
 pub use types::{

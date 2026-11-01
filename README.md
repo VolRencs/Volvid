@@ -123,6 +123,7 @@ imported once on first launch.
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo deny check
 cargo run -p volvid-gui
 ```
 
@@ -134,7 +135,8 @@ Useful environment variables for development:
 ### Project tooling
 
 - `cargo nextest` for fast test runs (optional).
-- `cargo deny check` / `cargo audit` for dependency policy (recommended in CI).
+- `cargo deny check` runs in CI for dependency policy.
+- `cargo audit` for additional advisory checks (optional).
 - `egui_kittest` for headless UI tests.
 
 ## Platforms

@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use volvid_core::{DownloadMode, DownloadRequest, ParsedTarget, TargetKind, parse_target};
+use volvid_core::{
+    DownloadMode, DownloadRequest, ParsedTarget, TargetError, TargetKind, parse_target,
+};
 use volvid_engine::{AppPaths, Theme, youtube_preview_url};
 use volvid_i18n::{default_quality, fragment_error_text};
 
@@ -73,14 +75,25 @@ impl Controller {
             self.backend.save_history_async(self.state.history.clone());
         }
         if save_config {
-            self.backend.save_config(self.state.config.clone());
+            self.persist_config();
         }
         self.pump_queue();
     }
 
-    fn next_op(&mut self) -> u64 {
+    fn begin_op(&mut self) -> u64 {
         self.next_op += 1;
+        self.state.op_id = self.next_op;
         self.next_op
+    }
+
+    fn begin_search_op(&mut self) -> u64 {
+        self.next_search_op += 1;
+        self.state.search_op = self.next_search_op;
+        self.next_search_op
+    }
+
+    fn persist_config(&mut self) {
+        self.backend.save_config(self.state.config.clone());
     }
 
     pub fn analyze_url(&mut self) {
@@ -92,7 +105,15 @@ impl Controller {
         let target = match volvid_core::parse_target(&raw) {
             Ok(target) => target,
             Err(err) => {
-                self.state.url_error = Some(format!("{}: {err}", self.state.s().invalid_url));
+                self.state.url_error = Some(match err {
+                    TargetError::Empty => self.state.s().empty_url.to_owned(),
+                    TargetError::UnsupportedHost(_) | TargetError::Unsupported => {
+                        self.state.s().unsupported_url.to_owned()
+                    }
+                    TargetError::InvalidUrl(_) => {
+                        format!("{}: {err}", self.state.s().invalid_url)
+                    }
+                });
                 return;
             }
         };
@@ -105,8 +126,7 @@ impl Controller {
         self.state.probe_loading = false;
         self.state.mixed_choice = None;
         self.backend.cancel_metadata();
-        let op = self.next_op();
-        self.state.op_id = op;
+        let op = self.begin_op();
         match target.kind {
             TargetKind::Mixed => {
                 self.state.mixed_choice = Some(MixedChoice { target, url: raw });
@@ -136,8 +156,7 @@ impl Controller {
             self.start_configure(Some(choice.target), true);
         } else {
             self.backend.cancel_metadata();
-            let op = self.next_op();
-            self.state.op_id = op;
+            let op = self.begin_op();
             self.state.playlist_loading = true;
             self.state.route = Route::Playlist;
             self.backend
@@ -145,18 +164,18 @@ impl Controller {
         }
     }
 
-    pub fn start_configure(&mut self, target: Option<ParsedTarget>, force_single: bool) {
+    fn start_configure(&mut self, target: Option<ParsedTarget>, force_single: bool) {
         let Some(target) = target.or_else(|| self.state.target.clone()) else {
             return;
         };
         let selected = self.state.selected_playlist_entries();
-        if target.is_playlist() && !force_single && selected.is_empty() {
+        let playlist_mode = target.is_playlist() && !force_single;
+        if playlist_mode && selected.is_empty() {
             self.state
                 .toast(self.state.s().no_selection, ToastKind::Warn);
             return;
         }
-        let op = self.next_op();
-        self.state.op_id = op;
+        let op = self.begin_op();
         self.state.target = Some(target.clone());
         self.state.force_single = force_single;
         self.state.route = Route::Configure;
@@ -181,7 +200,7 @@ impl Controller {
         self.state.probe_loading = true;
         self.state.quality_loading = true;
 
-        let (probe_url, quality_urls) = if target.is_playlist() && !force_single {
+        let (probe_url, quality_urls) = if playlist_mode {
             let first = selected
                 .first()
                 .expect("selection checked before starting configure");
@@ -212,9 +231,7 @@ impl Controller {
             self.state.search_error = Some(self.state.s().query_empty.to_owned());
             return;
         }
-        let op = self.next_search_op;
-        self.next_search_op += 1;
-        self.state.search_op = op;
+        let op = self.begin_search_op();
         self.state.search_loading = true;
         self.state.search_error = None;
         self.backend.search(query, self.state.locale, op);
@@ -273,6 +290,7 @@ impl Controller {
             return;
         };
         let s = self.state.s();
+        let playlist_mode = self.state.is_playlist_mode();
         if !self.state.deps.ytdlp.available {
             self.state.route = Route::Settings;
             self.state.toast(s.missing_ytdlp, ToastKind::Error);
@@ -292,7 +310,7 @@ impl Controller {
                 return;
             }
         };
-        if target.is_playlist() && !self.state.force_single && fragment.is_some() {
+        if playlist_mode && fragment.is_some() {
             self.state
                 .toast(s.trim_playlist_unavailable, ToastKind::Warn);
             return;
@@ -304,27 +322,28 @@ impl Controller {
             return;
         }
 
-        let entries = if target.is_playlist() && !self.state.force_single {
+        let entries = if playlist_mode {
             self.state.selected_playlist_entries()
         } else {
             Vec::new()
         };
-        if target.is_playlist() && !self.state.force_single && entries.is_empty() {
+        if playlist_mode && entries.is_empty() {
             self.state.toast(s.no_selection, ToastKind::Warn);
             return;
         }
+        let entry_count = entries.len();
         let request = DownloadRequest {
             target: target.clone(),
             profile,
             fragment,
             media_duration: self.state.media_duration,
             force_single: self.state.force_single,
-            playlist_info: if target.is_playlist() && !self.state.force_single {
+            playlist_info: if playlist_mode {
                 self.state.playlist.clone()
             } else {
                 None
             },
-            entries: entries.clone(),
+            entries,
             workers: self.state.draft.workers.clamp(1, 8),
             output_dir: self.state.downloads_dir.to_string_lossy().into_owned(),
             locale: self.state.locale,
@@ -360,28 +379,17 @@ impl Controller {
             ),
             DownloadMode::Thumbnail => s.mode_thumbnail.to_owned(),
         };
-        let is_playlist = request.uses_playlist();
-        let title = if is_playlist {
-            self.state
-                .playlist
-                .as_ref()
-                .map(|playlist| playlist.title.clone())
-                .unwrap_or_else(|| s.playlist_title.to_owned())
-        } else if !self.state.media_title.trim().is_empty() {
-            self.state.media_title.clone()
-        } else {
-            target.canonical_url.clone()
-        };
+        let title = self.state.title_for_download();
         let url = target.download_url(self.state.force_single);
         let workers = request.workers;
         self.enqueue_request(
             request,
             title,
             url,
-            is_playlist,
+            playlist_mode,
             workers,
             detail,
-            entries.len(),
+            entry_count,
         );
     }
 
@@ -590,13 +598,19 @@ impl Controller {
     }
 
     pub fn cancel_job(&mut self, job_id: u64) {
-        let active = self
+        let Some(status) = self
             .state
             .jobs
             .iter()
             .find(|job| job.id == job_id)
-            .is_some_and(|job| job.status == JobStatus::Active);
-        if active {
+            .map(|job| job.status)
+        else {
+            return;
+        };
+        if !status.is_pending() {
+            return;
+        }
+        if status == JobStatus::Active {
             self.backend.cancel_download(job_id);
         }
         if let Some(job) = self.state.jobs.iter_mut().find(|job| job.id == job_id) {
@@ -651,18 +665,18 @@ impl Controller {
     pub fn set_locale(&mut self, locale: volvid_core::Locale) {
         self.state.locale = locale;
         self.state.config.locale = locale;
-        self.backend.save_config(self.state.config.clone());
+        self.persist_config();
     }
 
     pub fn set_theme(&mut self, theme: Theme) {
         self.state.config.theme = theme;
-        self.backend.save_config(self.state.config.clone());
+        self.persist_config();
     }
 
     pub fn set_playlist_workers(&mut self, workers: usize) {
         self.state.config.playlist_workers = workers.clamp(1, 8);
         self.state.draft.workers = self.state.config.playlist_workers;
-        self.backend.save_config(self.state.config.clone());
+        self.persist_config();
     }
 
     pub fn clear_history(&mut self) {
@@ -674,7 +688,7 @@ impl Controller {
         if route != Route::Playlist && self.state.playlist_loading {
             self.backend.cancel_metadata();
             self.state.playlist_loading = false;
-            self.state.op_id = self.next_op();
+            self.begin_op();
         }
         self.state.route = route;
     }

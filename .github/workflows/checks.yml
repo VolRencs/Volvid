@@ -32,3 +32,9 @@ jobs:
         run: cargo test --workspace --locked
       - name: Build
         run: cargo build --release --locked -p volvid-gui
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: EmbarkStudios/cargo-deny-action@v2

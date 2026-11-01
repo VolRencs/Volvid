@@ -123,7 +123,7 @@ pub fn title(ui: &mut egui::Ui, p: &Palette, text: &str) {
     ui.label(strong_text(text, FONT_PAGE_TITLE).color(p.text));
 }
 
-pub fn install_fonts(ctx: &egui::Context) {
+fn install_fonts(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
     fonts.font_data.insert(
         FONT_REGULAR.to_owned(),
@@ -269,6 +269,14 @@ pub fn muted_inline(ui: &mut egui::Ui, p: &Palette, text: impl Into<String>) {
     ui.add(egui::Label::new(RichText::new(text.into()).color(p.muted).size(FONT_MUTED)).truncate());
 }
 
+pub fn error_text(ui: &mut egui::Ui, p: &Palette, text: impl Into<String>) {
+    ui.add(egui::Label::new(RichText::new(text.into()).color(p.danger).size(FONT_SMALL)).wrap());
+}
+
+pub fn warning_text(ui: &mut egui::Ui, p: &Palette, text: impl Into<String>) {
+    ui.add(egui::Label::new(RichText::new(text.into()).color(p.warning).size(FONT_SMALL)).wrap());
+}
+
 pub fn page_title(ui: &mut egui::Ui, p: &Palette, text: &str) {
     ui.add(egui::Label::new(strong_text(text, FONT_PAGE_TITLE).color(p.text)).truncate());
 }
@@ -325,11 +333,11 @@ pub fn status_dot(ui: &mut egui::Ui, color: Color32) {
     ui.painter().circle_filled(rect.center(), 4.0, color);
 }
 
-pub fn badge(ui: &mut egui::Ui, _p: &Palette, text: &str, color: Color32) {
+pub fn badge(ui: &mut egui::Ui, text: &str, color: Color32) {
     badge_sized(ui, text, color, 260.0);
 }
 
-pub fn badge_sized(ui: &mut egui::Ui, text: &str, color: Color32, max_width: f32) {
+fn badge_sized(ui: &mut egui::Ui, text: &str, color: Color32, max_width: f32) {
     let response = egui::Frame::new()
         .fill(color.gamma_multiply(0.15))
         .stroke(Stroke::new(1.0, color.gamma_multiply(0.45)))
@@ -371,36 +379,56 @@ pub fn primary_button_sized(
     primary_button_ex(ui, p, text, egui::vec2(width, BUTTON_HEIGHT))
 }
 
+#[derive(Clone, Copy)]
+enum ButtonKind {
+    Primary,
+    Secondary,
+}
+
+fn styled_button(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    kind: ButtonKind,
+    text: &str,
+    size: egui::Vec2,
+) -> egui::Response {
+    let (text_color, fill, stroke) = match kind {
+        ButtonKind::Primary => (p.on_accent, p.accent, Stroke::NONE),
+        ButtonKind::Secondary => (p.text, p.card_hover, Stroke::new(1.0, p.border)),
+    };
+    let button = if size.x > 0.0 {
+        add_fixed_button(
+            ui,
+            size,
+            egui::Button::new((
+                Atom::grow(),
+                strong_text(text, FONT_LABEL).color(text_color),
+                Atom::grow(),
+            ))
+            .fill(fill)
+            .stroke(stroke)
+            .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
+        )
+    } else {
+        add_auto_button(
+            ui,
+            egui::Button::new(strong_text(text, FONT_LABEL).color(text_color))
+                .fill(fill)
+                .stroke(stroke)
+                .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
+        )
+    };
+    press_overlay(ui, &button, BUTTON_RADIUS);
+    button
+}
+
 pub fn primary_button_ex(
     ui: &mut egui::Ui,
     p: &Palette,
     text: &str,
     size: egui::Vec2,
 ) -> egui::Response {
-    let response = if size.x > 0.0 {
-        add_fixed_button(
-            ui,
-            size,
-            egui::Button::new((
-                Atom::grow(),
-                strong_text(text, FONT_LABEL).color(p.on_accent),
-                Atom::grow(),
-            ))
-            .fill(p.accent)
-            .stroke(Stroke::NONE)
-            .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
-        )
-    } else {
-        add_auto_button(
-            ui,
-            egui::Button::new(strong_text(text, FONT_LABEL).color(p.on_accent))
-                .fill(p.accent)
-                .stroke(Stroke::NONE)
-                .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
-        )
-    };
-    press_overlay(ui, &response, BUTTON_RADIUS);
-    response
+    styled_button(ui, p, ButtonKind::Primary, text, size)
 }
 
 pub fn primary_button_fill(
@@ -461,30 +489,7 @@ pub fn secondary_button_ex(
     text: &str,
     size: egui::Vec2,
 ) -> egui::Response {
-    let response = if size.x > 0.0 {
-        add_fixed_button(
-            ui,
-            size,
-            egui::Button::new((
-                Atom::grow(),
-                strong_text(text, FONT_LABEL).color(p.text),
-                Atom::grow(),
-            ))
-            .fill(p.card_hover)
-            .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
-        )
-    } else {
-        add_auto_button(
-            ui,
-            egui::Button::new(strong_text(text, FONT_LABEL).color(p.text))
-                .fill(p.card_hover)
-                .stroke(Stroke::new(1.0, p.border))
-                .corner_radius(CornerRadius::same(BUTTON_RADIUS)),
-        )
-    };
-    press_overlay(ui, &response, BUTTON_RADIUS);
-    response
+    styled_button(ui, p, ButtonKind::Secondary, text, size)
 }
 
 pub fn secondary_icon_button(
@@ -751,7 +756,7 @@ pub fn modal_frame(p: &Palette) -> egui::Frame {
         })
 }
 
-pub fn modal_icon(ui: &mut egui::Ui, p: &Palette, icon: egui::ImageSource<'static>) {
+fn modal_icon(ui: &mut egui::Ui, p: &Palette, icon: egui::ImageSource<'static>) {
     egui::Frame::new()
         .fill(p.selection.gamma_multiply(0.15))
         .stroke(Stroke::new(1.0, p.selection.gamma_multiply(0.45)))

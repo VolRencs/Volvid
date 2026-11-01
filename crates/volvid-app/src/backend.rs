@@ -47,7 +47,7 @@ pub struct Backend {
 
 impl Backend {
     pub fn new() -> Result<Self> {
-        let engine = Arc::new(Engine::new());
+        let engine = Arc::new(Engine::new()?);
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(4)
             .enable_all()
@@ -146,38 +146,29 @@ impl Backend {
         let sink = self.sink.clone();
         let metadata = self.metadata_cancels.clone();
         self.runtime.spawn(async move {
-            let preview_sink = sink.clone();
-            let preview_engine = engine.clone();
-            let preview_cancel = cancel.clone();
-            let preview_url_for_probe = preview_url.clone();
-            let preview_task = tokio::spawn(async move {
-                let result = match preview_url {
-                    Some(url) => preview_engine
-                        .fetch_thumbnail(&url, 640, Some(preview_cancel))
+            let preview = async {
+                let result = match &preview_url {
+                    Some(url) => engine
+                        .fetch_thumbnail(url, 640, Some(cancel.clone()))
                         .await
                         .map_err(|err| err.to_string()),
                     None => Err("no preview available".to_owned()),
                 };
-                preview_sink.send(AppEvent::Thumbnail {
+                sink.send(AppEvent::Thumbnail {
                     op,
                     stage: ThumbnailStage::Preview,
                     result,
                 });
-            });
+            };
 
-            let probe_engine = engine.clone();
-            let probe_sink = sink.clone();
-            let probe_cancel = cancel.clone();
-            let probe_task = tokio::spawn(async move {
-                let result = probe_engine
-                    .probe_media(&probe_url, Some(probe_cancel.clone()))
-                    .await;
+            let probe = async {
+                let result = engine.probe_media(&probe_url, Some(cancel.clone())).await;
                 let quality = single_quality
                     .then(|| {
                         result
                             .as_ref()
                             .ok()
-                            .and_then(|probe| probe_engine.quality_from_probe(probe).ok())
+                            .and_then(|probe| engine.quality_from_probe(probe).ok())
                     })
                     .flatten();
                 let thumbnail_url = result
@@ -185,50 +176,44 @@ impl Backend {
                     .ok()
                     .map(|probe| probe.thumbnail.clone())
                     .unwrap_or_default();
-                probe_sink.send(AppEvent::Probe {
+                sink.send(AppEvent::Probe {
                     op,
                     result: result.map_err(|err| err.to_string()),
                 });
                 if single_quality {
-                    probe_sink.send(AppEvent::Quality {
+                    sink.send(AppEvent::Quality {
                         op,
                         result: quality.ok_or_else(|| "quality scan failed".to_owned()),
                     });
                 }
                 if !thumbnail_url.is_empty()
-                    && !probe_cancel.is_cancelled()
-                    && preview_url_for_probe.as_deref() != Some(thumbnail_url.as_str())
+                    && !cancel.is_cancelled()
+                    && preview_url.as_deref() != Some(thumbnail_url.as_str())
                 {
-                    let result = probe_engine
-                        .fetch_thumbnail(&thumbnail_url, 960, Some(probe_cancel.clone()))
+                    let result = engine
+                        .fetch_thumbnail(&thumbnail_url, 960, Some(cancel.clone()))
                         .await
                         .map_err(|err| err.to_string());
-                    probe_sink.send(AppEvent::Thumbnail {
+                    sink.send(AppEvent::Thumbnail {
                         op,
                         stage: ThumbnailStage::Full,
                         result,
                     });
                 }
-            });
+            };
 
-            let quality_task = (!single_quality).then(|| {
-                let quality_engine = engine.clone();
-                let quality_sink = sink.clone();
-                let quality_cancel = cancel.clone();
-                let quality_urls = quality_urls.clone();
-                tokio::spawn(async move {
-                    let result = quality_engine
-                        .resolve_quality(&quality_urls, Some(quality_cancel))
-                        .await
-                        .map_err(|err| err.to_string());
-                    quality_sink.send(AppEvent::Quality { op, result });
-                })
-            });
+            let quality = async {
+                if single_quality {
+                    return;
+                }
+                let result = engine
+                    .resolve_quality(&quality_urls, Some(cancel.clone()))
+                    .await
+                    .map_err(|err| err.to_string());
+                sink.send(AppEvent::Quality { op, result });
+            };
 
-            let _ = tokio::join!(probe_task, preview_task);
-            if let Some(task) = quality_task {
-                let _ = task.await;
-            }
+            tokio::join!(preview, probe, quality);
             if let Ok(mut cancels) = metadata.lock() {
                 cancels.remove(&op);
             }
@@ -503,6 +488,7 @@ impl Backend {
 
     pub fn shutdown(&self) {
         self.cancel_metadata();
+        self.cancel_install();
         if let Ok(cancels) = self.cancels.lock() {
             for cancel in cancels.values() {
                 cancel.cancel();
