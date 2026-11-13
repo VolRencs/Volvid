@@ -427,7 +427,8 @@ mod tests {
     fn accepts_only_supported_ytrust_releases() {
         assert!(!ytrust_version_supported("1.0.0"));
         assert!(!ytrust_version_supported("1.1.0"));
-        assert!(ytrust_version_supported("1.1.1"));
+        assert!(!ytrust_version_supported("1.1.1"));
+        assert!(ytrust_version_supported("1.1.2"));
         assert!(ytrust_version_supported("1.2.3"));
         assert!(!ytrust_version_supported("0.4.3"));
         assert!(!ytrust_version_supported("2.0.0"));

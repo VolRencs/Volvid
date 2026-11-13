@@ -11,10 +11,10 @@ use crate::cookies::detect_browser_cookies;
 use crate::paths::{AppPaths, clean_abs};
 use crate::process::command_output;
 
-/// The app relies on ytrust 1.1.1 adaptive-stream fallback, cookie scoping and
-/// progress JSON fields, so older builds are rejected instead of silently
-/// producing incomplete downloads.
-pub const YTRUST_MIN_VERSION: &str = "1.1.1";
+/// The app relies on ytrust 1.1.2 cold-CDN retries, adaptive-stream fallback,
+/// cookie scoping and progress JSON fields, so older builds are rejected
+/// instead of silently producing incomplete downloads.
+pub const YTRUST_MIN_VERSION: &str = "1.1.2";
 /// Automatic installs must not cross a breaking major release.
 pub const YTRUST_MAX_MAJOR: u64 = 1;
 pub const MIN_NODE_MAJOR: u32 = 20;
@@ -394,13 +394,14 @@ mod tests {
 
     #[test]
     fn parses_ytrust_version() {
-        assert_eq!(parse_version("ytrust 1.1.1", &["--version"]), "1.1.1");
+        assert_eq!(parse_version("ytrust 1.1.2", &["--version"]), "1.1.2");
     }
 
     #[test]
     fn rejects_old_and_future_ytrust_majors() {
-        assert!(ytrust_version_supported("1.1.1"));
+        assert!(ytrust_version_supported("1.1.2"));
         assert!(ytrust_version_supported("1.7.3"));
+        assert!(!ytrust_version_supported("1.1.1"));
         assert!(!ytrust_version_supported("1.1.0"));
         assert!(!ytrust_version_supported("1.0.1"));
         assert!(!ytrust_version_supported("0.4.3"));

@@ -1,5 +1,15 @@
 # Changelog
 
+## 8.1.2
+
+### Changed
+
+- Requires **ytrust 1.1.2** or newer in the 1.x series. ytrust now retries
+  cold CDN `403`s before falling back to a muxed stream, so separate
+  video/audio downloads stay at the requested quality.
+- The fallback notification now says that YouTube's CDN rejected the stream
+  instead of claiming that YouTube blocked separate streams.
+
 ## 8.1.1
 
 ### Fixed

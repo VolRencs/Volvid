@@ -488,8 +488,8 @@ fn handle_line(
             }
         }
         Some("fallback") => {
-            // ytrust 1.1.1 retries adaptive streams with a muxed format and
-            // reports it here so the UI can explain the quality change.
+            // ytrust 1.1.2 retries cold CDN 403s first, then falls back to a
+            // muxed format so the UI can explain the quality change.
             send(
                 tx,
                 DlUpdate {

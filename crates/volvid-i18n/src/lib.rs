@@ -159,7 +159,7 @@ define_strings! {
     remuxing: "Remuxing container", "Смена контейнера";
     embedding_subs: "Embedding subtitles", "Встраивание субтитров";
     fallback_format: "Trying fallback format #%d: %s", "Пробую запасной формат #%d: %s";
-    fallback_muxed: "YouTube blocked separate streams; using a muxed format", "YouTube заблокировал раздельные потоки; использую muxed-формат";
+    fallback_muxed: "YouTube CDN rejected the stream; using a muxed format", "YouTube CDN отклонил поток; использую muxed-формат";
     download_failed: "Download failed", "Загрузка не удалась";
     history_title: "History", "История";
     session_history: "Session history", "История сессии";
@@ -176,7 +176,7 @@ define_strings! {
     invalid_url: "Does not look like a YouTube URL", "Не похоже на YouTube-ссылку";
     empty_url: "URL cannot be empty", "Ссылка не может быть пустой";
     unsupported_url: "Unsupported YouTube URL", "Неподдерживаемая YouTube-ссылка";
-    missing_ytrust: "ytrust 1.1.1 or newer is required.", "Требуется ytrust 1.1.1 или новее.";
+    missing_ytrust: "ytrust 1.1.2 or newer is required.", "Требуется ytrust 1.1.2 или новее.";
     missing_ffmpeg: "ffmpeg is required for this mode.", "Для этого режима требуется ffmpeg.";
     err_botcheck: "YouTube asks to sign in to confirm you're not a bot. Try browser cookies.", "YouTube просит войти, чтобы подтвердить, что вы не бот. Попробуйте cookies браузера.";
     err_age_restricted: "This video is age-restricted. Browser cookies may help.", "Видео ограничено по возрасту. Могут помочь cookies браузера.";
