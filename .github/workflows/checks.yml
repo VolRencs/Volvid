@@ -27,8 +27,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwayland-dev libxkbcommon-dev libfontconfig1-dev \
-            libfreetype6-dev libvulkan-dev libdbus-1-dev pkg-config
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libfontconfig1-dev libfreetype6-dev libvulkan-dev libdbus-1-dev pkg-config
       - name: Format
         if: matrix.os == 'ubuntu-latest'
         run: cargo fmt --all -- --check

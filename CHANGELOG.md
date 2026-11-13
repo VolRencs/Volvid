@@ -1,5 +1,13 @@
 # Changelog
 
+## 8.1.1
+
+### Fixed
+
+- Linux release builds install `libxkbcommon-x11-dev`. GPUI links
+  `libxkbcommon-x11` even in the Wayland-only build, so the previous CI runner
+  failed at the linker step.
+
 ## 8.1.0
 
 Volvid 8.1 is the first release built on the rewritten Rust/GPUI codebase from
