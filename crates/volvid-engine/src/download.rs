@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
+use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use volvid_core::{
@@ -11,14 +12,14 @@ use volvid_core::{
 };
 
 use crate::args::{
-    MARK_MOVED, MARK_POST, MARK_PROGRESS, MARK_START, build_download_args, download_formats,
-    format_label, parse_json_string, playlist_output_template, single_output_template,
+    build_download_args, download_formats, format_label, playlist_output_template,
+    single_output_template,
 };
-use crate::deps::ytdlp_bin;
+use crate::deps::ytrust_bin;
 use crate::ffmpeg::{cleanup_subtitle_sidecars, retag_audio_languages, transcode_video};
 use crate::paths::{AppPaths, clean_abs};
 use crate::process::{ProcessError, ProcessLine, run_lines};
-use crate::ytdlp::{format_progress_speed, postprocess_label};
+use crate::ytrust::{format_progress_speed, postprocess_label};
 
 const SLOT_RESET_DELAY: Duration = Duration::from_millis(300);
 
@@ -65,7 +66,8 @@ async fn run_single(
         &request,
         0,
         &url,
-        &single_output_template(&output_dir),
+        &output_dir,
+        &single_output_template(),
         &tx,
         &cancel,
         encoders.as_deref(),
@@ -105,13 +107,16 @@ async fn run_playlist(
         .unwrap_or("playlist");
     let playlist_dir = playlist_output_dir(&output_dir, title);
     let workers = request.workers.clamp(1, 8).min(entries.len());
+    let mut worker_request = request.clone();
+    worker_request.entries.clear();
+    worker_request.playlist_info = None;
     let (jobs_tx, jobs_rx) = mpsc::channel::<PlaylistEntry>(entries.len().max(1));
     let jobs_rx = Arc::new(tokio::sync::Mutex::new(jobs_rx));
     let mut tasks = Vec::new();
     for slot in 0..workers {
         let paths = paths.clone();
         let deps = deps.clone();
-        let request = request.clone();
+        let request = worker_request.clone();
         let tx = tx.clone();
         let cancel = cancel.clone();
         let jobs_rx = jobs_rx.clone();
@@ -156,13 +161,18 @@ async fn run_playlist(
         }
     }
     drop(jobs_tx);
+    let mut worker_failed = false;
     for task in tasks {
-        if let Ok(()) = task.await {
-            // Worker finished.
+        if let Err(err) = task.await {
+            worker_failed = true;
+            tracing::warn!(%err, "playlist worker stopped unexpectedly");
         }
     }
     if cancel.is_cancelled() {
         bail!("operation cancelled");
+    }
+    if worker_failed {
+        bail!("playlist worker failed");
     }
     Ok(())
 }
@@ -188,9 +198,9 @@ async fn run_playlist_entry(
             ..DlUpdate::default()
         },
     );
-    let template = playlist_output_template(output_dir, &entry);
+    let template = playlist_output_template(&entry);
     let result = run_one(
-        paths, deps, &request, slot, &entry.url, &template, tx, cancel, encoders,
+        paths, deps, &request, slot, &entry.url, output_dir, &template, tx, cancel, encoders,
     )
     .await;
     send(
@@ -223,14 +233,15 @@ async fn run_one(
     request: &DownloadRequest,
     slot: usize,
     url: &str,
+    output_dir: &Path,
     output_template: &str,
     tx: &mpsc::UnboundedSender<DlUpdate>,
     cancel: &CancellationToken,
     encoders: Option<&HashSet<String>>,
 ) -> Result<(), String> {
-    let (formats, labels) = download_formats(request);
+    let (mut formats, labels) = download_formats(request);
     if formats.is_empty() {
-        return Err("no download formats configured".to_owned());
+        formats.push(String::new());
     }
     let mut last_result: Result<(), String> = Err("download failed".to_owned());
     for (index, format) in formats.iter().enumerate() {
@@ -259,16 +270,17 @@ async fn run_one(
             request,
             &deps,
             url,
+            output_dir,
             output_template,
             format,
             &["--no-playlist".to_owned()],
         );
         let mut progress = ProgressState::default();
-        let Some(ytdlp) = ytdlp_bin(&deps) else {
-            return Err("yt-dlp is required".to_owned());
+        let Some(ytrust) = ytrust_bin(&deps) else {
+            return Err("ytrust is required".to_owned());
         };
-        let result = run_ytdlp_download(
-            ytdlp,
+        let result = run_ytrust_download(
+            ytrust,
             &args,
             slot,
             request.locale,
@@ -281,7 +293,7 @@ async fn run_one(
             last_result = Err(err.to_string());
             continue;
         }
-        let mut output_path = progress.output_path;
+        let mut output_path = progress.output_path.clone();
         if output_path.as_os_str().is_empty() {
             last_result = Err("downloaded file path is unknown".to_owned());
             continue;
@@ -304,7 +316,13 @@ async fn run_one(
             }
         }
         if request.profile.wants_subtitles() {
-            cleanup_subtitle_sidecars(&output_path, &request.profile.sub_langs);
+            let embedded = !request.profile.video_container.eq_ignore_ascii_case("webm");
+            if embedded {
+                cleanup_subtitle_sidecars(&output_path, &request.profile.sub_langs);
+                for sidecar in &progress.extra_files {
+                    let _ = std::fs::remove_file(sidecar);
+                }
+            }
         }
         if request.profile.mode == DownloadMode::Video
             && !request.profile.audio_langs.is_empty()
@@ -327,11 +345,11 @@ async fn run_one(
 #[derive(Default)]
 struct ProgressState {
     output_path: PathBuf,
-    last_title: String,
     error_text: String,
+    extra_files: Vec<PathBuf>,
 }
 
-async fn run_ytdlp_download(
+async fn run_ytrust_download(
     bin: &str,
     args: &[String],
     slot: usize,
@@ -347,7 +365,7 @@ async fn run_ytdlp_download(
     .map_err(ProcessError::into_anyhow)?;
     if !status.success() {
         let message = if progress.error_text.is_empty() {
-            format!("yt-dlp exited with status {status}")
+            format!("ytrust exited with status {status}")
         } else {
             progress.error_text.clone()
         };
@@ -370,98 +388,124 @@ fn handle_line(
         }
         return;
     }
-    let text = line.text;
-    if let Some(rest) = text.strip_prefix(MARK_START) {
-        let payload = rest.strip_prefix('\t').unwrap_or(rest);
-        let mut parts = payload.splitn(2, '\t');
-        let title = parse_json_string(parts.next().unwrap_or_default());
-        let filename = parts.next().map(parse_json_string).unwrap_or_default();
-        if progress.output_path.as_os_str().is_empty() && !filename.is_empty() {
-            progress.output_path = PathBuf::from(filename);
+    let Ok(value) = serde_json::from_str::<Value>(&line.text) else {
+        return;
+    };
+    match value.get("event").and_then(Value::as_str) {
+        Some("start") => {
+            let title = value
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !title.is_empty() {
+                send(
+                    tx,
+                    DlUpdate {
+                        event_type: DlEventType::Start,
+                        slot,
+                        text: title.to_owned(),
+                        ..DlUpdate::default()
+                    },
+                );
+            }
         }
-        if !title.is_empty() {
-            progress.last_title = title.clone();
+        Some("progress") => {
+            let done_b = event_i64(&value, "downloaded_bytes");
+            let mut total_b = event_i64(&value, "total_bytes");
+            if total_b <= 0 {
+                total_b = event_i64(&value, "total_bytes_estimate");
+            }
+            let speed = value
+                .get("speed_bps")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0);
+            let mut pct = value.get("percent").and_then(Value::as_f64).unwrap_or(0.0);
+            if pct <= 0.0 && total_b > 0 && done_b > 0 {
+                pct = done_b as f64 / total_b as f64 * 100.0;
+            }
+            let phase = value
+                .get("phase")
+                .and_then(Value::as_str)
+                .map(|phase| postprocess_label(phase, locale))
+                .unwrap_or_default();
             send(
                 tx,
                 DlUpdate {
-                    event_type: DlEventType::Start,
+                    event_type: DlEventType::Progress,
                     slot,
-                    text: title,
+                    text: phase,
+                    pct: pct.clamp(0.0, 100.0),
+                    done_b,
+                    total_b,
+                    speed: format_progress_speed(speed, locale),
+                    speed_bps: speed.max(0.0) as i64,
+                    eta_secs: event_i64(&value, "eta_seconds"),
                     ..DlUpdate::default()
                 },
             );
         }
-    } else if let Some(rest) = text.strip_prefix(MARK_MOVED) {
-        progress.output_path = PathBuf::from(parse_json_string(rest));
-    } else if let Some(rest) = text.strip_prefix(MARK_POST) {
-        let name = rest.trim_start_matches('\t');
-        let label = postprocess_label(name, locale);
-        send(
-            tx,
-            DlUpdate {
-                event_type: DlEventType::Proc,
-                slot,
-                text: label,
-                ..DlUpdate::default()
-            },
-        );
-    } else if let Some(rest) = text.strip_prefix(MARK_PROGRESS) {
-        let payload = rest.strip_prefix('\t').unwrap_or(rest);
-        let fields: Vec<&str> = payload.splitn(6, '\t').collect();
-        if fields.len() != 6 {
-            return;
+        Some("postprocess") => {
+            let status = value.get("status").and_then(Value::as_str).unwrap_or("");
+            let name = value
+                .get("processor")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if matches!(status, "started" | "progress" | "finished" | "failed") {
+                send(
+                    tx,
+                    DlUpdate {
+                        event_type: DlEventType::Proc,
+                        slot,
+                        text: postprocess_label(name, locale),
+                        pct: value.get("percent").and_then(Value::as_f64).unwrap_or(0.0),
+                        ..DlUpdate::default()
+                    },
+                );
+            }
         }
-        let done_b = parse_i64(fields[0]);
-        let mut total_b = parse_i64(fields[1]);
-        if total_b <= 0 {
-            total_b = parse_i64(fields[2]);
+        Some("file") => {
+            let Some(path) = value.get("path").and_then(Value::as_str) else {
+                return;
+            };
+            match value.get("kind").and_then(Value::as_str) {
+                Some("subtitle") => progress.extra_files.push(PathBuf::from(path)),
+                Some("thumbnail") => progress.output_path = PathBuf::from(path),
+                _ => {}
+            }
         }
-        let speed = parse_f64(fields[3]);
-        let mut pct = fields[4]
-            .trim()
-            .trim_end_matches('%')
-            .trim()
-            .parse::<f64>()
-            .unwrap_or(0.0);
-        if pct <= 0.0 && total_b > 0 && done_b > 0 {
-            pct = done_b as f64 / total_b as f64 * 100.0;
+        Some("done") => {
+            if let Some(path) = value.get("filepath").and_then(Value::as_str)
+                && !path.is_empty()
+            {
+                progress.output_path = PathBuf::from(path);
+            }
         }
-        pct = pct.clamp(0.0, 100.0);
-        let title = parse_json_string(fields[5]);
-        if !title.is_empty() && title != progress.last_title {
-            progress.last_title = title.clone();
+        Some("error") => {
+            if progress.error_text.is_empty()
+                && let Some(message) = value.get("message").and_then(Value::as_str)
+            {
+                progress.error_text = message.to_owned();
+            }
+        }
+        Some("fallback") => {
+            // ytrust 1.1.1 retries adaptive streams with a muxed format and
+            // reports it here so the UI can explain the quality change.
             send(
                 tx,
                 DlUpdate {
-                    event_type: DlEventType::Dest,
+                    event_type: DlEventType::Fallback,
                     slot,
-                    text: title,
+                    text: volvid_i18n::strings(locale).fallback_muxed.to_owned(),
                     ..DlUpdate::default()
                 },
             );
         }
-        send(
-            tx,
-            DlUpdate {
-                event_type: DlEventType::Progress,
-                slot,
-                pct,
-                done_b,
-                total_b,
-                speed: format_progress_speed(speed, locale),
-                speed_bps: speed.max(0.0) as i64,
-                ..DlUpdate::default()
-            },
-        );
+        _ => {}
     }
 }
 
-fn parse_i64(raw: &str) -> i64 {
-    raw.trim().parse().unwrap_or(0)
-}
-
-fn parse_f64(raw: &str) -> f64 {
-    raw.trim().parse().unwrap_or(0.0)
+fn event_i64(value: &Value, key: &str) -> i64 {
+    value.get(key).and_then(Value::as_i64).unwrap_or(0)
 }
 
 fn send(tx: &mpsc::UnboundedSender<DlUpdate>, update: DlUpdate) {
@@ -499,8 +543,16 @@ pub fn validate_request(request: &DownloadRequest, deps: &CheckDepsResult) -> Re
     if request.uses_playlist() && request.fragment.is_some() {
         bail!("trimming is unavailable for playlists");
     }
-    if !deps.ytdlp.available {
-        bail!("yt-dlp is required");
+    if !deps.ytrust.available {
+        bail!("ytrust is required");
+    }
+    if !deps.ytrust.version.is_empty()
+        && !crate::deps::ytrust_version_supported(&deps.ytrust.version)
+    {
+        bail!(
+            "ytrust {} or newer is required",
+            crate::deps::YTRUST_MIN_VERSION
+        );
     }
     if let Some(fragment) = &request.fragment {
         if !fragment.is_valid() {
@@ -517,7 +569,7 @@ pub fn validate_request(request: &DownloadRequest, deps: &CheckDepsResult) -> Re
 
 pub fn normalize_request(mut request: DownloadRequest, paths: &AppPaths) -> DownloadRequest {
     if request.profile.mode == DownloadMode::Video && request.profile.video_fmt_chain.is_empty() {
-        request.profile.video_fmt_chain = vec![volvid_core::YTDLP_BEST_FORMAT.to_owned()];
+        request.profile.video_fmt_chain = vec![volvid_core::BEST_VIDEO_FORMAT.to_owned()];
     }
     if request.output_dir.trim().is_empty() {
         request.output_dir = paths.downloads_dir.to_string_lossy().into_owned();
@@ -529,6 +581,83 @@ pub fn normalize_request(mut request: DownloadRequest, paths: &AppPaths) -> Down
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_phase_progress_and_postprocess_percent() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut progress = ProgressState::default();
+        let progress_event = serde_json::json!({
+            "v": 1,
+            "event": "progress",
+            "downloaded_bytes": 10,
+            "total_bytes": 100,
+            "percent": 25.0,
+            "eta_seconds": 42,
+            "phase": "merge",
+            "phase_percent": 25.0
+        });
+        handle_line(
+            ProcessLine {
+                stdout: true,
+                text: progress_event.to_string(),
+            },
+            0,
+            Locale::En,
+            &tx,
+            &mut progress,
+        );
+        let update = rx.try_recv().unwrap();
+        assert_eq!(update.event_type, DlEventType::Progress);
+        assert_eq!(update.eta_secs, 42);
+        assert_eq!(update.text, "Merging video and audio");
+
+        let postprocess = serde_json::json!({
+            "v": 1,
+            "event": "postprocess",
+            "processor": "audio",
+            "status": "progress",
+            "percent": 60.0
+        });
+        handle_line(
+            ProcessLine {
+                stdout: true,
+                text: postprocess.to_string(),
+            },
+            0,
+            Locale::En,
+            &tx,
+            &mut progress,
+        );
+        let update = rx.try_recv().unwrap();
+        assert_eq!(update.event_type, DlEventType::Proc);
+        assert!((update.pct - 60.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parses_ytrust_fallback_event() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut progress = ProgressState::default();
+        let event = serde_json::json!({
+            "v": 1,
+            "event": "fallback",
+            "reason": "http_forbidden",
+            "from": {"formats": [{"format_id": "160"}]},
+            "to": {"formats": [{"format_id": "18"}]}
+        });
+        handle_line(
+            ProcessLine {
+                stdout: true,
+                text: event.to_string(),
+            },
+            0,
+            Locale::En,
+            &tx,
+            &mut progress,
+        );
+        let update = rx.try_recv().unwrap();
+        assert_eq!(update.event_type, DlEventType::Fallback);
+        assert!(update.text.contains("muxed"));
+    }
 
     #[test]
     fn normalizes_workers_and_output() {
@@ -546,5 +675,111 @@ mod tests {
     fn parses_progress_lines() {
         let progress = ProgressState::default();
         assert!(progress.output_path.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn parses_ytrust_progress_events() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut progress = ProgressState::default();
+        let start = serde_json::json!({
+            "v": 1,
+            "event": "start",
+            "title": "Test video",
+            "total_bytes": 100
+        });
+        handle_line(
+            ProcessLine {
+                stdout: true,
+                text: start.to_string(),
+            },
+            0,
+            Locale::En,
+            &tx,
+            &mut progress,
+        );
+        let update = rx.try_recv().unwrap();
+        assert_eq!(update.event_type, DlEventType::Start);
+        assert_eq!(update.text, "Test video");
+
+        let progress_event = serde_json::json!({
+            "v": 1,
+            "event": "progress",
+            "downloaded_bytes": 50,
+            "total_bytes": 100,
+            "percent": 50.0,
+            "speed_bps": 1024.0
+        });
+        handle_line(
+            ProcessLine {
+                stdout: true,
+                text: progress_event.to_string(),
+            },
+            0,
+            Locale::En,
+            &tx,
+            &mut progress,
+        );
+        let update = rx.try_recv().unwrap();
+        assert_eq!(update.event_type, DlEventType::Progress);
+        assert_eq!(update.done_b, 50);
+        assert_eq!(update.total_b, 100);
+        assert!((update.pct - 50.0).abs() < f64::EPSILON);
+        assert_eq!(update.speed_bps, 1024);
+
+        let file = serde_json::json!({
+            "v": 1,
+            "event": "file",
+            "kind": "subtitle",
+            "path": "/tmp/video.en.srt"
+        });
+        handle_line(
+            ProcessLine {
+                stdout: true,
+                text: file.to_string(),
+            },
+            0,
+            Locale::En,
+            &tx,
+            &mut progress,
+        );
+        assert_eq!(
+            progress.extra_files,
+            vec![PathBuf::from("/tmp/video.en.srt")]
+        );
+
+        let done = serde_json::json!({
+            "v": 1,
+            "event": "done",
+            "filepath": "/tmp/video.mp4",
+            "kind": "video"
+        });
+        handle_line(
+            ProcessLine {
+                stdout: true,
+                text: done.to_string(),
+            },
+            0,
+            Locale::En,
+            &tx,
+            &mut progress,
+        );
+        assert_eq!(progress.output_path, PathBuf::from("/tmp/video.mp4"));
+
+        let error = serde_json::json!({
+            "v": 1,
+            "event": "error",
+            "message": "HTTP: error sending request"
+        });
+        handle_line(
+            ProcessLine {
+                stdout: true,
+                text: error.to_string(),
+            },
+            0,
+            Locale::En,
+            &tx,
+            &mut progress,
+        );
+        assert_eq!(progress.error_text, "HTTP: error sending request");
     }
 }

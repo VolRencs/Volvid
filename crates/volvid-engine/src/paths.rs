@@ -67,8 +67,8 @@ impl AppPaths {
         self.data_dir.join("logs")
     }
 
-    pub fn ytdlp_bin(&self) -> PathBuf {
-        self.deps_dir.join(binary_name("yt-dlp"))
+    pub fn ytrust_bin(&self) -> PathBuf {
+        self.deps_dir.join(binary_name("ytrust"))
     }
 
     pub fn ffmpeg_bin(&self) -> PathBuf {
@@ -159,11 +159,11 @@ mod tests {
 
     #[test]
     fn binary_name_is_platform_aware() {
-        let name = binary_name("yt-dlp");
+        let name = binary_name("ytrust");
         if cfg!(windows) {
-            assert_eq!(name, "yt-dlp.exe");
+            assert_eq!(name, "ytrust.exe");
         } else {
-            assert_eq!(name, "yt-dlp");
+            assert_eq!(name, "ytrust");
         }
     }
 

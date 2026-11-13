@@ -1,154 +1,192 @@
-use std::path::PathBuf;
-
-use eframe::egui;
-use egui::{Align, Layout, RichText};
+use gpui::{Context, SharedString, Window, div, prelude::*, px};
 use volvid_app::Route;
 use volvid_core::DownloadMode;
 
 use crate::app::VolvidApp;
 use crate::format;
-use crate::theme::{self, primary_button, secondary_button};
+use crate::theme::{self, Palette};
 
-enum SummaryAction {
-    New,
-    Clear,
-    Open(PathBuf),
-}
-
-pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
-    let p = app.palette();
+pub fn summary(
+    app: &mut VolvidApp,
+    _window: &mut Window,
+    cx: &mut Context<VolvidApp>,
+    p: &Palette,
+) -> impl IntoElement {
+    let p = *p;
     let s = app.s();
-    let state = &app.controller.state;
-    let ok = state.history.iter().filter(|item| item.ok).count();
-    let failed = state.history.len().saturating_sub(ok);
-    let mut action = None;
+    let locale = app.controller.state.locale;
+    let ok = app
+        .controller
+        .state
+        .history
+        .iter()
+        .filter(|item| item.ok)
+        .count();
+    let failed = app.controller.state.history.len().saturating_sub(ok);
+    let total = app.controller.state.history.len();
+    let history: Vec<_> = app
+        .controller
+        .state
+        .history
+        .iter()
+        .rev()
+        .take(50)
+        .cloned()
+        .collect();
 
-    ui.horizontal(|ui| {
-        ui.vertical(|ui| {
-            theme::title(ui, p, s.history_title);
-            theme::muted(ui, p, s.session_history);
-        });
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if primary_button(ui, p, s.nav_new).clicked() {
-                action = Some(SummaryAction::New);
-            }
-            if !state.history.is_empty() && secondary_button(ui, p, s.clear_history).clicked() {
-                action = Some(SummaryAction::Clear);
-            }
-        });
-    });
-    ui.add_space(16.0);
-
-    theme::card_frame(p).show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
-        ui.horizontal(|ui| {
-            stat_block(ui, p, s.completed, ok, p.success);
-            ui.add_space(20.0);
-            stat_block(ui, p, s.failed, failed, p.danger);
-            ui.add_space(20.0);
-            stat_block(ui, p, s.session_history, state.history.len(), p.accent);
-        });
-    });
-    ui.add_space(14.0);
-
-    if state.history.is_empty() {
-        theme::card_frame(p).show(ui, |ui| {
-            ui.set_min_width(ui.available_width());
-            ui.vertical_centered(|ui| {
-                ui.add_space(20.0);
-                theme::muted(ui, p, s.no_history);
-                ui.add_space(20.0);
-            });
-        });
-    } else {
-        for item in state.history.iter().rev().take(50) {
-            let color = if item.ok { p.success } else { p.danger };
-            let timestamp = format::timestamp(item.timestamp, state.locale);
-            let open_width =
-                theme::text_width(ui, s.open_folder, theme::semibold(theme::FONT_LABEL)) + 30.0;
-            let timestamp_width = theme::text_width(
-                ui,
-                &timestamp,
-                egui::FontId::proportional(theme::FONT_SMALL),
-            );
-            let actions_width = open_width + 8.0 + timestamp_width + 8.0;
-            theme::card(ui, p, |ui| {
-                ui.horizontal(|ui| {
-                    theme::status_dot(ui, color);
-                    theme::row_with_actions(
-                        ui,
-                        actions_width,
-                        |ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    theme::strong_text(&item.label, theme::FONT_BODY).color(p.text),
-                                )
-                                .truncate(),
-                            );
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(&item.url)
-                                        .size(theme::FONT_SMALL)
-                                        .color(p.muted),
-                                )
-                                .truncate(),
-                            );
-                        },
-                        |ui| {
-                            if secondary_button(ui, p, s.open_folder).clicked() {
-                                action = Some(SummaryAction::Open(item.output_dir.clone()));
+    let mut page = div()
+        .id("page-summary")
+        .flex()
+        .flex_col()
+        .gap_4()
+        .h_full()
+        .overflow_y_scroll()
+        .scrollbar_width(px(8.))
+        .pb_5()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(theme::title(s.history_title, &p))
+                        .child(theme::muted(s.session_history, &p)),
+                )
+                .child(div().flex_1())
+                .child(
+                    theme::secondary_button("history-clear", s.clear_history, &p)
+                        .when(total == 0, |this| this.opacity(0.45))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if !this.controller.state.history.is_empty() {
+                                this.controller.clear_history();
                             }
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(&timestamp)
-                                        .size(theme::FONT_SMALL)
-                                        .color(p.muted),
-                                )
-                                .truncate(),
-                            );
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    theme::primary_button("history-new", s.nav_new, &p).on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.controller.set_route(Route::Home);
+                            cx.notify();
                         },
-                    );
-                });
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    let mode = match item.mode {
-                        DownloadMode::Video => s.mode_video,
-                        DownloadMode::Audio => s.mode_audio,
-                        DownloadMode::Thumbnail => s.mode_thumbnail,
-                    };
-                    theme::badge(ui, mode, p.accent);
-                    if item.items > 1 {
-                        let mut details = vec![s.job_items.replace("%d", &item.items.to_string())];
-                        if item.failed > 0 {
-                            details.push(s.failed_items.replace("%d", &item.failed.to_string()));
-                        }
-                        theme::muted(ui, p, details.join("  ·  "));
-                    }
-                });
-            });
-            ui.add_space(10.0);
-        }
+                    )),
+                ),
+        )
+        .child(
+            theme::card(&p)
+                .flex()
+                .gap_8()
+                .child(stat(s.completed, ok, p.success, &p))
+                .child(stat(s.failed, failed, p.danger, &p))
+                .child(stat(s.session_history, total, p.accent, &p)),
+        );
+
+    if history.is_empty() {
+        page = page.child(theme::card(&p).child(theme::empty_state(
+            "icons/history.svg",
+            s.no_history,
+            "",
+            &p,
+        )));
+        return page;
     }
 
-    // The action target is resolved after rendering to keep the history borrow
-    // narrow and avoid cloning the whole list every frame.
-    match action {
-        Some(SummaryAction::New) => app.controller.set_route(Route::Home),
-        Some(SummaryAction::Clear) => app.controller.clear_history(),
-        Some(SummaryAction::Open(path)) => app.controller.open_folder(path),
-        None => {}
+    for (index, item) in history.into_iter().enumerate() {
+        let color = if item.ok { p.success } else { p.danger };
+        let timestamp = format::timestamp(item.timestamp, locale);
+        let output = item.output_dir.clone();
+        let mode = match item.mode {
+            DownloadMode::Video => s.mode_video,
+            DownloadMode::Audio => s.mode_audio,
+            DownloadMode::Thumbnail => s.mode_thumbnail,
+        };
+        page = page.child(
+            theme::card(&p)
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(div().size(px(8.)).rounded_full().bg(color))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(0.))
+                                .truncate()
+                                .text_size(px(14.))
+                                .text_color(p.text)
+                                .child(item.label),
+                        )
+                        .when(item.failed > 0, |this| {
+                            this.child(theme::badge(
+                                s.failed_items.replace("%d", &item.failed.to_string()),
+                                p.danger,
+                                p.card_hover,
+                            ))
+                        })
+                        .child(theme::muted(timestamp, &p)),
+                )
+                .when(!item.url.is_empty(), |this| {
+                    this.child(
+                        div()
+                            .truncate()
+                            .text_size(px(11.5))
+                            .text_color(p.muted)
+                            .child(item.url.clone()),
+                    )
+                })
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(theme::badge(mode, p.accent, p.card_hover))
+                        .when(item.items > 1, |this| {
+                            this.child(theme::muted(
+                                s.job_items.replace("%d", &item.items.to_string()),
+                                &p,
+                            ))
+                        })
+                        .child(div().flex_1())
+                        .child(
+                            theme::ghost_button(
+                                SharedString::from(format!(
+                                    "history-open-{}-{index}",
+                                    item.timestamp
+                                )),
+                                s.open_folder,
+                                &p,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, _| {
+                                    this.controller.open_folder(output.clone());
+                                },
+                            )),
+                        ),
+                ),
+        );
     }
+    page
 }
 
-fn stat_block(
-    ui: &mut egui::Ui,
-    p: &crate::theme::Palette,
-    label: &str,
-    value: usize,
-    color: egui::Color32,
-) {
-    ui.vertical(|ui| {
-        ui.label(theme::strong_text(value.to_string(), 24.0).color(color));
-        theme::muted(ui, p, label);
-    });
+fn stat(label: &str, value: usize, color: gpui::Hsla, p: &Palette) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(
+            div()
+                .text_size(px(28.))
+                .font_weight(gpui::FontWeight::BOLD)
+                .text_color(color)
+                .child(value.to_string()),
+        )
+        .child(theme::muted(label.to_owned(), p))
 }

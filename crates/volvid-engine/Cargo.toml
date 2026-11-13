@@ -1,11 +1,12 @@
 [package]
 name = "volvid-engine"
-description = "yt-dlp and ffmpeg engine for Volvid"
+description = "ytrust and ffmpeg engine for Volvid"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+authors.workspace = true
 publish = false
 
 [dependencies]

@@ -1,6 +1,6 @@
 use volvid_core::{
-    DownloadMode, FragmentError, Locale, OutputProfile, QualityChoice, SelectionError,
-    YTDLP_BEST_FORMAT, default_quality_choices,
+    BEST_VIDEO_FORMAT, DownloadMode, FragmentError, Locale, OutputProfile, QualityChoice,
+    SelectionError, default_quality_choices,
 };
 
 macro_rules! define_strings {
@@ -33,7 +33,6 @@ define_strings! {
     recent: "Recent downloads", "Последние загрузки";
     no_history: "Nothing downloaded yet.", "В этой сессии ещё не было загрузок.";
     deps_missing: "Required dependencies are missing.", "Не хватает обязательных зависимостей.";
-    drag_hint: "Drop a YouTube link here", "Перетащите ссылку YouTube сюда";
     clipboard_empty: "Clipboard is empty", "Буфер обмена пуст";
 
     theme: "Theme", "Тема";
@@ -44,7 +43,12 @@ define_strings! {
     update_available: "Update available", "Доступно обновление";
     install_update: "Install update", "Установить обновление";
     later: "Later", "Позже";
-    update_applied: "Update applied. Restart Volvid to use the new version.", "Обновление применено. Перезапустите Volvid.";
+    update_installed: "Update installed", "Обновление установлено";
+    restart_now: "Restart now", "Перезапустить сейчас";
+    restarting: "Restarting Volvid…", "Перезапускаю Volvid…";
+    restart_wait_jobs: "Waiting for downloads to finish before restarting.", "Ожидаю завершения загрузок перед перезапуском.";
+    restart_countdown: "Restarting in %d…", "Перезапуск через %d…";
+    restart_failed: "Could not restart Volvid", "Не удалось перезапустить Volvid";
     close: "Close", "Закрыть";
     back: "Back", "Назад";
     continue_label: "Continue", "Продолжить";
@@ -56,7 +60,6 @@ define_strings! {
     dep_required: "required", "обязательно";
     dep_optional: "optional", "опционально";
     dep_missing: "missing", "не найден";
-    dep_available: "available", "доступен";
     dep_checking: "checking...", "проверяю...";
     dep_system: "system", "система";
     dep_managed: "managed", "в комплекте";
@@ -64,9 +67,7 @@ define_strings! {
     dep_update: "Update", "Обновить";
     dep_refresh: "Refresh status", "Обновить статус";
     cookies: "Cookies", "Cookies";
-    js_runtime: "JS runtime", "JS runtime";
-    deps_settings_hint: "Open Settings → Dependencies to install them.", "Откройте «Настройки» → «Зависимости», чтобы установить их.";
-    audio_original_hint: "Leave empty to keep the original audio only.", "Оставьте пустым, чтобы сохранить только оригинальное аудио.";
+    js_runtime: "JS runtime (challenges)", "JS runtime (челленджи)";
     environment: "Environment", "Окружение";
     table_name: "Name", "Название";
     table_duration: "Duration", "Длительность";
@@ -115,7 +116,6 @@ define_strings! {
     thumbnail_failed: "Could not load the preview.", "Не удалось загрузить превью.";
     trim_title: "Trim", "Фрагмент";
     trim_playlist_unavailable: "Trimming is unavailable for playlists.", "Обрезка недоступна для плейлистов.";
-    trim_enable: "Download a fragment", "Скачать фрагмент";
     from_url_timestamp: "From URL timestamp", "С таймкода из URL";
     custom_range: "Custom range", "Свой диапазон";
     full_media: "Full media", "Полностью";
@@ -156,13 +156,15 @@ define_strings! {
     downloading: "Downloading", "Загрузка";
     merging: "Merging video and audio", "Объединение видео и аудио";
     converting_audio: "Converting audio", "Конвертация аудио";
-    thumbnail_proc: "Downloading thumbnail", "Загрузка превью";
+    remuxing: "Remuxing container", "Смена контейнера";
+    embedding_subs: "Embedding subtitles", "Встраивание субтитров";
     fallback_format: "Trying fallback format #%d: %s", "Пробую запасной формат #%d: %s";
+    fallback_muxed: "YouTube blocked separate streams; using a muxed format", "YouTube заблокировал раздельные потоки; использую muxed-формат";
     download_failed: "Download failed", "Загрузка не удалась";
     history_title: "History", "История";
     session_history: "Session history", "История сессии";
     clear_history: "Clear history", "Очистить историю";
-    job_items: "%d items", "%d видео";
+    job_items: "%d items", "%d файлов";
 
     search_title: "Search YouTube", "Поиск YouTube";
     search_prompt: "Enter a video title or keywords", "Введите название видео или ключевые слова";
@@ -174,8 +176,16 @@ define_strings! {
     invalid_url: "Does not look like a YouTube URL", "Не похоже на YouTube-ссылку";
     empty_url: "URL cannot be empty", "Ссылка не может быть пустой";
     unsupported_url: "Unsupported YouTube URL", "Неподдерживаемая YouTube-ссылка";
-    missing_ytdlp: "yt-dlp is required.", "Требуется yt-dlp.";
+    missing_ytrust: "ytrust 1.1.1 or newer is required.", "Требуется ytrust 1.1.1 или новее.";
     missing_ffmpeg: "ffmpeg is required for this mode.", "Для этого режима требуется ffmpeg.";
+    err_botcheck: "YouTube asks to sign in to confirm you're not a bot. Try browser cookies.", "YouTube просит войти, чтобы подтвердить, что вы не бот. Попробуйте cookies браузера.";
+    err_age_restricted: "This video is age-restricted. Browser cookies may help.", "Видео ограничено по возрасту. Могут помочь cookies браузера.";
+    err_private: "This video is private.", "Это приватное видео.";
+    err_unavailable: "This video is unavailable.", "Видео недоступно.";
+    err_cookies: "Could not read browser cookies. Check the selected browser profile.", "Не удалось прочитать cookies браузера. Проверьте выбранный профиль.";
+    err_timeout: "YouTube did not respond in time. Try again.", "YouTube не ответил вовремя. Попробуйте ещё раз.";
+    err_network: "Network error while contacting YouTube.", "Сетевая ошибка при обращении к YouTube.";
+    err_challenge: "Could not solve the YouTube JavaScript challenge. Install Node.js 20+.", "Не удалось решить JavaScript-челлендж YouTube. Установите Node.js 20+.";
     invalid_fragment: "Invalid fragment format.", "Неверный формат фрагмента.";
     fragment_out_of_range: "Range must stay within the video duration.", "Диапазон должен укладываться в длительность видео.";
     fragment_duration_required: "Trimming is unavailable because the video duration is unknown.", "Обрезка недоступна: длительность видео неизвестна.";
@@ -188,7 +198,6 @@ define_strings! {
     config_save_failed: "Could not save settings", "Не удалось сохранить настройки";
 
     settings_title: "Settings", "Настройки";
-    playlist_workers: "Playlist workers", "Потоков для плейлиста";
     logs: "Logs", "Логи";
     open_logs: "Open logs", "Открыть логи";
     config_dir: "Config directory", "Каталог конфигурации";
@@ -205,7 +214,6 @@ define_strings! {
     status_no_profile: "no usable profile", "нет подходящего профиля";
     select_language: "Language", "Язык";
     appearance: "Appearance", "Внешний вид";
-    behavior: "Behavior", "Поведение";
     paths: "Paths", "Пути";
 
     checking: "Checking…", "Проверяю…";
@@ -224,9 +232,14 @@ pub fn strings(locale: Locale) -> &'static Strings {
 pub fn engine_error_text(message: &str, locale: Locale) -> String {
     let s = strings(locale);
     let lower = message.to_ascii_lowercase();
-    if lower.contains("yt-dlp is required") {
-        s.missing_ytdlp.to_owned()
-    } else if lower.contains("ffmpeg is required") {
+    if lower.contains("ytrust is required")
+        || (lower.contains("ytrust") && lower.contains("or newer is required"))
+    {
+        s.missing_ytrust.to_owned()
+    } else if lower.contains("ffmpeg is required")
+        || lower.contains("ffmpeg was not found")
+        || lower.contains("ffmpeg not found")
+    {
         s.missing_ffmpeg.to_owned()
     } else if lower.contains("operation cancelled") {
         s.operation_cancelled.to_owned()
@@ -240,8 +253,29 @@ pub fn engine_error_text(message: &str, locale: Locale) -> String {
         s.no_results.to_owned()
     } else if lower.contains("download target is required") {
         s.empty_url.to_owned()
-    } else if lower.contains("no download formats configured") {
-        s.download_failed.to_owned()
+    } else if lower.contains("not a bot")
+        || lower.contains("confirm you're not a bot")
+        || lower.contains("botcheck")
+    {
+        s.err_botcheck.to_owned()
+    } else if lower.contains("age-restricted") || lower.contains("age restricted") {
+        s.err_age_restricted.to_owned()
+    } else if lower.contains("private video") || lower.contains("video is private") {
+        s.err_private.to_owned()
+    } else if lower.contains("video unavailable") || lower.contains("not available") {
+        s.err_unavailable.to_owned()
+    } else if lower.contains("cookie") {
+        s.err_cookies.to_owned()
+    } else if lower.contains("challenge") {
+        s.err_challenge.to_owned()
+    } else if lower.contains("timed out") || lower.contains("timeout") {
+        s.err_timeout.to_owned()
+    } else if lower.contains("error sending request")
+        || lower.contains("network")
+        || lower.contains("connection")
+        || lower.contains("dns")
+    {
+        s.err_network.to_owned()
     } else {
         message.to_owned()
     }
@@ -344,7 +378,7 @@ fn default_video_profile(locale: Locale) -> OutputProfile {
     OutputProfile {
         label: s.best_quality.to_owned(),
         mode: DownloadMode::Video,
-        video_fmt_chain: vec![YTDLP_BEST_FORMAT.to_owned(), "best".to_owned()],
+        video_fmt_chain: vec![BEST_VIDEO_FORMAT.to_owned(), "best".to_owned()],
         ..OutputProfile::default()
     }
 }
@@ -383,7 +417,7 @@ pub fn video_output_profiles(base: OutputProfile, locale: Locale) -> Vec<OutputP
         base.label = s.best_quality.to_owned();
     }
     if base.video_fmt_chain.is_empty() {
-        base.video_fmt_chain = vec![YTDLP_BEST_FORMAT.to_owned(), "best".to_owned()];
+        base.video_fmt_chain = vec![BEST_VIDEO_FORMAT.to_owned(), "best".to_owned()];
     }
     vec![
         with_video_output(base.clone(), s.video_original, "mp4", "", "", "", "", false),
@@ -462,7 +496,7 @@ pub fn thumbnail_profile(locale: Locale) -> OutputProfile {
 pub fn default_quality(locale: Locale) -> Vec<QualityChoice> {
     let mut choices = default_quality_choices();
     if let Some(first) = choices.first_mut() {
-        first.fmt_chain = vec![YTDLP_BEST_FORMAT.to_owned()];
+        first.fmt_chain = vec![BEST_VIDEO_FORMAT.to_owned()];
         first.fmt_labels = vec![strings(locale).best_quality.to_owned()];
     }
     choices
@@ -515,12 +549,24 @@ mod tests {
     #[test]
     fn localizes_common_engine_errors() {
         assert_eq!(
-            engine_error_text("yt-dlp is required", Locale::Ru),
-            strings(Locale::Ru).missing_ytdlp
+            engine_error_text("ytrust is required", Locale::Ru),
+            strings(Locale::Ru).missing_ytrust
         );
         assert_eq!(
             engine_error_text("operation cancelled", Locale::En),
             strings(Locale::En).operation_cancelled
+        );
+        assert_eq!(
+            engine_error_text("Sign in to confirm you're not a bot", Locale::En),
+            strings(Locale::En).err_botcheck
+        );
+        assert_eq!(
+            engine_error_text("This video is age-restricted", Locale::En),
+            strings(Locale::En).err_age_restricted
+        );
+        assert_eq!(
+            engine_error_text("could not read browser cookies", Locale::En),
+            strings(Locale::En).err_cookies
         );
         assert_eq!(
             engine_error_text("custom error", Locale::En),

@@ -11,25 +11,14 @@ use volvid_engine::{AppPaths, Config, Engine, youtube_preview_url};
 
 use crate::state::{AppEvent, HistoryItem, ThumbnailStage};
 
-type Repaint = Arc<dyn Fn() + Send + Sync>;
-
 #[derive(Clone)]
 struct EventSink {
     tx: mpsc::UnboundedSender<AppEvent>,
-    repaint: Arc<Mutex<Option<Repaint>>>,
 }
 
 impl EventSink {
     fn send(&self, event: AppEvent) {
         let _ = self.tx.send(event);
-        let repaint = self
-            .repaint
-            .lock()
-            .ok()
-            .and_then(|callback| callback.clone());
-        if let Some(repaint) = repaint {
-            repaint();
-        }
     }
 }
 
@@ -57,10 +46,7 @@ impl Backend {
         Ok(Self {
             engine,
             runtime,
-            sink: EventSink {
-                tx,
-                repaint: Arc::new(Mutex::new(None)),
-            },
+            sink: EventSink { tx },
             rx: Mutex::new(rx),
             cancels: Arc::new(Mutex::new(HashMap::new())),
             metadata_cancels: Arc::new(Mutex::new(HashMap::new())),
@@ -68,12 +54,6 @@ impl Backend {
             install_cancel: Arc::new(Mutex::new(None)),
             config_save_lock: Arc::new(tokio::sync::Mutex::new(())),
         })
-    }
-
-    pub fn set_repaint(&self, repaint: Repaint) {
-        if let Ok(mut callback) = self.sink.repaint.lock() {
-            *callback = Some(repaint);
-        }
     }
 
     pub fn paths(&self) -> &AppPaths {

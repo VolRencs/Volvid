@@ -35,7 +35,7 @@ body:
         - Playlist
         - YouTube search
         - Fragment selection
-        - Dependencies (yt-dlp / ffmpeg / node)
+        - Dependencies (ytrust / ffmpeg / node)
         - Cookies / JS runtime
         - Downloads folder
         - i18n (RU/EN)

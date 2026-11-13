@@ -1,536 +1,582 @@
-use eframe::egui;
-use egui::{Align, Layout, RichText, Sense, Stroke};
+use gpui::{Context, SharedString, Window, div, linear_gradient, prelude::*, px};
 use volvid_app::{FragmentMode, Route};
-use volvid_core::{DownloadMode, format_clock, format_duration};
-use volvid_i18n::{fragment_error_text, quality_label};
+use volvid_core::{DownloadMode, format_duration};
+use volvid_i18n::{format_bytes, fragment_error_text};
 
+use super::components::{option_row, segment, track_chip};
 use crate::app::VolvidApp;
-use crate::theme::{self, primary_button_fill, secondary_button};
+use crate::theme::{self, Palette};
 
-pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
-    let p = app.palette();
+pub fn configure(
+    app: &mut VolvidApp,
+    window: &mut Window,
+    cx: &mut Context<VolvidApp>,
+    p: &Palette,
+) -> impl IntoElement {
+    let p = *p;
     let s = app.s();
+    let locale = app.controller.state.locale;
     let title = app.controller.state.title_for_configure();
     let duration = app.controller.state.media_duration;
     let is_playlist = app.controller.state.is_playlist_mode();
-
-    ui.horizontal(|ui| {
-        if theme::icon_button(
-            ui,
-            p,
-            egui::include_image!("../../../../assets/icons/arrow-left.svg"),
-            42.0,
-            p.text,
-            s.back,
-        )
-        .clicked()
-        {
-            let route = if is_playlist {
-                Route::Playlist
-            } else {
-                Route::Home
-            };
-            app.controller.set_route(route);
-        }
-        ui.add_space(4.0);
-        ui.vertical(|ui| {
-            let title = if title.is_empty() {
-                s.configure_title
-            } else {
-                title.as_str()
-            };
-            theme::page_title(ui, p, title);
-            let mut meta = Vec::new();
-            if duration > 0 {
-                meta.push(format!("{} {}", s.duration, format_duration(duration)));
-            }
-            if is_playlist {
-                let count = app.controller.state.selected_entries.len();
-                meta.push(s.videos_count.replace("%d", &count.to_string()));
-            }
-            if !meta.is_empty() {
-                theme::muted(ui, p, meta.join("  ·  "));
-            }
-        });
-    });
-    ui.add_space(16.0);
-
-    let available = ui.available_width();
-    if let Some((left_width, right_width)) =
-        theme::split_columns(available, 18.0, 0.62, 420.0, 320.0)
-    {
-        ui.horizontal_top(|ui| {
-            ui.spacing_mut().item_spacing.x = 18.0;
-            ui.allocate_ui_with_layout(
-                egui::vec2(left_width, 0.0),
-                Layout::top_down(Align::LEFT),
-                |ui| options(app, ui),
-            );
-            ui.allocate_ui_with_layout(
-                egui::vec2(right_width, 0.0),
-                Layout::top_down(Align::LEFT),
-                |ui| summary(app, ui),
-            );
-        });
-    } else {
-        options(app, ui);
-        ui.add_space(14.0);
-        summary(app, ui);
-    }
-}
-
-fn options(app: &mut VolvidApp, ui: &mut egui::Ui) {
-    let p = app.palette();
-    let s = app.s();
-    let locale = app.controller.state.locale;
-
-    ui.horizontal(|ui| {
-        for (mode, label) in [
-            (DownloadMode::Video, s.mode_video),
-            (DownloadMode::Audio, s.mode_audio),
-            (DownloadMode::Thumbnail, s.mode_thumbnail),
-        ] {
-            let selected = app.controller.state.draft.mode == mode;
-            if theme::segmented_button(ui, p, label, selected, 110.0).clicked() {
-                app.controller.set_mode(mode);
-            }
-        }
-    });
-    ui.add_space(12.0);
-
-    match app.controller.state.draft.mode {
-        DownloadMode::Video => {
-            theme::card(ui, p, |ui| {
-                ui.horizontal(|ui| {
-                    theme::section_title(ui, p, s.quality_title);
-                    if app.controller.state.quality_loading {
-                        ui.add(egui::Spinner::new().size(14.0).color(p.accent));
-                        theme::muted(ui, p, s.loading_quality);
-                    }
-                });
-                ui.add_space(6.0);
-                let choices = app.controller.state.quality_choices.clone();
-                for choice in choices {
-                    let selected =
-                        app.controller
-                            .state
-                            .draft
-                            .quality
-                            .as_ref()
-                            .is_some_and(|current| {
-                                current.height == choice.height
-                                    && current.best == choice.best
-                                    && current.worst == choice.worst
-                            });
-                    let label = quality_label(&choice, locale);
-                    if option_row(ui, p, selected, &label).clicked() {
-                        app.controller.state.draft.quality = Some(choice);
-                        app.controller.state.draft.video_profile_index = 0;
-                    }
-                }
-                if let Some(error) = app.controller.state.quality_error.clone() {
-                    theme::warning_text(ui, p, error);
-                }
-            });
-            ui.add_space(12.0);
-            theme::card(ui, p, |ui| {
-                theme::section_title(ui, p, s.format_title);
-                ui.add_space(4.0);
-                let profiles = app.controller.state.draft.video_profiles(locale);
-                let selected = app.controller.state.draft.video_profile_index;
-                for (index, profile) in profiles.iter().enumerate() {
-                    if option_row(ui, p, selected == index, &profile.label).clicked() {
-                        app.controller.state.draft.video_profile_index = index;
-                    }
-                }
-            });
-            ui.add_space(12.0);
-            advanced(app, ui);
-        }
-        DownloadMode::Audio => {
-            theme::card(ui, p, |ui| {
-                theme::section_title(ui, p, s.audio_title);
-                ui.add_space(4.0);
-                let profiles = app.controller.state.draft.audio_profiles(locale);
-                let selected = app.controller.state.draft.audio_profile_index;
-                for (index, profile) in profiles.iter().enumerate() {
-                    if option_row(ui, p, selected == index, &profile.label).clicked() {
-                        app.controller.state.draft.audio_profile_index = index;
-                    }
-                }
-            });
-            ui.add_space(12.0);
-            fragment(app, ui);
-        }
-        DownloadMode::Thumbnail => {
-            theme::card(ui, p, |ui| {
-                theme::section_title(ui, p, s.thumbnail_title);
-                ui.add_space(4.0);
-                theme::muted(ui, p, s.thumbnail_hint);
-            });
-        }
-    }
-
-    ui.add_space(theme::CARD_GAP);
-    theme::card(ui, p, |ui| {
-        ui.horizontal(|ui| {
-            theme::section_title(ui, p, s.output_folder);
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if secondary_button(ui, p, s.open_folder).clicked() {
-                    app.controller
-                        .open_folder(app.controller.state.downloads_dir.clone());
-                }
-                if secondary_button(ui, p, s.choose_folder).clicked() {
-                    app.controller.pick_folder();
-                }
-            });
-        });
-        ui.add_space(4.0);
-        let path = app.controller.state.downloads_dir.to_string_lossy();
-        theme::text_chip(ui, p, &path, 12.5, ui.available_width(), false);
-        let is_playlist = app.controller.state.is_playlist_mode();
-        if is_playlist {
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                theme::section_title(ui, p, s.workers);
-                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                    theme::value_box(ui, p, app.controller.state.draft.workers.to_string());
-                    theme::slider(ui, p, &mut app.controller.state.draft.workers, 1..=8, 200.0);
-                });
-            });
-        }
-    });
-}
-
-fn advanced(app: &mut VolvidApp, ui: &mut egui::Ui) {
-    let p = app.palette();
-    let s = app.s();
-    theme::card(ui, p, |ui| {
-        egui::CollapsingHeader::new(theme::strong_text(s.advanced, 14.0).color(p.text))
-            .default_open(true)
-            .show(ui, |ui| {
-                if app.controller.state.probe_loading {
-                    theme::spinner(ui, p, s.loading_tracks);
-                }
-                let audio = app.controller.state.audio_tracks.clone();
-                theme::section_title(ui, p, s.audio_tracks_title);
-                if audio.len() < 2 {
-                    theme::muted(ui, p, s.no_audio_tracks);
-                } else {
-                    for track in audio {
-                        let mut checked =
-                            app.controller.state.draft.audio_langs.contains(&track.lang);
-                        if ui.checkbox(&mut checked, &track.lang).changed() {
-                            if checked {
-                                app.controller.state.draft.audio_langs.insert(track.lang);
-                            } else {
-                                app.controller.state.draft.audio_langs.remove(&track.lang);
-                            }
-                        }
-                    }
-                    theme::muted(ui, p, s.audio_original_hint);
-                }
-                ui.add_space(theme::SECTION_GAP);
-                theme::section_title(ui, p, s.subtitles_title);
-                let subs = app.controller.state.sub_tracks.clone();
-                if subs.is_empty() {
-                    theme::muted(ui, p, s.no_subtitles);
-                } else {
-                    for track in subs {
-                        let label = if track.auto {
-                            format!("{} ({})", track.lang, s.auto_subtitle)
-                        } else {
-                            track.lang.clone()
-                        };
-                        let mut checked =
-                            app.controller.state.draft.sub_langs.contains(&track.lang);
-                        if ui.checkbox(&mut checked, label).changed() {
-                            if checked {
-                                app.controller.state.draft.sub_langs.insert(track.lang);
-                            } else {
-                                app.controller.state.draft.sub_langs.remove(&track.lang);
-                            }
-                        }
-                    }
-                }
-                if let Some(error) = app.controller.state.tracks_error.clone() {
-                    theme::warning_text(ui, p, error);
-                }
-            });
-    });
-    ui.add_space(8.0);
-    fragment(app, ui);
-}
-
-fn fragment(app: &mut VolvidApp, ui: &mut egui::Ui) {
-    let p = app.palette();
-    let s = app.s();
-    let target = app.controller.state.target.clone();
-    let duration = app.controller.state.media_duration;
-    if app.controller.state.is_playlist_mode() {
-        theme::muted(ui, p, s.trim_playlist_unavailable);
-        return;
-    }
-    let mut enabled = app.controller.state.draft.fragment_mode != FragmentMode::None;
-    theme::card(ui, p, |ui| {
-        if ui
-            .checkbox(&mut enabled, theme::strong_text(s.trim_enable, 14.0))
-            .changed()
-        {
-            app.controller.state.draft.fragment_mode = if enabled {
-                FragmentMode::Custom
-            } else {
-                FragmentMode::None
-            };
-        }
-        if !enabled {
-            return;
-        }
-        if app
-            .controller
-            .state
-            .draft
-            .can_use_url_start(target.as_ref(), duration)
-        {
-            ui.radio_value(
-                &mut app.controller.state.draft.fragment_mode,
-                FragmentMode::None,
-                s.full_media,
-            );
-            ui.radio_value(
-                &mut app.controller.state.draft.fragment_mode,
-                FragmentMode::FromUrl,
-                format!(
-                    "{} ({})",
-                    s.from_url_timestamp,
-                    format_clock(
-                        target
-                            .as_ref()
-                            .map(|target| target.url_start_at)
-                            .unwrap_or(0)
-                    )
-                ),
-            );
-        }
-        ui.radio_value(
-            &mut app.controller.state.draft.fragment_mode,
-            FragmentMode::Custom,
-            s.custom_range,
-        );
-        if app.controller.state.draft.fragment_mode == FragmentMode::Custom {
-            ui.horizontal(|ui| {
-                theme::text_input(
-                    ui,
-                    &mut app.controller.state.draft.custom_start,
-                    "1:00",
-                    120.0,
-                );
-                ui.label("—");
-                theme::text_input(
-                    ui,
-                    &mut app.controller.state.draft.custom_end,
-                    "2:30",
-                    120.0,
-                );
-            });
-            ui.add_space(4.0);
-            theme::muted(ui, p, s.trim_hint);
-        }
-        if let Err(error) = app
-            .controller
-            .state
-            .draft
-            .fragment(target.as_ref(), duration)
-        {
-            theme::error_text(
-                ui,
-                p,
-                fragment_error_text(error, duration, app.controller.state.locale),
-            );
-        }
-    });
-}
-
-fn summary(app: &mut VolvidApp, ui: &mut egui::Ui) {
-    let p = app.palette();
-    let s = app.s();
-    let locale = app.controller.state.locale;
-    let preview = app.preview_texture().cloned();
+    let selected_count = app.controller.state.selected_entries.len();
+    let quality_error = app.controller.state.quality_error.clone();
     let thumbnail_loading = app.controller.state.thumbnail_loading;
     let thumbnail_error = app.controller.state.thumbnail_error;
-    theme::card(ui, p, |ui| {
-        let width = ui.available_width();
-        if let Some(texture) = preview {
-            let size = texture.size_vec2();
-            let aspect = size.x.max(1.0) / size.y.max(1.0);
-            let mut height = width / aspect.max(0.01);
-            if height > 220.0 {
-                height = 220.0;
-            }
-            let image_width = (height * aspect).min(width);
-            ui.allocate_ui_with_layout(
-                egui::vec2(width, height),
-                Layout::left_to_right(Align::Center),
-                |ui| {
-                    ui.add(
-                        egui::Image::new((texture.id(), egui::vec2(image_width, height)))
-                            .corner_radius(egui::CornerRadius::same(12)),
-                    );
+    let target = app.controller.state.target.clone();
+    let fragment_label = app
+        .controller
+        .state
+        .draft
+        .fragment_label(target.as_ref(), duration);
+
+    let header = div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .child(
+            theme::secondary_button("configure-back", s.back, &p).on_click(cx.listener(
+                |this, _, _, cx| {
+                    let route = if this.controller.state.is_playlist_mode() {
+                        Route::Playlist
+                    } else {
+                        Route::Home
+                    };
+                    this.controller.set_route(route);
+                    cx.notify();
                 },
+            )),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(theme::page_title(
+                    if title.is_empty() {
+                        s.configure_title.to_owned()
+                    } else {
+                        title.clone()
+                    },
+                    &p,
+                ))
+                .child(theme::muted(
+                    if is_playlist {
+                        format!(
+                            "{}  ·  {}",
+                            format_duration(duration),
+                            s.videos_count.replace("%d", &selected_count.to_string())
+                        )
+                    } else {
+                        format!("{} {}", s.duration, format_duration(duration))
+                    },
+                    &p,
+                )),
+        );
+
+    let mode = app.controller.state.draft.mode;
+    let mut modes = div().flex().gap_2();
+    for (value, label) in [
+        (DownloadMode::Video, s.mode_video),
+        (DownloadMode::Audio, s.mode_audio),
+        (DownloadMode::Thumbnail, s.mode_thumbnail),
+    ] {
+        modes = modes.child(
+            segment(
+                SharedString::from(format!("mode-{value:?}")),
+                label,
+                mode == value,
+                &p,
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.controller.set_mode(value);
+                cx.notify();
+            })),
+        );
+    }
+
+    let choices = app.controller.state.quality_choices.clone();
+    let selected_quality = app.controller.state.draft.quality.clone();
+    let profiles = app.controller.state.draft.video_profiles(locale);
+    let audio_profiles = app.controller.state.draft.audio_profiles(locale);
+    let video_index = app.controller.state.draft.video_profile_index;
+    let audio_index = app.controller.state.draft.audio_profile_index;
+
+    let mut left = div().flex().flex_col().gap_4();
+    left = left.child(modes);
+    match mode {
+        DownloadMode::Video => {
+            let mut quality_card = theme::card(&p).flex().flex_col().gap_2().child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(theme::section_title(s.quality_title, &p))
+                    .when(app.controller.state.quality_loading, |this| {
+                        this.child(theme::muted(s.loading_quality, &p))
+                    }),
             );
-            ui.add_space(12.0);
-        } else {
-            egui::Frame::new()
-                .fill(p.track)
-                .stroke(Stroke::new(1.0, p.border))
-                .corner_radius(egui::CornerRadius::same(12))
-                .inner_margin(egui::Margin::same(0))
-                .show(ui, |ui| {
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(width, 132.0),
-                        Layout::centered_and_justified(egui::Direction::TopDown),
-                        |ui| {
-                            if app.controller.state.probe_loading || thumbnail_loading {
-                                ui.add(egui::Spinner::new().size(24.0).color(p.accent));
-                            } else {
-                                ui.label(
-                                    RichText::new("▶")
-                                        .size(34.0)
-                                        .color(p.muted.gamma_multiply(0.7)),
-                                );
-                            }
-                        },
-                    );
+            for choice in choices {
+                let selected = selected_quality.as_ref().is_some_and(|current| {
+                    current.height == choice.height
+                        && current.best == choice.best
+                        && current.worst == choice.worst
                 });
-            ui.add_space(12.0);
+                let label = volvid_i18n::quality_label(&choice, locale);
+                let value = choice.clone();
+                quality_card = quality_card.child(
+                    option_row(
+                        SharedString::from(format!("quality-{}", choice.height)),
+                        selected,
+                        &label,
+                        &p,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.controller.state.draft.quality = Some(value.clone());
+                        this.controller.state.draft.video_profile_index = 0;
+                        cx.notify();
+                    })),
+                );
+            }
+            if let Some(error) = quality_error {
+                quality_card =
+                    quality_card.child(theme::notice("icons/alert.svg", error, p.warning));
+            }
+            left = left.child(quality_card);
+
+            let mut formats = theme::card(&p)
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(theme::section_title(s.format_title, &p));
+            for (index, profile) in profiles.iter().enumerate() {
+                formats = formats.child(
+                    option_row(
+                        SharedString::from(format!("format-{index}")),
+                        video_index == index,
+                        &profile.label,
+                        &p,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.controller.state.draft.video_profile_index = index;
+                        cx.notify();
+                    })),
+                );
+            }
+            left = left.child(formats);
+            left = left.child(advanced_tracks(app, cx, &p, true));
+            left = left.child(fragment_card(app, window, cx, &p));
         }
-        if thumbnail_error {
-            theme::warning_text(ui, p, s.thumbnail_failed);
-            ui.add_space(6.0);
+        DownloadMode::Audio => {
+            let mut card = theme::card(&p)
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(theme::section_title(s.audio_title, &p));
+            for (index, profile) in audio_profiles.iter().enumerate() {
+                card = card.child(
+                    option_row(
+                        SharedString::from(format!("audio-{index}")),
+                        audio_index == index,
+                        &profile.label,
+                        &p,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.controller.state.draft.audio_profile_index = index;
+                        cx.notify();
+                    })),
+                );
+            }
+            left = left.child(card);
+            left = left.child(advanced_tracks(app, cx, &p, false));
+            left = left.child(fragment_card(app, window, cx, &p));
         }
-        theme::section_title(ui, p, s.configure_title);
-        ui.add_space(6.0);
-        let profile = app.controller.state.draft.profile(locale);
-        ui.add(egui::Label::new(theme::strong_text(&profile.label, 16.0).color(p.text)).wrap());
-        ui.add_space(4.0);
-        let target = app.controller.state.target.clone();
-        let fragment = app
-            .controller
-            .state
-            .draft
-            .fragment_label(target.as_ref(), app.controller.state.media_duration);
-        if !fragment.is_empty() {
-            theme::muted(ui, p, format!("{}: {fragment}", s.trim_title));
+        DownloadMode::Thumbnail => {
+            left = left.child(
+                theme::card(&p)
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(theme::section_title(s.thumbnail_title, &p))
+                    .child(theme::muted(s.thumbnail_hint, &p)),
+            );
         }
-        ui.add_space(10.0);
-        ui.separator();
-        ui.add_space(10.0);
-        theme::section_title(ui, p, s.estimated_size);
-        let size = estimate_size(app);
-        ui.label(
-            theme::strong_text(
-                if size > 0 {
-                    volvid_i18n::format_bytes(size, locale)
+    }
+
+    let folder = app.controller.state.downloads_dir.clone();
+    left = left.child(
+        theme::card(&p)
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(theme::section_title(s.output_folder, &p))
+            .child(
+                div()
+                    .p_2()
+                    .rounded_md()
+                    .bg(p.card_alt)
+                    .truncate()
+                    .text_size(px(12.5))
+                    .text_color(p.muted)
+                    .child(folder.to_string_lossy().into_owned()),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .child(
+                        theme::secondary_button("configure-choose", s.choose_folder, &p)
+                            .on_click(cx.listener(|this, _, _, _| this.controller.pick_folder())),
+                    )
+                    .child(
+                        theme::secondary_button("configure-open", s.open_folder, &p).on_click(
+                            cx.listener(move |this, _, _, _| {
+                                this.controller.open_folder(folder.clone());
+                            }),
+                        ),
+                    ),
+            ),
+    );
+
+    let preview = app.preview().cloned();
+    let profile = app.controller.state.draft.profile(locale);
+    let quality_label = profile.label.clone();
+    let size = estimate_size(app);
+    let ready = app.controller.state.deps.ytrust.available
+        && !app.controller.state.deps_checking
+        && !app.controller.state.probe_loading
+        && !app.controller.state.quality_loading;
+    let mut download = theme::primary_button("configure-download", s.download_button, &p);
+    download = if ready {
+        download.on_click(cx.listener(|this, _, _, cx| {
+            this.controller.start_download();
+            cx.notify();
+        }))
+    } else {
+        download.opacity(0.45)
+    };
+    let mut summary = theme::card(&p).flex().flex_col().gap_3();
+    if let Some(image) = preview {
+        summary = summary.child(
+            div()
+                .h(px(168.))
+                .w_full()
+                .rounded_lg()
+                .overflow_hidden()
+                .bg(p.track)
+                .child(
+                    gpui::img(image)
+                        .size_full()
+                        .object_fit(gpui::ObjectFit::Cover),
+                ),
+        );
+    } else if thumbnail_loading {
+        summary = summary.child(
+            div()
+                .h(px(120.))
+                .w_full()
+                .rounded_lg()
+                .bg(p.track)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(theme::loading(s.loading, &p)),
+        );
+    } else if thumbnail_error {
+        summary = summary.child(theme::notice(
+            "icons/alert.svg",
+            s.thumbnail_failed,
+            p.warning,
+        ));
+    } else {
+        summary = summary.child(
+            div()
+                .h(px(120.))
+                .w_full()
+                .rounded_lg()
+                .bg(linear_gradient(
+                    135.,
+                    gpui::linear_color_stop(p.track, 0.0),
+                    gpui::linear_color_stop(p.accent.opacity(0.25), 1.0),
+                ))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(theme::icon("icons/play.svg", 28., p.muted)),
+        );
+    }
+    summary = summary
+        .child(theme::section_title(s.configure_title, &p))
+        .child(theme::body(quality_label, &p));
+    if !fragment_label.is_empty() {
+        summary = summary.child(theme::muted(
+            format!("{}: {fragment_label}", s.trim_title),
+            &p,
+        ));
+    }
+    summary = summary
+        .child(theme::divider(&p))
+        .child(theme::section_title(s.estimated_size, &p))
+        .child(
+            div()
+                .text_size(px(20.))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(p.text)
+                .child(if size > 0 {
+                    format_bytes(size, locale)
                 } else {
                     "—".to_owned()
-                },
-                20.0,
-            )
-            .color(p.text),
+                }),
         );
-        ui.add_space(4.0);
-        if app.controller.state.is_playlist_mode() {
-            theme::muted(
-                ui,
-                p,
-                s.videos_count.replace(
-                    "%d",
-                    &app.controller.state.selected_entries.len().to_string(),
-                ),
-            );
-        }
-        ui.add_space(14.0);
-        let width = ui.available_width();
-        if primary_button_fill(ui, p, s.download_button, width).clicked() {
-            app.controller.start_download();
-        }
-        if app.controller.state.quality_loading || app.controller.state.probe_loading {
-            ui.add_space(8.0);
-            theme::spinner(ui, p, s.loading);
-        }
-        if !app.controller.state.deps.ytdlp.available {
-            ui.add_space(6.0);
-            ui.add(
-                egui::Label::new(
-                    RichText::new(s.missing_ytdlp)
-                        .color(p.danger)
-                        .size(theme::FONT_SMALL),
-                )
-                .wrap(),
-            );
-        }
-    });
+    if is_playlist {
+        summary = summary.child(theme::muted(
+            s.videos_count.replace("%d", &selected_count.to_string()),
+            &p,
+        ));
+    }
+    summary = summary.child(div().w_full().child(download));
+    if !app.controller.state.deps.ytrust.available {
+        summary = summary.child(theme::body(s.missing_ytrust, &p).text_color(p.danger));
+    }
+
+    div()
+        .id("page-configure")
+        .flex()
+        .flex_col()
+        .gap_4()
+        .h_full()
+        .overflow_y_scroll()
+        .scrollbar_width(px(8.))
+        .pb_5()
+        .child(header)
+        .child(
+            div()
+                .flex()
+                .flex_wrap()
+                .items_start()
+                .gap_4()
+                .child(div().flex_1().min_w(px(300.)).child(left))
+                .child(div().w(px(310.)).min_w(px(280.)).child(summary)),
+        )
 }
 
-fn option_row(
-    ui: &mut egui::Ui,
-    p: &crate::theme::Palette,
-    selected: bool,
-    text: &str,
-) -> egui::Response {
-    let frame = egui::Frame::new()
-        .fill(if selected {
-            p.selection.gamma_multiply(0.12)
-        } else {
-            p.card_hover
-        })
-        .stroke(Stroke::new(
-            1.0,
-            if selected {
-                p.selection.gamma_multiply(0.7)
+fn advanced_tracks(
+    app: &mut VolvidApp,
+    cx: &mut Context<VolvidApp>,
+    p: &Palette,
+    show_subs: bool,
+) -> impl IntoElement {
+    let s = app.s();
+    let audio = app.controller.state.audio_tracks.clone();
+    let subs = app.controller.state.sub_tracks.clone();
+    let selected_audio = app.controller.state.draft.audio_langs.clone();
+    let selected_subs = app.controller.state.draft.sub_langs.clone();
+    let loading_tracks = app.controller.state.probe_loading;
+    let tracks_error = app.controller.state.tracks_error.clone();
+    let mut card = theme::card(p)
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(theme::section_title(
+            if show_subs {
+                s.advanced
             } else {
-                p.border
+                s.audio_tracks_title
             },
-        ))
-        .corner_radius(egui::CornerRadius::same(9))
-        .inner_margin(egui::Margin::symmetric(12, 10))
-        .show(ui, |ui| {
-            ui.set_min_width(ui.available_width());
-            ui.horizontal(|ui| {
-                theme::status_dot(ui, if selected { p.selection } else { p.border });
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(text)
-                            .color(if selected { p.selection } else { p.text })
-                            .size(13.5),
-                    )
-                    .truncate(),
-                );
-            });
-        });
-    frame
-        .response
-        .interact(Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
+            p,
+        ));
+    if audio.len() > 1 {
+        card = card.child(theme::section_title(s.audio_tracks_title, p));
+        let mut chips = div().flex().flex_wrap().gap_2();
+        for track in &audio {
+            let lang = track.lang.clone();
+            let checked = selected_audio.contains(&lang);
+            chips = chips.child(
+                track_chip(
+                    SharedString::from(format!("audio-track-{lang}")),
+                    lang.clone(),
+                    checked,
+                    p,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if !this.controller.state.draft.audio_langs.remove(&lang) {
+                        this.controller.state.draft.audio_langs.insert(lang.clone());
+                    }
+                    cx.notify();
+                })),
+            );
+        }
+        card = card.child(chips);
+    }
+    if show_subs && !subs.is_empty() {
+        card = card.child(theme::section_title(s.subtitles_title, p));
+        let mut chips = div().flex().flex_wrap().gap_2();
+        for track in &subs {
+            let lang = track.lang.clone();
+            let checked = selected_subs.contains(&lang);
+            let label = if track.auto {
+                format!("{lang} ({})", s.auto_subtitle)
+            } else {
+                lang.clone()
+            };
+            chips = chips.child(
+                track_chip(
+                    SharedString::from(format!("sub-track-{lang}")),
+                    label,
+                    checked,
+                    p,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if !this.controller.state.draft.sub_langs.remove(&lang) {
+                        this.controller.state.draft.sub_langs.insert(lang.clone());
+                    }
+                    cx.notify();
+                })),
+            );
+        }
+        card = card.child(chips);
+    }
+    if loading_tracks {
+        card = card.child(theme::loading(s.loading_tracks, p));
+    }
+    if let Some(error) = tracks_error {
+        card = card.child(theme::notice("icons/alert.svg", error, p.warning));
+    }
+    if !loading_tracks && audio.len() <= 1 {
+        card = card.child(theme::muted(s.no_audio_tracks, p));
+    }
+    if show_subs && !loading_tracks && subs.is_empty() {
+        card = card.child(theme::muted(s.no_subtitles, p));
+    }
+    card
+}
+
+fn fragment_card(
+    app: &mut VolvidApp,
+    window: &mut Window,
+    cx: &mut Context<VolvidApp>,
+    p: &Palette,
+) -> impl IntoElement {
+    let s = app.s();
+    let locale = app.controller.state.locale;
+    let is_playlist = app.controller.state.is_playlist_mode();
+    let duration = app.controller.state.media_duration;
+    let target = app.controller.state.target.clone();
+    let mode = app.controller.state.draft.fragment_mode;
+    let can_url = app
+        .controller
+        .state
+        .draft
+        .can_use_url_start(target.as_ref(), duration);
+    let fragment = app
+        .controller
+        .state
+        .draft
+        .fragment(target.as_ref(), duration);
+    let error = fragment
+        .as_ref()
+        .err()
+        .map(|err| fragment_error_text(*err, duration, locale));
+    let label = fragment
+        .as_ref()
+        .ok()
+        .map(|fragment| volvid_core::format_fragment_label(fragment.as_ref()))
+        .unwrap_or_default();
+
+    let mut card = theme::card(p)
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(theme::section_title(s.trim_title, p));
+    if is_playlist {
+        return card
+            .child(theme::notice(
+                "icons/info.svg",
+                s.trim_playlist_unavailable,
+                p.warning,
+            ))
+            .into_any_element();
+    }
+
+    let full = segment("fragment-none", s.full_media, mode == FragmentMode::None, p).on_click(
+        cx.listener(|this, _, _, cx| {
+            this.controller.state.draft.fragment_mode = FragmentMode::None;
+            cx.notify();
+        }),
+    );
+    let from_url = segment(
+        "fragment-url",
+        s.from_url_timestamp,
+        mode == FragmentMode::FromUrl,
+        p,
+    );
+    let from_url = if can_url {
+        from_url.on_click(cx.listener(|this, _, _, cx| {
+            this.controller.state.draft.fragment_mode = FragmentMode::FromUrl;
+            cx.notify();
+        }))
+    } else {
+        from_url.opacity(0.5)
+    };
+    let custom = segment(
+        "fragment-custom",
+        s.custom_range,
+        mode == FragmentMode::Custom,
+        p,
+    )
+    .on_click(cx.listener(|this, _, _, cx| {
+        this.controller.state.draft.fragment_mode = FragmentMode::Custom;
+        cx.notify();
+    }));
+
+    card = card.child(
+        div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap_2()
+            .child(full)
+            .child(from_url)
+            .child(custom),
+    );
+
+    if mode == FragmentMode::Custom {
+        let start = app.fragment_start_field(window, cx, p);
+        let end = app.fragment_end_field(window, cx, p);
+        card = card.child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(div().w(px(110.)).child(start))
+                .child(theme::muted("—", p))
+                .child(div().w(px(110.)).child(end))
+                .child(theme::muted(s.trim_hint, p)),
+        );
+    }
+    if let Some(error) = error {
+        card = card.child(theme::notice("icons/alert.svg", error, p.warning));
+    } else if !label.is_empty() {
+        card = card.child(theme::muted(format!("{}: {label}", s.trim_title), p));
+    }
+    card.into_any_element()
 }
 
 fn estimate_size(app: &VolvidApp) -> i64 {
-    match app.controller.state.draft.mode {
-        DownloadMode::Video => {
-            let size = app
-                .controller
-                .state
-                .draft
-                .quality
-                .as_ref()
-                .map(|quality| quality.size_bytes)
-                .unwrap_or(0);
-            if app.controller.state.is_playlist_mode() {
-                size.saturating_mul(app.controller.state.selected_entries.len().max(1) as i64)
-            } else {
-                size
-            }
-        }
-        _ => 0,
+    if app.controller.state.draft.mode != DownloadMode::Video {
+        return 0;
+    }
+    let size = app
+        .controller
+        .state
+        .draft
+        .quality
+        .as_ref()
+        .map(|quality| quality.size_bytes)
+        .unwrap_or(0);
+    if app.controller.state.is_playlist_mode() {
+        size.saturating_mul(app.controller.state.selected_entries.len().max(1) as i64)
+    } else {
+        size
     }
 }

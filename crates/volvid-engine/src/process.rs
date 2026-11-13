@@ -93,8 +93,8 @@ fn command_wrap(program: impl AsRef<OsStr>, args: &[String]) -> CommandWrap {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            // Python tools such as yt-dlp must use UTF-8 even on a Windows
-            // console code page; native tools simply ignore these variables.
+            // Keep UTF-8 on Windows for tools with their own text handling;
+            // native tools simply ignore these variables.
             .env("PYTHONUTF8", "1")
             .env("PYTHONIOENCODING", "utf-8");
     });

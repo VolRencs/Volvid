@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use semver::Version;
 use tokio_util::sync::CancellationToken;
 use volvid_core::{
     BrowserCookiesInfo, CheckDepsResult, DependencyInfo, DependencySource, JSRuntimeInfo,
@@ -10,7 +11,17 @@ use crate::cookies::detect_browser_cookies;
 use crate::paths::{AppPaths, clean_abs};
 use crate::process::command_output;
 
-const VERSION_TIMEOUT: Duration = Duration::from_millis(1500);
+/// The app relies on ytrust 1.1.1 adaptive-stream fallback, cookie scoping and
+/// progress JSON fields, so older builds are rejected instead of silently
+/// producing incomplete downloads.
+pub const YTRUST_MIN_VERSION: &str = "1.1.1";
+/// Automatic installs must not cross a breaking major release.
+pub const YTRUST_MAX_MAJOR: u64 = 1;
+pub const MIN_NODE_MAJOR: u32 = 20;
+/// ytrust defaults to 500 entries; Volvid expects complete playlists.
+pub const PLAYLIST_LIMIT: u64 = 100_000;
+
+const VERSION_TIMEOUT: Duration = Duration::from_millis(3000);
 
 #[derive(Clone, Debug)]
 pub struct DepSpec {
@@ -18,17 +29,21 @@ pub struct DepSpec {
     pub name: &'static str,
     pub required: bool,
     pub downloadable: bool,
+    pub prefer_managed: bool,
     pub version_args: &'static [&'static str],
     pub managed: fn(&AppPaths) -> std::path::PathBuf,
 }
 
-pub const YTDLP_SPEC: DepSpec = DepSpec {
-    key: "ytdlp",
-    name: "yt-dlp",
+pub const YTRUST_SPEC: DepSpec = DepSpec {
+    key: "ytrust",
+    name: "ytrust",
     required: true,
     downloadable: true,
+    // The CLI protocol changes quickly; use the vetted managed build when it
+    // exists and fall back to a system installation otherwise.
+    prefer_managed: true,
     version_args: &["--version"],
-    managed: AppPaths::ytdlp_bin,
+    managed: AppPaths::ytrust_bin,
 };
 
 pub const FFMPEG_SPEC: DepSpec = DepSpec {
@@ -36,6 +51,7 @@ pub const FFMPEG_SPEC: DepSpec = DepSpec {
     name: "ffmpeg",
     required: true,
     downloadable: true,
+    prefer_managed: false,
     version_args: &["-version"],
     managed: AppPaths::ffmpeg_bin,
 };
@@ -45,12 +61,13 @@ pub const NODE_SPEC: DepSpec = DepSpec {
     name: "node",
     required: false,
     downloadable: true,
+    prefer_managed: false,
     version_args: &["--version"],
     managed: AppPaths::node_bin,
 };
 
 pub fn detect_deps(paths: &AppPaths) -> CheckDepsResult {
-    let ytdlp = detect_dependency(&YTDLP_SPEC, paths);
+    let ytrust = detect_dependency(&YTRUST_SPEC, paths);
     let ffmpeg = detect_dependency(&FFMPEG_SPEC, paths);
     let node = detect_dependency(&NODE_SPEC, paths);
     let home = std::env::var_os("HOME")
@@ -65,24 +82,17 @@ pub fn detect_deps(paths: &AppPaths) -> CheckDepsResult {
     } else {
         detect_browser_cookies(&home)
     };
-    let runtime = if node.available {
-        JSRuntimeInfo {
-            status: STATUS_ACTIVE.to_owned(),
-            name: "node".to_owned(),
-            path: node.path.clone(),
-        }
-    } else {
-        JSRuntimeInfo {
-            status: STATUS_NOT_FOUND.to_owned(),
-            ..JSRuntimeInfo::default()
-        }
-    };
     CheckDepsResult {
-        ytdlp,
+        ytrust,
         ffmpeg,
         node,
         cookies,
-        runtime,
+        // Runtime usability depends on the node version and is resolved by
+        // `enrich_deps`; reporting it as active before probing lied to the UI.
+        runtime: JSRuntimeInfo {
+            status: STATUS_NOT_FOUND.to_owned(),
+            ..JSRuntimeInfo::default()
+        },
     }
 }
 
@@ -95,17 +105,22 @@ pub fn detect_dependency(spec: &DepSpec, paths: &AppPaths) -> DependencyInfo {
         source: DependencySource::Missing,
         ..DependencyInfo::default()
     };
+    let managed = (spec.managed)(paths);
+    let managed_available = managed.is_file();
+    if spec.prefer_managed && managed_available {
+        dep.path = managed.to_string_lossy().into_owned();
+        dep.source = DependencySource::Managed;
+        dep.available = true;
+        return dep;
+    }
     if let Ok(path) = which::which(spec.name) {
         dep.path = clean_abs(path).to_string_lossy().into_owned();
         dep.source = DependencySource::System;
         dep.available = true;
-    } else {
-        let managed = (spec.managed)(paths);
-        if managed.is_file() {
-            dep.path = managed.to_string_lossy().into_owned();
-            dep.source = DependencySource::Managed;
-            dep.available = true;
-        }
+    } else if managed_available {
+        dep.path = managed.to_string_lossy().into_owned();
+        dep.source = DependencySource::Managed;
+        dep.available = true;
     }
     dep
 }
@@ -114,13 +129,13 @@ pub async fn enrich_deps(
     mut deps: CheckDepsResult,
     cancel: Option<CancellationToken>,
 ) -> CheckDepsResult {
-    let (ytdlp, ffmpeg, node) = tokio::join!(
-        probe_dep(&deps.ytdlp, YTDLP_SPEC.version_args, cancel.clone()),
+    let (ffmpeg, node) = tokio::join!(
         probe_dep(&deps.ffmpeg, FFMPEG_SPEC.version_args, cancel.clone()),
-        probe_dep(&deps.node, NODE_SPEC.version_args, cancel),
+        probe_dep(&deps.node, NODE_SPEC.version_args, cancel.clone()),
     );
-    if deps.ytdlp.version.is_empty() {
-        deps.ytdlp.version = ytdlp;
+    if deps.ytrust.version.is_empty() {
+        deps.ytrust.version =
+            probe_dep(&deps.ytrust, YTRUST_SPEC.version_args, cancel.clone()).await;
     }
     if deps.ffmpeg.version.is_empty() {
         deps.ffmpeg.version = ffmpeg;
@@ -128,7 +143,113 @@ pub async fn enrich_deps(
     if deps.node.version.is_empty() {
         deps.node.version = node;
     }
+
+    if !ytrust_version_supported(&deps.ytrust.version)
+        && let Some(path) = alternate_dependency_path(&deps.ytrust, &YTRUST_SPEC)
+    {
+        let version = probe_version(&path, YTRUST_SPEC.version_args, cancel.clone()).await;
+        if ytrust_version_supported(&version) {
+            tracing::warn!(
+                previous = %deps.ytrust.path,
+                replacement = %path,
+                version = %version,
+                "switching to a supported ytrust installation"
+            );
+            deps.ytrust.path = path;
+            deps.ytrust.version = version;
+            deps.ytrust.source = DependencySource::System;
+            deps.ytrust.available = true;
+        }
+    }
+    if deps.ytrust.available
+        && (deps.ytrust.version.is_empty() || !ytrust_version_supported(&deps.ytrust.version))
+    {
+        tracing::warn!(
+            version = %deps.ytrust.version,
+            "installed ytrust is not supported; {YTRUST_MIN_VERSION} or newer 1.x is required"
+        );
+        deps.ytrust.available = false;
+        deps.ytrust.source = DependencySource::Missing;
+        deps.ytrust.path.clear();
+    }
+
+    // A system Node older than 20 cannot solve ciphered formats. Prefer a
+    // managed Node 20+ build when one is already installed.
+    if node_major(&deps.node.version).is_none_or(|major| major < MIN_NODE_MAJOR)
+        && deps.node.source == DependencySource::System
+    {
+        let managed = (NODE_SPEC.managed)(&AppPaths::detect());
+        if managed.is_file() {
+            let version = probe_version(
+                &managed.to_string_lossy(),
+                NODE_SPEC.version_args,
+                cancel.clone(),
+            )
+            .await;
+            if node_major(&version).is_some_and(|major| major >= MIN_NODE_MAJOR) {
+                deps.node.path = managed.to_string_lossy().into_owned();
+                deps.node.version = version;
+                deps.node.source = DependencySource::Managed;
+                deps.node.available = true;
+            }
+        }
+    }
+
+    deps.runtime = runtime_info(&deps.node);
     deps
+}
+
+fn alternate_dependency_path(dep: &DependencyInfo, spec: &DepSpec) -> Option<String> {
+    let current = dep.path.trim();
+    let candidate = match dep.source {
+        DependencySource::Managed => which::which(spec.name)
+            .ok()
+            .map(|path| clean_abs(path).to_string_lossy().into_owned()),
+        DependencySource::System => {
+            let managed = (spec.managed)(&AppPaths::detect());
+            managed
+                .is_file()
+                .then(|| managed.to_string_lossy().into_owned())
+        }
+        DependencySource::Missing => None,
+    }?;
+    (!candidate.is_empty() && candidate != current).then_some(candidate)
+}
+
+pub fn ytrust_version_supported(version: &str) -> bool {
+    let Ok(version) = Version::parse(version.trim()) else {
+        return false;
+    };
+    let Ok(minimum) = Version::parse(YTRUST_MIN_VERSION) else {
+        return false;
+    };
+    version >= minimum && version.major <= YTRUST_MAX_MAJOR
+}
+
+fn node_major(version: &str) -> Option<u32> {
+    version
+        .trim()
+        .trim_start_matches('v')
+        .split('.')
+        .next()
+        .and_then(|major| major.parse().ok())
+}
+
+fn runtime_info(node: &DependencyInfo) -> JSRuntimeInfo {
+    let usable =
+        node.available && node_major(&node.version).is_some_and(|major| major >= MIN_NODE_MAJOR);
+    if usable {
+        JSRuntimeInfo {
+            status: STATUS_ACTIVE.to_owned(),
+            name: "node".to_owned(),
+            path: node.path.clone(),
+        }
+    } else {
+        JSRuntimeInfo {
+            status: STATUS_NOT_FOUND.to_owned(),
+            ..JSRuntimeInfo::default()
+        }
+    }
 }
 
 async fn probe_dep(
@@ -166,12 +287,21 @@ fn parse_version(line: &str, args: &[&str]) -> String {
     if args.first().is_some_and(|arg| *arg == "-version")
         && let Some(rest) = line.to_ascii_lowercase().strip_prefix("ffmpeg version ")
     {
-        return rest
+        let version = rest
             .split_whitespace()
             .next()
             .unwrap_or_default()
-            .trim_matches(|c: char| " \t\r\n,;:()[]{}\"'".contains(c))
-            .to_owned();
+            .trim_matches(|c: char| " \t\r\n,;:()[]{}\"'".contains(c));
+        // Nightly/static builds report versions such as `n9.0.2`.
+        if let Some(version) = version.strip_prefix('n')
+            && version.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+        {
+            return version.to_owned();
+        }
+        return version.to_owned();
+    }
+    if let Some(version) = line.trim().strip_prefix("ytrust ") {
+        return version.trim().to_owned();
     }
     line.trim().to_owned()
 }
@@ -184,17 +314,16 @@ pub fn first_non_empty_line(text: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-pub fn ytdlp_base_args(deps: &CheckDepsResult) -> Vec<String> {
+pub fn ytrust_base_args(deps: &CheckDepsResult) -> Vec<String> {
     let mut args = vec![
-        "--ignore-config".to_owned(),
         "--no-warnings".to_owned(),
         "--encoding".to_owned(),
         "utf-8".to_owned(),
     ];
-    args.extend(volvid_core::ffmpeg_args(deps));
+    args.extend(ffmpeg_args(deps));
     if deps.cookies.status == STATUS_ACTIVE {
         let mut cookie_arg = deps.cookies.browser.trim().to_owned();
-        let profile = deps.cookies.ytdlp_profile.trim();
+        let profile = deps.cookies.profile_arg.trim();
         if !profile.is_empty() {
             cookie_arg.push(':');
             cookie_arg.push_str(profile);
@@ -211,15 +340,25 @@ pub fn ytdlp_base_args(deps: &CheckDepsResult) -> Vec<String> {
     args
 }
 
-pub fn ytdlp_command_args(deps: &CheckDepsResult, base: &[String]) -> Vec<String> {
-    let mut args = ytdlp_base_args(deps);
+pub fn ytrust_command_args(deps: &CheckDepsResult, base: &[String]) -> Vec<String> {
+    let mut args = ytrust_base_args(deps);
     args.extend(base.iter().cloned());
     args
 }
 
-pub fn ytdlp_bin(deps: &CheckDepsResult) -> Option<&str> {
-    let path = deps.ytdlp.path.trim();
+pub fn ytrust_bin(deps: &CheckDepsResult) -> Option<&str> {
+    let path = deps.ytrust.path.trim();
     (!path.is_empty()).then_some(path)
+}
+
+/// Renders the shared `--ffmpeg-location` prefix understood by ytrust.
+fn ffmpeg_args(deps: &CheckDepsResult) -> Vec<String> {
+    let bin = deps.ffmpeg.path.trim();
+    if bin.is_empty() {
+        Vec::new()
+    } else {
+        vec!["--ffmpeg-location".to_owned(), bin.to_owned()]
+    }
 }
 
 pub fn ffmpeg_bin(deps: &CheckDepsResult, paths: &AppPaths) -> String {
@@ -244,6 +383,36 @@ mod tests {
             ),
             "8.0.1"
         );
+        assert_eq!(
+            parse_version(
+                "ffmpeg version n9.0.2 Copyright (c) 2000-2025",
+                &["-version"]
+            ),
+            "9.0.2"
+        );
+    }
+
+    #[test]
+    fn parses_ytrust_version() {
+        assert_eq!(parse_version("ytrust 1.1.1", &["--version"]), "1.1.1");
+    }
+
+    #[test]
+    fn rejects_old_and_future_ytrust_majors() {
+        assert!(ytrust_version_supported("1.1.1"));
+        assert!(ytrust_version_supported("1.7.3"));
+        assert!(!ytrust_version_supported("1.1.0"));
+        assert!(!ytrust_version_supported("1.0.1"));
+        assert!(!ytrust_version_supported("0.4.3"));
+        assert!(!ytrust_version_supported("2.0.0"));
+        assert!(!ytrust_version_supported("garbage"));
+    }
+
+    #[test]
+    fn requires_node_20_for_js_challenges() {
+        assert_eq!(node_major("v26.13.1"), Some(26));
+        assert_eq!(node_major("20.0.0"), Some(20));
+        assert_eq!(node_major("v18.19.0"), Some(18));
     }
 
     #[test]
@@ -251,9 +420,10 @@ mod tests {
         let mut deps = CheckDepsResult::default();
         deps.cookies.status = STATUS_ACTIVE.to_owned();
         deps.cookies.browser = "firefox".to_owned();
-        deps.cookies.ytdlp_profile = "/home/u/.mozilla/firefox/x.default".to_owned();
-        let args = ytdlp_base_args(&deps);
+        deps.cookies.profile_arg = "/home/u/.mozilla/firefox/x.default".to_owned();
+        let args = ytrust_base_args(&deps);
         assert!(args.iter().any(|arg| arg == "--cookies-from-browser"));
+        assert!(!args.iter().any(|arg| arg == "--ignore-config"));
         let encoding = args.iter().position(|arg| arg == "--encoding").unwrap();
         assert_eq!(args.get(encoding + 1).map(String::as_str), Some("utf-8"));
     }

@@ -4,19 +4,91 @@
 
 mod app;
 mod format;
+mod modals;
 mod pages;
+mod text_input;
 mod theme;
 
-use std::sync::Arc;
+use std::borrow::Cow;
 
-use eframe::egui;
+use gpui::{
+    App, AppContext, Application, AssetSource, Bounds, SharedString, WindowBounds, WindowOptions,
+    px, size,
+};
 use volvid_app::{Controller, Route};
-use volvid_engine::Theme;
+use volvid_engine::AppPaths;
 
 use crate::app::VolvidApp;
 
-fn main() -> eframe::Result {
-    let paths = volvid_engine::AppPaths::detect();
+struct Assets;
+
+/// Assets are embedded so release binaries do not depend on the build tree.
+macro_rules! asset {
+    ($path:literal) => {
+        Cow::Borrowed(include_bytes!(concat!("../../../assets/", $path)).as_slice())
+    };
+}
+
+impl AssetSource for Assets {
+    fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
+        let bytes = match path {
+            "icons/alert.svg" => asset!("icons/alert.svg"),
+            "icons/arrow-left.svg" => asset!("icons/arrow-left.svg"),
+            "icons/check.svg" => asset!("icons/check.svg"),
+            "icons/close.svg" => asset!("icons/close.svg"),
+            "icons/download.svg" => asset!("icons/download.svg"),
+            "icons/folder.svg" => asset!("icons/folder.svg"),
+            "icons/history.svg" => asset!("icons/history.svg"),
+            "icons/info.svg" => asset!("icons/info.svg"),
+            "icons/link.svg" => asset!("icons/link.svg"),
+            "icons/new-download.svg" => asset!("icons/new-download.svg"),
+            "icons/pause.svg" => asset!("icons/pause.svg"),
+            "icons/play.svg" => asset!("icons/play.svg"),
+            "icons/queue.svg" => asset!("icons/queue.svg"),
+            "icons/refresh.svg" => asset!("icons/refresh.svg"),
+            "icons/search.svg" => asset!("icons/search.svg"),
+            "icons/settings.svg" => asset!("icons/settings.svg"),
+            "icons/volvid-logo.svg" => asset!("icons/volvid-logo.svg"),
+            "icons/volvid-logo-light.svg" => asset!("icons/volvid-logo-light.svg"),
+            "icons/volvid-256.png" => asset!("icons/volvid-256.png"),
+            _ => return Ok(None),
+        };
+        Ok(Some(bytes))
+    }
+
+    fn list(&self, path: &str) -> gpui::Result<Vec<SharedString>> {
+        if path.trim_matches('/').is_empty() || path.trim_matches('/') == "icons" {
+            return Ok([
+                "alert.svg",
+                "arrow-left.svg",
+                "check.svg",
+                "close.svg",
+                "download.svg",
+                "folder.svg",
+                "history.svg",
+                "info.svg",
+                "link.svg",
+                "new-download.svg",
+                "pause.svg",
+                "play.svg",
+                "queue.svg",
+                "refresh.svg",
+                "search.svg",
+                "settings.svg",
+                "volvid-logo.svg",
+                "volvid-logo-light.svg",
+                "volvid-256.png",
+            ]
+            .into_iter()
+            .map(SharedString::from)
+            .collect());
+        }
+        Ok(Vec::new())
+    }
+}
+
+fn main() {
+    let paths = AppPaths::detect();
     let _ = std::fs::create_dir_all(paths.logs_dir());
     let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
         .rotation(tracing_appender::rolling::Rotation::DAILY)
@@ -52,58 +124,60 @@ fn main() -> eframe::Result {
         .iter()
         .find_map(|arg| arg.strip_prefix("--page=").map(str::to_owned))
     {
-        controller.set_route(match page.as_str() {
+        let route = match page.as_str() {
             "queue" => Route::Downloads,
             "history" => Route::Summary,
             "settings" => Route::Settings,
-            "configure" => Route::Configure,
-            "playlist" => Route::Playlist,
+            "configure" if controller.state.target.is_some() => Route::Configure,
+            "playlist"
+                if controller.state.playlist.is_some() || controller.state.playlist_loading =>
+            {
+                Route::Playlist
+            }
             _ => Route::Home,
+        };
+        controller.set_route(route);
+    }
+
+    Application::new()
+        .with_assets(Assets)
+        .run(move |cx: &mut App| {
+            let _ = cx.text_system().add_fonts(vec![
+                Cow::Borrowed(include_bytes!("../../../assets/fonts/Onest-Regular.ttf")),
+                Cow::Borrowed(include_bytes!("../../../assets/fonts/Onest-SemiBold.ttf")),
+            ]);
+            text_input::bind_keys(cx);
+
+            cx.on_window_closed(|cx| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
+
+            let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
+            let guard = Some(guard);
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    window_min_size: Some(size(px(940.), px(620.))),
+                    titlebar: Some(gpui::TitlebarOptions {
+                        title: Some("Volvid".into()),
+                        appears_transparent: false,
+                        traffic_light_position: None,
+                    }),
+                    app_id: Some("volvid".to_owned()),
+                    focus: true,
+                    ..Default::default()
+                },
+                move |window, cx| {
+                    let view = cx.new(|cx| VolvidApp::new(controller, guard, cx));
+                    let focus = view.read(cx).root_focus.clone();
+                    window.focus(&focus);
+                    view
+                },
+            )
+            .expect("failed to open Volvid window");
+            cx.activate(true);
         });
-    }
-    let app = app::VolvidApp::new(controller, Some(guard));
-
-    let icon = load_icon();
-    let mut viewport = egui::ViewportBuilder::default()
-        .with_title("Volvid")
-        .with_inner_size([1280.0, 800.0])
-        .with_min_inner_size([940.0, 620.0])
-        .with_app_id("volvid");
-    if let Some(icon) = icon {
-        viewport = viewport.with_icon(Arc::new(icon));
-    }
-    if std::env::var_os("VOLVID_TEST_FRONT").is_some() {
-        viewport = viewport.with_always_on_top();
-    }
-    let options = eframe::NativeOptions {
-        renderer: eframe::Renderer::Wgpu,
-        viewport,
-        centered: true,
-        ..Default::default()
-    };
-    eframe::run_native(
-        "Volvid",
-        options,
-        Box::new(move |cc| {
-            theme::setup(cc, app.theme());
-            Ok(Box::new(app))
-        }),
-    )
-}
-
-fn load_icon() -> Option<egui::IconData> {
-    let bytes = include_bytes!("../../../assets/icons/volvid-256.png");
-    let image = image::load_from_memory(bytes).ok()?.to_rgba8();
-    let (width, height) = image.dimensions();
-    Some(egui::IconData {
-        rgba: image.into_raw(),
-        width,
-        height,
-    })
-}
-
-impl VolvidApp {
-    pub fn theme(&self) -> Theme {
-        self.controller.state.theme()
-    }
 }

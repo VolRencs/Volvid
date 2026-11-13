@@ -9,9 +9,9 @@ async fn main() -> anyhow::Result<()> {
     let engine = Engine::new()?;
     let deps = engine.runtime_deps().await;
     println!(
-        "yt-dlp: {} {:?}\nffmpeg: {} {:?}\nnode: {} {:?}\ncookies: {:?}",
-        deps.ytdlp.version,
-        deps.ytdlp.path,
+        "ytrust: {} {:?}\nffmpeg: {} {:?}\nnode: {} {:?}\ncookies: {:?}",
+        deps.ytrust.version,
+        deps.ytrust.path,
         deps.ffmpeg.version,
         deps.ffmpeg.path,
         deps.node.version,

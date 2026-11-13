@@ -3,7 +3,6 @@
 pub enum DlEventType {
     #[default]
     Start,
-    Dest,
     Progress,
     Proc,
     Done,
@@ -22,6 +21,7 @@ pub struct DlUpdate {
     pub total_b: i64,
     pub speed: String,
     pub speed_bps: i64,
+    pub eta_secs: i64,
     pub ok: bool,
 }
 
@@ -33,14 +33,12 @@ pub struct FileProgress {
     pub total_b: i64,
     pub speed: String,
     pub done: bool,
-    pub err: Option<String>,
 }
 
 impl FileProgress {
-    pub fn failed(message: impl Into<String>) -> Self {
+    pub fn failed() -> Self {
         Self {
             done: true,
-            err: Some(message.into()),
             ..Self::default()
         }
     }

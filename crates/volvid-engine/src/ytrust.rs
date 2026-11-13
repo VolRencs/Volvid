@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -10,37 +10,58 @@ use volvid_core::{
     QualityChoice, SearchResult, SubtitleTrack, default_quality_choices, parse_target,
 };
 
-use crate::deps::{ytdlp_bin, ytdlp_command_args};
-use crate::process::{ProcessError, command_output, run_lines};
+use crate::deps::{PLAYLIST_LIMIT, ytrust_bin, ytrust_command_args};
+use crate::process::{CaptureOutput, ProcessError, command_output, run_lines};
+
+const RADIO_PLAYLIST_LIMIT: u64 = 100;
 
 const QUALITY_SCAN_TIMEOUT: Duration = Duration::from_secs(90);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(90);
 const PLAYLIST_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const MAX_DETAILED_QUALITY_URLS: usize = 5;
-const MAX_PARALLEL_QUALITY_SCANS: usize = 6;
 
 pub async fn probe_media(
     deps: &CheckDepsResult,
     url: &str,
     cancel: Option<CancellationToken>,
 ) -> Result<MediaProbe> {
-    let bin = ytdlp_bin(deps).ok_or_else(|| anyhow!("yt-dlp is required"))?;
-    let args = ytdlp_command_args(
+    let output = run_capture(
         deps,
         &[
             "--dump-single-json".to_owned(),
             "--no-playlist".to_owned(),
-            "--no-warnings".to_owned(),
             url.to_owned(),
         ],
-    );
-    let output = command_output(bin, &args, Some(QUALITY_SCAN_TIMEOUT), cancel).await?;
-    if !output.success && output.stdout.is_empty() {
-        bail!("yt-dlp probe failed: {}", output.stderr.trim());
+        QUALITY_SCAN_TIMEOUT,
+        cancel,
+    )
+    .await?;
+    if !output.success {
+        let error = output
+            .stderr
+            .lines()
+            .find(|line| is_error_line(line))
+            .map(str::trim)
+            .unwrap_or("ytrust probe failed");
+        bail!("{error}");
     }
     let text = String::from_utf8_lossy(&output.stdout);
-    let payload: Value = serde_json::from_str(&text).context("parse yt-dlp probe JSON")?;
+    let payload: Value = serde_json::from_str(&text).context("parse ytrust probe JSON")?;
     probe_from_value(&payload)
+}
+
+/// Runs a ytrust metadata command and captures its output.
+async fn run_capture(
+    deps: &CheckDepsResult,
+    base: &[String],
+    timeout: Duration,
+    cancel: Option<CancellationToken>,
+) -> Result<CaptureOutput> {
+    let bin = ytrust_bin(deps).ok_or_else(|| anyhow!("ytrust is required"))?;
+    let args = ytrust_command_args(deps, base);
+    command_output(bin, &args, Some(timeout), cancel)
+        .await
+        .map_err(ProcessError::into_anyhow)
 }
 
 pub fn probe_from_value(payload: &Value) -> Result<MediaProbe> {
@@ -102,25 +123,27 @@ pub async fn fetch_playlist(
     locale: volvid_core::Locale,
     cancel: Option<CancellationToken>,
 ) -> Result<PlaylistInfo> {
-    let bin = ytdlp_bin(deps).ok_or_else(|| anyhow!("yt-dlp is required"))?;
-    let args = ytdlp_command_args(
+    let bin = ytrust_bin(deps).ok_or_else(|| anyhow!("ytrust is required"))?;
+    let args = ytrust_command_args(
         deps,
         &[
             "--flat-playlist".to_owned(),
             "--dump-json".to_owned(),
             "--quiet".to_owned(),
             "--ignore-errors".to_owned(),
+            "--playlist-limit".to_owned(),
+            playlist_limit_for(url).to_string(),
             url.to_owned(),
         ],
     );
     let strings = volvid_i18n::strings(locale);
     let mut entries = Vec::new();
     let mut title = "playlist".to_owned();
-    let mut first_error = String::new();
+    let mut error = None;
     let status = run_lines(bin, &args, Some(PLAYLIST_TIMEOUT), cancel, |line| {
         if !line.stdout {
-            if first_error.is_empty() && is_error_line(&line.text) {
-                first_error = line.text;
+            if error.is_none() && is_error_line(&line.text) {
+                error = Some(line.text);
             }
             return;
         }
@@ -144,11 +167,7 @@ pub async fn fetch_playlist(
     if !status.success() && entries.is_empty() {
         bail!(
             "{}",
-            if first_error.is_empty() {
-                "playlist empty or unavailable".to_owned()
-            } else {
-                first_error
-            }
+            error.unwrap_or_else(|| "playlist empty or unavailable".to_owned())
         );
     }
     if entries.is_empty() {
@@ -167,8 +186,8 @@ pub async fn search_youtube(
     if query.is_empty() {
         bail!("search query is empty");
     }
-    let bin = ytdlp_bin(deps).ok_or_else(|| anyhow!("yt-dlp is required"))?;
-    let args = ytdlp_command_args(
+    let bin = ytrust_bin(deps).ok_or_else(|| anyhow!("ytrust is required"))?;
+    let args = ytrust_command_args(
         deps,
         &[
             "--flat-playlist".to_owned(),
@@ -179,9 +198,16 @@ pub async fn search_youtube(
         ],
     );
     let mut results = Vec::new();
+    let mut error = None;
     let title_fmt = volvid_i18n::strings(locale).video_title_fmt;
-    let status = run_lines(bin, &args, Some(SEARCH_TIMEOUT), cancel, |line| {
-        if !line.stdout || results.len() >= 5 {
+    run_lines(bin, &args, Some(SEARCH_TIMEOUT), cancel, |line| {
+        if !line.stdout {
+            if error.is_none() && is_error_line(&line.text) {
+                error = Some(line.text);
+            }
+            return;
+        }
+        if results.len() >= 5 {
             return;
         }
         let Ok(value) = serde_json::from_str::<Value>(&line.text) else {
@@ -198,12 +224,15 @@ pub async fn search_youtube(
     .await
     .map_err(ProcessError::into_anyhow)?;
     if results.is_empty() {
-        bail!("search returned no results (exit: {status})");
+        bail!(
+            "{}",
+            error.unwrap_or_else(|| "search returned no results".to_owned())
+        );
     }
     Ok(results)
 }
 
-/// Builds quality choices from an already fetched probe (no second yt-dlp run).
+/// Builds quality choices from an already fetched probe (no second ytrust run).
 pub fn quality_choices_from_probe(probe: &MediaProbe) -> Result<Vec<QualityChoice>> {
     Ok(build_choices(&[video_quality_info(probe)?]))
 }
@@ -237,7 +266,7 @@ pub async fn resolve_quality_choices(
             video_quality_info(&probe)
         }
     }))
-    .buffer_unordered(MAX_PARALLEL_QUALITY_SCANS)
+    .buffer_unordered(MAX_DETAILED_QUALITY_URLS)
     .collect::<Vec<Result<VideoQualityInfo>>>()
     .await;
 
@@ -271,7 +300,7 @@ struct VideoQualityInfo {
 
 fn video_quality_info(probe: &MediaProbe) -> Result<VideoQualityInfo> {
     let mut audio_size = 0i64;
-    let mut heights_seen = HashMap::<i64, bool>::new();
+    let mut heights_seen = HashSet::<i64>::new();
     let mut video_only = HashMap::<i64, i64>::new();
     let mut combined = HashMap::<i64, i64>::new();
     for format in &probe.formats {
@@ -282,7 +311,7 @@ fn video_quality_info(probe: &MediaProbe) -> Result<VideoQualityInfo> {
         if format.height <= 0 || format.vcodec.is_empty() || format.vcodec == "none" {
             continue;
         }
-        heights_seen.insert(format.height, true);
+        heights_seen.insert(format.height);
         if format.acodec.is_empty() || format.acodec == "none" {
             video_only
                 .entry(format.height)
@@ -298,7 +327,7 @@ fn video_quality_info(probe: &MediaProbe) -> Result<VideoQualityInfo> {
     if heights_seen.is_empty() {
         bail!("quality scan: no video heights");
     }
-    let mut heights: Vec<i64> = heights_seen.into_keys().collect();
+    let mut heights: Vec<i64> = heights_seen.into_iter().collect();
     heights.sort_unstable_by(|a, b| b.cmp(a));
     let mut size_by_height = HashMap::new();
     for height in &heights {
@@ -332,7 +361,7 @@ fn build_choices(videos: &[VideoQualityInfo]) -> Vec<QualityChoice> {
     let total = videos.len();
     let chains: Vec<String> = heights
         .iter()
-        .map(|height| format!("bestvideo[height={height}]+bestaudio/best[height={height}]"))
+        .map(|height| format!("bestvideo[height<={height}]+bestaudio/best[height<={height}]"))
         .collect();
     let labels: Vec<String> = heights.iter().map(|height| format!("{height}p")).collect();
 
@@ -509,13 +538,28 @@ fn is_error_line(line: &str) -> bool {
     lower.starts_with("error:") || lower.starts_with("error ")
 }
 
+fn playlist_limit_for(url: &str) -> u64 {
+    let radio = parse_target(url)
+        .ok()
+        .is_some_and(|target| target.playlist_id.starts_with("RD"));
+    if radio {
+        RADIO_PLAYLIST_LIMIT
+    } else {
+        PLAYLIST_LIMIT
+    }
+}
+
 pub fn postprocess_label(name: &str, locale: volvid_core::Locale) -> String {
     let name = name.to_ascii_lowercase();
     let strings = volvid_i18n::strings(locale);
     if name.contains("audio") {
         strings.converting_audio.to_owned()
-    } else if name.contains("thumbnail") {
-        strings.thumbnail_proc.to_owned()
+    } else if name.contains("subtitles") {
+        strings.embedding_subs.to_owned()
+    } else if name.contains("remux") {
+        strings.remuxing.to_owned()
+    } else if name.contains("download") {
+        strings.downloading.to_owned()
     } else {
         strings.merging.to_owned()
     }
@@ -571,6 +615,18 @@ mod tests {
         let choices = quality_choices_from_probe(&probe).unwrap();
         assert_eq!(choices[0].height, 720);
         assert_eq!(choices[0].size_bytes, 120);
+    }
+
+    #[test]
+    fn caps_radio_mixes_but_not_regular_playlists() {
+        assert_eq!(
+            playlist_limit_for("https://www.youtube.com/watch?v=x&list=RDx"),
+            RADIO_PLAYLIST_LIMIT
+        );
+        assert_eq!(
+            playlist_limit_for("https://www.youtube.com/playlist?list=PL123"),
+            PLAYLIST_LIMIT
+        );
     }
 
     #[test]

@@ -52,5 +52,5 @@ body:
     id: env
     attributes:
       label: Environment
-      description: Volvid version, OS and session type (Windows / Linux Wayland), yt-dlp / ffmpeg / node versions and system vs managed (Dependencies screen), UI language.
-      placeholder: "Volvid x.y.z, Windows 11, yt-dlp 2026.x (managed), ffmpeg 7.x (system), EN"
+      description: Volvid version, OS and session type (Windows / Linux Wayland), ytrust / ffmpeg / node versions and system vs managed (Dependencies screen), UI language.
+      placeholder: "Volvid x.y.z, Windows 11, ytrust 1.x (managed), ffmpeg 7.x (system), EN"

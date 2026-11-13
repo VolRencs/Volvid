@@ -105,7 +105,7 @@ pub async fn apply_update(
     .await;
     if let Err(err) = result {
         let _ = std::fs::remove_file(&tmp);
-        let _ = progress.send(FileProgress::failed(err.to_string()));
+        let _ = progress.send(FileProgress::failed());
         return Err(err);
     }
     #[cfg(unix)]
@@ -115,7 +115,7 @@ pub async fn apply_update(
     }
     if let Err(err) = self_replace::self_replace(&tmp) {
         let _ = std::fs::remove_file(&tmp);
-        let _ = progress.send(FileProgress::failed(err.to_string()));
+        let _ = progress.send(FileProgress::failed());
         bail!("replace executable: {err}");
     }
     Ok(())
@@ -125,6 +125,22 @@ pub fn cleanup_stale_update_files() {
     if let Ok(exe) = std::env::current_exe() {
         let _ = std::fs::remove_file(exe.with_extension("new"));
     }
+}
+
+/// Starts a fresh copy of the current executable. The caller is responsible
+/// for closing the current window so the application can run its normal
+/// shutdown path.
+pub fn spawn_restart() -> Result<()> {
+    let exe = std::env::current_exe().context("locate executable for restart")?;
+    let mut command = crate::process::std_command(&exe);
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    command
+        .spawn()
+        .with_context(|| format!("restart {}", exe.display()))?;
+    Ok(())
 }
 
 #[cfg(test)]

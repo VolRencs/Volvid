@@ -16,7 +16,7 @@ pub struct PreviewImage {
     pub rgba: Arc<[u8]>,
 }
 
-/// Small 16:9 YouTube thumbnail that can be fetched before yt-dlp finishes.
+/// Small 16:9 YouTube thumbnail that can be fetched before ytrust finishes.
 pub fn youtube_preview_url(video_id: &str) -> String {
     let id: String = url::form_urlencoded::byte_serialize(video_id.as_bytes()).collect();
     format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg")

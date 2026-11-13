@@ -1,4 +1,4 @@
-//! Async engine for Volvid: yt-dlp, ffmpeg, dependency management, updates.
+//! Async engine for Volvid: ytrust, ffmpeg, dependency management, updates.
 
 pub mod args;
 pub mod config;
@@ -13,7 +13,7 @@ pub mod platform;
 pub mod process;
 pub mod thumbnail;
 pub mod update;
-pub mod ytdlp;
+pub mod ytrust;
 
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
@@ -37,7 +37,7 @@ pub use thumbnail::{PreviewImage, youtube_preview_url};
 use crate::deps::{detect_deps, enrich_deps};
 use crate::download::run_download;
 use crate::ffmpeg::detect_video_encoders;
-use crate::ytdlp::{
+use crate::ytrust::{
     fetch_playlist, probe_media, quality_choices_from_probe, resolve_quality_choices,
     search_youtube,
 };

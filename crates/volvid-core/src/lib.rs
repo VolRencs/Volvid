@@ -17,7 +17,7 @@ pub mod types;
 pub use clock::{ClockError, format_clock, format_duration, parse_clock, parse_flexible_timestamp};
 pub use deps::{
     BrowserCookiesInfo, CheckDepsResult, DependencyInfo, DependencySource, JSRuntimeInfo,
-    STATUS_ACTIVE, STATUS_NO_PROFILE, STATUS_NOT_FOUND, ffmpeg_args,
+    STATUS_ACTIVE, STATUS_NO_PROFILE, STATUS_NOT_FOUND,
 };
 pub use download::{DlEventType, DlUpdate, FileProgress};
 pub use fragment::{
@@ -26,7 +26,7 @@ pub use fragment::{
 };
 pub use locale::{Locale, parse_locale};
 pub use profile::{
-    DownloadMode, DownloadRequest, OutputProfile, QualityChoice, SubtitleMode, YTDLP_BEST_FORMAT,
+    BEST_VIDEO_FORMAT, DownloadMode, DownloadRequest, OutputProfile, QualityChoice, SubtitleMode,
     default_quality_choices,
 };
 pub use sanitize::{sanitize_dirname, truncate_utf8};

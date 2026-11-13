@@ -1,192 +1,228 @@
-use eframe::egui;
-use egui::{Align, Key, Layout, RichText, Stroke};
+use gpui::{Context, SharedString, Window, div, prelude::*, px};
 use volvid_app::Route;
 
 use crate::app::VolvidApp;
 use crate::format;
-use crate::theme::{self, primary_button_sized, secondary_button};
+use crate::theme::{self, Palette};
 
-pub fn show(app: &mut VolvidApp, ui: &mut egui::Ui) {
-    let p = app.palette();
+pub fn home(
+    app: &mut VolvidApp,
+    window: &mut Window,
+    cx: &mut Context<VolvidApp>,
+    p: &Palette,
+) -> impl IntoElement {
+    let p = *p;
     let s = app.s();
-    ui.add_space(4.0);
-    theme::title(ui, p, s.home_title);
-    ui.add_space(4.0);
-    theme::muted(ui, p, s.home_subtitle);
-    ui.add_space(theme::PAGE_HEADER_GAP);
-
-    if app.controller.state.deps.missing_required() {
-        egui::Frame::new()
-            .fill(p.danger.gamma_multiply(0.08))
-            .stroke(Stroke::new(1.0, p.danger.gamma_multiply(0.3)))
-            .corner_radius(egui::CornerRadius::same(12))
-            .inner_margin(egui::Margin::same(14))
-            .show(ui, |ui| {
-                ui.label(theme::strong_text(s.deps_missing, 14.0).color(p.danger));
-                theme::muted(ui, p, s.deps_settings_hint);
-            });
-        ui.add_space(14.0);
+    let locale = app.controller.state.locale;
+    let missing =
+        !app.controller.state.deps_checking && app.controller.state.deps.missing_required();
+    let checking = app.controller.state.deps_checking;
+    let url_error = app.controller.state.url_error.clone();
+    let folder = app.controller.state.downloads_dir.clone();
+    let history: Vec<_> = app
+        .controller
+        .state
+        .history
+        .iter()
+        .rev()
+        .take(4)
+        .cloned()
+        .collect();
+    let url_field = app.url_field(window, cx, &p);
+    let analyze = theme::primary_button("home-analyze", s.analyze, &p).on_click(cx.listener(
+        |this, _, window, cx| {
+            this.sync_url(cx);
+            this.controller.analyze_url();
+            window.focus(&this.root_focus);
+            cx.notify();
+        },
+    ));
+    let paste = theme::secondary_button("home-paste", s.paste, &p)
+        .on_click(cx.listener(|this, _, _, cx| this.paste_url(cx)));
+    let search = theme::secondary_button("home-search", s.search_youtube, &p)
+        .on_click(cx.listener(|this, _, window, cx| this.open_search(window, cx)));
+    let mut page = div()
+        .id("page-home")
+        .flex()
+        .flex_col()
+        .gap_4()
+        .h_full()
+        .overflow_y_scroll()
+        .scrollbar_width(px(8.))
+        .pb_5()
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(theme::title(s.home_title, &p))
+                .child(theme::muted(s.home_subtitle, &p)),
+        );
+    if checking {
+        page = page.child(theme::loading(s.checking, &p));
     }
+    if missing {
+        page = page.child(
+            div()
+                .p_3()
+                .rounded_lg()
+                .bg(p.danger.opacity(0.1))
+                .border_1()
+                .border_color(p.danger.opacity(0.35))
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(theme::icon("icons/alert.svg", 18., p.danger))
+                .child(theme::body(s.deps_missing, &p))
+                .child(div().flex_1())
+                .child(
+                    theme::secondary_button("home-open-deps", s.deps_title, &p).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.controller.set_route(Route::Settings);
+                            cx.notify();
+                        }),
+                    ),
+                ),
+        );
+    }
+    page = page.child(
+        theme::hero(&p)
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().flex_1().min_w(px(0.)).child(url_field))
+                    .child(analyze),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(paste)
+                    .child(search)
+                    .child(div().flex_1()),
+            )
+            .when_some(url_error, |this, error| {
+                this.child(theme::notice("icons/alert.svg", error, p.danger))
+            }),
+    );
 
-    theme::card_frame(p).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::Image::new(egui::include_image!("../../../../assets/icons/link.svg"))
-                    .fit_to_exact_size(egui::vec2(18.0, 18.0))
-                    .tint(p.muted),
-            );
-            let button_width = theme::text_width(ui, s.analyze, theme::semibold(14.0)) + 40.0;
-            let input_width = (ui.available_width() - button_width - 8.0).max(180.0);
-            ui.scope(|ui| {
-                ui.visuals_mut().extreme_bg_color = p.card_hover;
-                ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, p.border);
-                let response = theme::text_input(
-                    ui,
-                    &mut app.controller.state.url,
-                    s.url_placeholder,
-                    input_width,
-                );
-                if response.has_focus() && ui.input(|input| input.key_pressed(Key::Enter)) {
-                    response.surrender_focus();
-                    app.controller.analyze_url();
-                }
-            });
-            if primary_button_sized(ui, p, s.analyze, button_width).clicked() {
-                app.controller.analyze_url();
-            }
-        });
-        if let Some(error) = app.controller.state.url_error.clone() {
-            ui.add_space(4.0);
-            theme::error_text(ui, p, error);
-        }
-        ui.add_space(12.0);
-        ui.horizontal(|ui| {
-            if secondary_button(ui, p, s.paste).clicked() {
-                app.paste_clipboard();
-            }
-            if secondary_button(ui, p, s.search_youtube).clicked() {
-                app.controller.state.search_modal = true;
-                app.controller.state.search_error = None;
-            }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                theme::muted_inline(ui, p, s.drag_hint);
-            });
-        });
-    });
+    let mut location = theme::card(&p).flex().flex_col().gap_3().child(
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(theme::icon("icons/folder.svg", 18., p.accent))
+            .child(theme::section_title(s.download_location, &p)),
+    );
+    location = location
+        .child(
+            div()
+                .p_2()
+                .rounded_md()
+                .bg(p.card_alt)
+                .border_1()
+                .border_color(p.border)
+                .truncate()
+                .text_size(px(12.5))
+                .text_color(p.muted)
+                .child(folder.to_string_lossy().into_owned()),
+        )
+        .child(
+            div()
+                .flex()
+                .gap_2()
+                .child(
+                    theme::secondary_button("home-choose", s.choose_folder, &p)
+                        .on_click(cx.listener(|this, _, _, _cx| this.controller.pick_folder())),
+                )
+                .child(
+                    theme::secondary_button("home-open-folder", s.open_folder, &p).on_click(
+                        cx.listener(move |this, _, _, _cx| {
+                            this.controller.open_folder(folder.clone());
+                        }),
+                    ),
+                ),
+        );
 
-    ui.add_space(theme::CARD_GAP);
-    let available = ui.available_width();
-    if let Some((left, right)) = theme::split_columns(available, 16.0, 0.42, 340.0, 360.0) {
-        ui.horizontal_top(|ui| {
-            ui.spacing_mut().item_spacing.x = 16.0;
-            ui.allocate_ui_with_layout(
-                egui::vec2(left, 0.0),
-                Layout::top_down(Align::LEFT),
-                |ui| location_card(app, ui),
-            );
-            ui.allocate_ui_with_layout(
-                egui::vec2(right, 0.0),
-                Layout::top_down(Align::LEFT),
-                |ui| recent_card(app, ui),
-            );
-        });
+    let mut recent = theme::card(&p).flex().flex_col().gap_3();
+    recent = recent.child(
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(theme::icon("icons/history.svg", 18., p.selection))
+            .child(theme::section_title(s.recent, &p))
+            .child(div().flex_1())
+            .when(!history.is_empty(), |this| {
+                this.child(
+                    theme::ghost_button("home-all-history", s.nav_history, &p).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.controller.set_route(Route::Summary);
+                            cx.notify();
+                        }),
+                    ),
+                )
+            }),
+    );
+    if history.is_empty() {
+        recent = recent.child(theme::empty_state("icons/info.svg", s.no_history, "", &p));
     } else {
-        location_card(app, ui);
-        ui.add_space(theme::CARD_GAP);
-        recent_card(app, ui);
-    }
-}
-
-fn location_card(app: &mut VolvidApp, ui: &mut egui::Ui) {
-    let p = app.palette();
-    let s = app.s();
-    theme::card(ui, p, |ui| {
-        theme::section_title(ui, p, s.download_location);
-        ui.add_space(8.0);
-        let path = app.controller.state.downloads_dir.to_string_lossy();
-        theme::text_chip(ui, p, &path, 12.5, ui.available_width(), false);
-        ui.add_space(10.0);
-        ui.horizontal(|ui| {
-            if secondary_button(ui, p, s.choose_folder).clicked() {
-                app.controller.pick_folder();
-            }
-            if secondary_button(ui, p, s.open_folder).clicked() {
-                app.controller
-                    .open_folder(app.controller.state.downloads_dir.clone());
-            }
-        });
-    });
-}
-
-fn recent_card(app: &mut VolvidApp, ui: &mut egui::Ui) {
-    let p = app.palette();
-    let s = app.s();
-    theme::card(ui, p, |ui| {
-        ui.horizontal(|ui| {
-            theme::section_title(ui, p, s.recent);
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if !app.controller.state.history.is_empty()
-                    && secondary_button(ui, p, s.nav_history).clicked()
-                {
-                    app.controller.set_route(Route::Summary);
-                }
-            });
-        });
-        ui.add_space(8.0);
-        if app.controller.state.history.is_empty() {
-            theme::dashed_placeholder(ui, p, 82.0, s.no_history);
-        } else {
-            let history: Vec<_> = app
-                .controller
-                .state
-                .history
-                .iter()
-                .rev()
-                .take(4)
-                .cloned()
-                .collect();
-            for item in history {
-                let color = if item.ok { p.success } else { p.danger };
-                let timestamp = format::timestamp(item.timestamp, app.controller.state.locale);
-                let open_width =
-                    theme::text_width(ui, s.open, theme::semibold(theme::FONT_LABEL)) + 30.0;
-                let timestamp_width = theme::text_width(
-                    ui,
-                    &timestamp,
-                    egui::FontId::proportional(theme::FONT_SMALL),
-                );
-                let actions_width = open_width + 8.0 + timestamp_width + 8.0;
-                ui.horizontal(|ui| {
-                    theme::status_dot(ui, color);
-                    theme::row_with_actions(
-                        ui,
-                        actions_width,
-                        |ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(&item.label)
-                                        .color(p.text)
-                                        .size(theme::FONT_MUTED),
-                                )
-                                .truncate(),
-                            );
-                        },
-                        |ui| {
-                            if secondary_button(ui, p, s.open).clicked() {
-                                app.controller.open_folder(item.output_dir.clone());
-                            }
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(&timestamp)
-                                        .size(theme::FONT_SMALL)
-                                        .color(p.muted),
-                                )
-                                .truncate(),
-                            );
-                        },
-                    );
-                });
-            }
+        let mut rows = Vec::new();
+        for (index, item) in history.into_iter().enumerate() {
+            let color = if item.ok { p.success } else { p.danger };
+            let output = item.output_dir.clone();
+            let stamp = format::timestamp(item.timestamp, locale);
+            rows.push(
+                div()
+                    .id(SharedString::from(format!(
+                        "history-{}-{index}",
+                        item.timestamp
+                    )))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .p_2()
+                    .rounded_md()
+                    .hover(|this| this.bg(p.card_hover))
+                    .child(div().size(px(8.)).rounded_full().bg(color))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(0.))
+                            .truncate()
+                            .text_size(px(13.))
+                            .text_color(p.text)
+                            .child(item.label),
+                    )
+                    .child(theme::muted(stamp, &p))
+                    .child(
+                        theme::ghost_button(
+                            SharedString::from(format!("open-{}-{index}", item.timestamp)),
+                            s.open,
+                            &p,
+                        )
+                        .on_click(cx.listener(move |this, _, _, _cx| {
+                            this.controller.open_folder(output.clone());
+                        })),
+                    ),
+            );
         }
-    });
+        recent = recent.children(rows);
+    }
+
+    page.child(
+        div()
+            .flex()
+            .flex_wrap()
+            .items_start()
+            .gap_4()
+            .child(div().flex_1().min_w(px(300.)).child(location))
+            .child(div().flex_1().min_w(px(300.)).child(recent)),
+    )
 }

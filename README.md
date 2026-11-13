@@ -4,9 +4,9 @@
 
 <img src="docs/assets/logo.svg" alt="VOLVID" height="87">
 
-**A fast, modern YouTube downloader for the desktop — built with Rust, egui and wgpu.**
+**A fast, modern YouTube downloader for the desktop — built with Rust and GPUI.**
 
-[![Rust](https://img.shields.io/badge/Rust-1.99%2B-000000?style=flat-square&logo=rust)](rust-toolchain.toml)
+[![Rust](https://img.shields.io/badge/Rust-1.99.1%2B-000000?style=flat-square&logo=rust)](rust-toolchain.toml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20Wayland-5CC8E8?style=flat-square)](#platforms)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
 
@@ -18,7 +18,7 @@
 
 ## About
 
-Volvid is a graphical YouTube downloader powered by **yt-dlp** and **ffmpeg**.
+Volvid is a graphical YouTube downloader powered by **ytrust** and **ffmpeg**.
 It checks dependencies, resolves video metadata and thumbnails, scans real
 quality options, and downloads video, audio or thumbnails — including playlists,
 fragments, dubbed audio tracks and embedded subtitles.
@@ -28,14 +28,15 @@ been removed; the new app is a native GPU-rendered desktop application.
 
 ## Features
 
-- **Modern GUI** — egui 0.37 + wgpu, dark/light themes, custom coral/cyan palette.
+- **Modern GUI** — GPUI, dark/light themes, custom coral/cyan palette.
 - **Video preview** — YouTube thumbnails are fetched and shown on the download screen.
-- **Quality scan** — real heights, availability and estimated sizes from `yt-dlp`.
+- **Quality scan** — real heights, availability and estimated sizes from `ytrust`.
 - **Formats** — Original MP4, H.264, H.265, VP9, AV1, MKV copy; MP3 320/192, M4A, Opus, FLAC.
+- **Fallbacks** — ytrust retries blocked adaptive streams with a muxed format and Volvid shows the fallback in the queue.
 - **Playlists** — virtualized list, filter, select all/none, manual ranges and parallel workers.
-- **Tracks** — dubbed audio languages and subtitles embedded into the container.
+- **Tracks** — dubbed audio languages and subtitles embedded into MP4/MKV containers (WebM keeps sidecar files).
 - **Fragments** — `1:00-2:30`, `1:00-`, `1:00+`, and timestamps from the URL.
-- **Dependency manager** — detects and installs managed yt-dlp, ffmpeg and node.
+- **Dependency manager** — detects and installs managed ytrust, ffmpeg and node.
 - **Browser cookies** — auto-detects Firefox, Chrome, Chromium, Brave, Vivaldi and Opera profiles.
 - **Self-update** — GitHub release check and in-place binary replacement.
 - **Download queue** — queued/active/paused jobs, progress, speed, ETA, pause/resume and session history.
@@ -47,8 +48,10 @@ been removed; the new app is a native GPU-rendered desktop application.
 ### Requirements
 
 - **Rust 1.99.1+** for building from source.
-- `yt-dlp` and `ffmpeg` are required at runtime. Volvid can install managed copies
-  from the dependency screen if they are missing. `node` is optional (JS runtime).
+- `ytrust` 1.1.1+ (1.x series) and `ffmpeg` are required at runtime. Volvid can
+  install managed copies from the dependency screen if they are missing. `node`
+  20+ is optional and is used to solve YouTube JavaScript challenges for
+  ciphered formats.
 
 ### Build and run
 
@@ -90,16 +93,16 @@ cargo build --release -p volvid-gui
 crates/
   volvid-core/      pure domain: URL/fragment parsing, profiles, quality, deps, session
   volvid-i18n/      EN/RU strings and formatting
-  volvid-engine/    yt-dlp, ffmpeg, HTTP, dependency installs, cookies, updates, config
+  volvid-engine/    ytrust, ffmpeg, HTTP, dependency installs, cookies, updates, config
   volvid-app/       UI-independent state machine, command/event flow, download queue
-  volvid-gui/       eframe/egui app, theme, pages, SVG icons and thumbnail preview
+  volvid-gui/       GPUI app, theme, pages, SVG icons and thumbnail preview
 assets/
   fonts/            Onest with Cyrillic
   icons/            application icon, logo variants, SVG action icons
 docs/               GitHub Pages site and screenshots
 ```
 
-The GUI never calls `yt-dlp` or `ffmpeg` directly. User actions become
+The GUI never calls `ytrust` or `ffmpeg` directly. User actions become
 `AppEvent`s; the engine runs on a Tokio runtime and reports progress back to
 the UI-independent state machine.
 
@@ -129,15 +132,23 @@ cargo run -p volvid-gui
 
 Useful environment variables for development:
 
-- `VOLVID_TEST_FRONT=1` keeps the window above other windows (useful for screenshots).
 - `RUST_LOG=volvid_gui=debug,volvid_app=debug` enables UI/state logs.
+
+Live engine checks (require network, ytrust and ffmpeg):
+
+```bash
+cargo run -p volvid-engine --example search -- "query"
+cargo run -p volvid-engine --example formats            # video/audio/subtitle matrix
+cargo run -p volvid-engine --example formats -- --playlist
+cargo run -p volvid-engine --example cancel             # process cancellation
+```
 
 ### Project tooling
 
 - `cargo nextest` for fast test runs (optional).
 - `cargo deny check` runs in CI for dependency policy.
 - `cargo audit` for additional advisory checks (optional).
-- `egui_kittest` for headless UI tests.
+- GPUI test support for headless UI checks.
 
 ## Platforms
 
@@ -147,6 +158,9 @@ Useful environment variables for development:
 | Linux (Wayland) | x86_64 | supported |
 | Linux (X11) | x86_64 | not supported |
 
+The Linux build is compiled without GPUI's X11 backend; run it inside a Wayland
+session.
+
 ## License
 
 Licensed under **GPL-3.0** — see [`LICENSE`](LICENSE).
@@ -154,8 +168,9 @@ Copyright (C) 2026 VolRen.
 
 External tools:
 
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — Unlicense
+- [ytrust](https://github.com/VolRencs/ytrust) — GPL-3.0
 - [ffmpeg](https://ffmpeg.org) — LGPL/GPL
-- [egui / eframe](https://github.com/emilk/egui) — MIT/Apache-2.0
+- [Node.js](https://nodejs.org) — MIT
+- [GPUI](https://github.com/zed-industries/zed) — Apache-2.0
 - [Tokio](https://tokio.rs) — MIT
 - [Onest](https://github.com/simpals/onest) — OFL

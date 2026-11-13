@@ -8,7 +8,7 @@ use volvid_engine::{AppPaths, Theme, youtube_preview_url};
 use volvid_i18n::{default_quality, fragment_error_text};
 
 use crate::backend::Backend;
-use crate::history::load_history;
+use crate::history::{load_history, save_history};
 use crate::state::{
     AppEvent, AppState, Draft, FragmentMode, JobStatus, JobView, MixedChoice, Route, SlotView,
     ToastKind,
@@ -48,12 +48,9 @@ impl Controller {
         self.backend.app_version()
     }
 
-    pub fn set_repaint(&self, repaint: std::sync::Arc<dyn Fn() + Send + Sync>) {
-        self.backend.set_repaint(repaint);
-    }
-
-    pub fn poll(&mut self) {
+    pub fn poll(&mut self) -> bool {
         let events = self.backend.drain_events();
+        let had_events = !events.is_empty();
         let mut refresh_deps = false;
         let mut save_history = false;
         let mut save_config = false;
@@ -78,6 +75,7 @@ impl Controller {
             self.persist_config();
         }
         self.pump_queue();
+        had_events
     }
 
     fn begin_op(&mut self) -> u64 {
@@ -193,6 +191,7 @@ impl Controller {
         self.state.preview_generation = self.state.preview_generation.wrapping_add(1);
         self.state.thumbnail_loading = true;
         self.state.thumbnail_error = false;
+        self.state.thumbnail_full = false;
         self.state.audio_tracks.clear();
         self.state.sub_tracks.clear();
         self.state.tracks_error = None;
@@ -286,14 +285,18 @@ impl Controller {
     }
 
     pub fn start_download(&mut self) {
+        if self.state.deps_checking {
+            self.state.toast(self.state.s().checking, ToastKind::Warn);
+            return;
+        }
         let Some(target) = self.state.target.clone() else {
             return;
         };
         let s = self.state.s();
         let playlist_mode = self.state.is_playlist_mode();
-        if !self.state.deps.ytdlp.available {
+        if !self.state.deps.ytrust.available {
             self.state.route = Route::Settings;
-            self.state.toast(s.missing_ytdlp, ToastKind::Error);
+            self.state.toast(s.missing_ytrust, ToastKind::Error);
             return;
         }
         let fragment = match self
@@ -332,6 +335,10 @@ impl Controller {
             return;
         }
         let entry_count = entries.len();
+        let fragment_label = fragment
+            .as_ref()
+            .map(|fragment| volvid_core::format_fragment_label(Some(fragment)))
+            .unwrap_or_default();
         let request = DownloadRequest {
             target: target.clone(),
             profile,
@@ -360,7 +367,7 @@ impl Controller {
             .as_ref()
             .map(|quality| quality.height)
             .unwrap_or(0);
-        let detail = match request.profile.mode {
+        let mut detail = match request.profile.mode {
             DownloadMode::Video if quality > 0 => format!(
                 "{} · {}p · {}",
                 s.mode_video,
@@ -379,6 +386,10 @@ impl Controller {
             ),
             DownloadMode::Thumbnail => s.mode_thumbnail.to_owned(),
         };
+        if !fragment_label.is_empty() {
+            detail.push_str("  ·  ");
+            detail.push_str(&fragment_label);
+        }
         let title = self.state.title_for_download();
         let url = target.download_url(self.state.force_single);
         let workers = request.workers;
@@ -655,6 +666,28 @@ impl Controller {
     pub fn check_updates(&mut self) {
         self.state.update_checking = true;
         self.backend.check_update();
+    }
+
+    pub fn restart_now(&mut self) {
+        if !self.state.restarting {
+            self.state.restart_at = Some(std::time::Instant::now());
+        }
+    }
+
+    pub fn postpone_restart(&mut self) {
+        // Keep the restart pending but move it out of the way; the modal can be
+        // reopened from the sidebar badge or Settings.
+        self.state.restart_at =
+            Some(std::time::Instant::now() + std::time::Duration::from_secs(5 * 60));
+        self.state.update_modal = false;
+    }
+
+    /// Persists small pieces of state synchronously before the process is
+    /// replaced by a freshly updated executable.
+    pub fn save_before_restart(&self) {
+        let paths = AppPaths::detect();
+        let _ = self.state.config.save(&paths);
+        let _ = save_history(&paths, &self.state.history);
     }
 
     pub fn refresh_deps(&mut self) {

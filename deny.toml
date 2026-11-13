@@ -29,7 +29,8 @@ allow-wildcard-paths = true
 version = 2
 yanked = "deny"
 ignore = [
-    # Pulled in transitively by accesskit/eframe; no safe upgrade yet.
+    # Pulled in transitively by zbus/zvariant through GPUI's desktop portal
+    # integration; no safe upgrade is available in the pinned GPUI release.
     "RUSTSEC-2026-0370", # zvariant
     "RUSTSEC-2026-0371", # zbus_names
     "RUSTSEC-2026-0372", # zvariant_derive

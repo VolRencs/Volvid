@@ -17,19 +17,6 @@ impl DownloadFragment {
             None => true,
         }
     }
-
-    /// Renders the yt-dlp `--download-sections` value (`*start-end`).
-    pub fn section_arg(&self) -> Option<String> {
-        if !self.is_valid() {
-            return None;
-        }
-        let start = format_clock(self.start_at);
-        let end = self
-            .end_at
-            .map(format_clock)
-            .unwrap_or_else(|| "inf".to_owned());
-        Some(format!("*{start}-{end}"))
-    }
 }
 
 /// Renders a fragment as `mm:ss+` or `mm:ss-mm:ss`.

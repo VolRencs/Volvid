@@ -3,12 +3,12 @@ use crate::locale::Locale;
 use crate::target::ParsedTarget;
 use serde::{Deserialize, Serialize};
 
-pub const YTDLP_BEST_FORMAT: &str = "bestvideo+bestaudio/best";
-const YTDLP_WORST_360_FORMAT: &str = "bestvideo[height<=360]+bestaudio/best[height<=360]";
+pub const BEST_VIDEO_FORMAT: &str = "bestvideo+bestaudio/best";
+const WORST_360_FORMAT: &str = "bestvideo[height<=360]+bestaudio/best[height<=360]";
 
 const QUALITY_CHAINS: [&[&str]; 2] = [
-    &[YTDLP_BEST_FORMAT, "best"],
-    &[YTDLP_WORST_360_FORMAT, "best[height<=360]", "worst"],
+    &[BEST_VIDEO_FORMAT, "best"],
+    &[WORST_360_FORMAT, "best[height<=360]", "worst"],
 ];
 
 /// Returns a cloned static format chain, or `None` if out of bounds.
@@ -57,7 +57,7 @@ pub fn default_quality_choices() -> Vec<QualityChoice> {
             total: 1,
             size_bytes: 0,
             fmt_chain: quality_chain_at(0).unwrap_or_default(),
-            fmt_labels: Vec::new(),
+            fmt_labels: vec!["best".to_owned(), "best".to_owned()],
         },
         QualityChoice {
             height: 360,
@@ -67,7 +67,7 @@ pub fn default_quality_choices() -> Vec<QualityChoice> {
             total: 1,
             size_bytes: 0,
             fmt_chain: quality_chain_at(1).unwrap_or_default(),
-            fmt_labels: vec!["worst".to_owned(), "360p".to_owned(), "worst".to_owned()],
+            fmt_labels: vec!["360p".to_owned(), "360p".to_owned(), "worst".to_owned()],
         },
     ]
 }
@@ -152,7 +152,7 @@ mod tests {
     fn merged_video_formats_require_ffmpeg() {
         let profile = OutputProfile {
             mode: DownloadMode::Video,
-            video_fmt_chain: vec![YTDLP_BEST_FORMAT.to_owned()],
+            video_fmt_chain: vec![BEST_VIDEO_FORMAT.to_owned()],
             ..OutputProfile::default()
         };
         assert!(profile.needs_ffmpeg(None));

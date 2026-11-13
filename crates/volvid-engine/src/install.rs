@@ -2,17 +2,19 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
+use semver::Version;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use volvid_core::{FileProgress, Locale};
 
-use crate::deps::probe_version;
-use crate::http::{download_file, fetch_text};
+use crate::deps::{YTRUST_MAX_MAJOR, YTRUST_MIN_VERSION, probe_version, ytrust_version_supported};
+use crate::http::{download_file, fetch_json, fetch_text};
 use crate::paths::{AppPaths, binary_name, replace_file};
 
-const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/";
+const YTRUST_RELEASES: &str = "https://api.github.com/repos/VolRencs/ytrust/releases/latest";
 const NODE_BASE: &str = "https://nodejs.org/download/release/latest/";
 const FFMPEG_WIN: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
 const FFMPEG_LINUX: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz";
@@ -26,18 +28,18 @@ pub async fn install_dependency(
     progress: mpsc::UnboundedSender<FileProgress>,
 ) -> Result<()> {
     let result = match key.trim() {
-        "ytdlp" => install_ytdlp(paths, client, locale, cancel, progress.clone()).await,
+        "ytrust" => install_ytrust(paths, client, locale, cancel, progress.clone()).await,
         "ffmpeg" => install_ffmpeg(paths, client, locale, cancel, progress.clone()).await,
         "node" => install_node(paths, client, locale, cancel, progress.clone()).await,
         other => bail!("unsupported dependency: {other}"),
     };
-    if let Err(err) = &result {
-        let _ = progress.send(FileProgress::failed(err.to_string()));
+    if result.is_err() {
+        let _ = progress.send(FileProgress::failed());
     }
     result
 }
 
-async fn install_ytdlp(
+async fn install_ytrust(
     paths: &AppPaths,
     client: &reqwest::Client,
     locale: Locale,
@@ -46,29 +48,76 @@ async fn install_ytdlp(
 ) -> Result<()> {
     let platform = platform_info()?;
     std::fs::create_dir_all(&paths.deps_dir)?;
+    let release = fetch_json(client, YTRUST_RELEASES)
+        .await
+        .context("fetch ytrust release metadata")?;
+    let tag = release
+        .get("tag_name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("ytrust release has no tag"))?;
+    let version_text = tag.trim_start_matches('v');
+    let version = Version::parse(version_text)
+        .with_context(|| format!("invalid ytrust release version {version_text}"))?;
+    if version.major > YTRUST_MAX_MAJOR {
+        bail!(
+            "ytrust {version} is newer than the supported {YTRUST_MAX_MAJOR}.x series; update Volvid"
+        );
+    }
+    if version < Version::parse(YTRUST_MIN_VERSION)? {
+        bail!("ytrust {YTRUST_MIN_VERSION} or newer is required, latest is {version}");
+    }
+
+    let (asset_name, asset_url) = release_asset(&release, platform.ytrust_suffix)?;
+    let (_, checksums_url) = release_asset(&release, "SHA256SUMS")?;
+    let manifest = fetch_text(client, checksums_url).await?;
+    let checksum = checksum_from_manifest(&manifest, asset_name)?;
+
     let staging = tempfile::tempdir_in(&paths.deps_dir)?;
-    let manifest = fetch_text(client, &format!("{YTDLP_BASE}SHA2-256SUMS")).await?;
-    let checksum = checksum_from_manifest(&manifest, platform.ytdlp_asset)?;
-    let staged = staging.path().join(binary_name("yt-dlp"));
+    let archive = staging.path().join(asset_name);
     download_file(
         client,
-        &format!("{YTDLP_BASE}{}", platform.ytdlp_asset),
-        &staged,
+        asset_url,
+        &archive,
         locale,
         Some(&progress),
         cancel.clone(),
     )
     .await?;
-    verify_sha256(&staged, &checksum)?;
+    verify_sha256(&archive, &checksum)?;
+
+    let staged = staging.path().join(binary_name("ytrust"));
+    extract_binaries(&archive, &[(binary_name("ytrust"), staged.clone())])?;
     make_executable(&staged)?;
-    if probe_version(&staged.to_string_lossy(), &["--version"], cancel)
-        .await
-        .is_empty()
-    {
-        bail!("downloaded yt-dlp does not run");
+    let installed = probe_version(&staged.to_string_lossy(), &["--version"], cancel).await;
+    if installed.is_empty() {
+        bail!("downloaded ytrust does not run");
     }
-    replace_file(&staged, &paths.ytdlp_bin())?;
+    if !ytrust_version_supported(&installed) {
+        bail!("downloaded ytrust {installed} is older than {YTRUST_MIN_VERSION}");
+    }
+    replace_file(&staged, &paths.ytrust_bin())?;
     Ok(())
+}
+
+fn release_asset<'a>(release: &'a Value, suffix: &str) -> Result<(&'a str, &'a str)> {
+    let assets = release
+        .get("assets")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("ytrust release has no assets"))?;
+    for asset in assets {
+        let Some(name) = asset.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        if !name.ends_with(suffix) {
+            continue;
+        }
+        let url = asset
+            .get("browser_download_url")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("asset {name} has no download URL"))?;
+        return Ok((name, url));
+    }
+    bail!("ytrust release asset with suffix {suffix} not found")
 }
 
 async fn install_ffmpeg(
@@ -316,7 +365,7 @@ fn extract_tar<R: Read>(reader: R, targets: &[(String, PathBuf)]) -> Result<()> 
 }
 
 struct PlatformInfo {
-    ytdlp_asset: &'static str,
+    ytrust_suffix: &'static str,
     ffmpeg_url: &'static str,
     node_suffix: &'static str,
 }
@@ -324,13 +373,13 @@ struct PlatformInfo {
 fn platform_info() -> Result<PlatformInfo> {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
         Ok(PlatformInfo {
-            ytdlp_asset: "yt-dlp.exe",
+            ytrust_suffix: "-x86_64-pc-windows-msvc.zip",
             ffmpeg_url: FFMPEG_WIN,
             node_suffix: "-win-x64.zip",
         })
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         Ok(PlatformInfo {
-            ytdlp_asset: "yt-dlp_linux",
+            ytrust_suffix: "-x86_64-unknown-linux-gnu.tar.gz",
             ffmpeg_url: FFMPEG_LINUX,
             node_suffix: "-linux-x64.tar.gz",
         })
@@ -345,12 +394,43 @@ mod tests {
 
     #[test]
     fn parses_checksum_manifests() {
-        let manifest =
-            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789  yt-dlp_linux\n";
+        let manifest = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789  ytrust-v1.1.1-x86_64-unknown-linux-gnu.tar.gz\n";
         assert_eq!(
-            checksum_from_manifest(manifest, "yt-dlp_linux").unwrap(),
+            checksum_from_manifest(manifest, "ytrust-v1.1.1-x86_64-unknown-linux-gnu.tar.gz")
+                .unwrap(),
             "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
         );
+    }
+
+    #[test]
+    fn finds_release_assets_by_suffix() {
+        let release: Value = serde_json::from_str(
+            r#"{
+                "tag_name": "v1.1.1",
+                "assets": [
+                    {"name": "SHA256SUMS", "browser_download_url": "https://example.com/SHA256SUMS"},
+                    {"name": "ytrust-v1.1.1-x86_64-unknown-linux-gnu.tar.gz", "browser_download_url": "https://example.com/linux.tar.gz"}
+                ]
+            }"#,
+        )
+        .unwrap();
+        let (name, url) = release_asset(&release, "-x86_64-unknown-linux-gnu.tar.gz").unwrap();
+        assert_eq!(name, "ytrust-v1.1.1-x86_64-unknown-linux-gnu.tar.gz");
+        assert_eq!(url, "https://example.com/linux.tar.gz");
+        assert_eq!(
+            release_asset(&release, "SHA256SUMS").unwrap().0,
+            "SHA256SUMS"
+        );
+    }
+
+    #[test]
+    fn accepts_only_supported_ytrust_releases() {
+        assert!(!ytrust_version_supported("1.0.0"));
+        assert!(!ytrust_version_supported("1.1.0"));
+        assert!(ytrust_version_supported("1.1.1"));
+        assert!(ytrust_version_supported("1.2.3"));
+        assert!(!ytrust_version_supported("0.4.3"));
+        assert!(!ytrust_version_supported("2.0.0"));
     }
 
     #[test]

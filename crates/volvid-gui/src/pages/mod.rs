@@ -1,9 +1,14 @@
-pub mod configure;
-pub mod downloads;
-pub mod home;
-pub mod mixed;
-pub mod playlist;
-pub mod search;
-pub mod settings;
-pub mod summary;
-pub mod update;
+mod components;
+mod configure;
+mod downloads;
+mod home;
+mod playlist;
+mod settings;
+mod summary;
+
+pub use configure::configure;
+pub use downloads::downloads;
+pub use home::home;
+pub use playlist::playlist;
+pub use settings::settings;
+pub use summary::summary;

@@ -104,7 +104,6 @@ pub async fn download_file(
                     total_b: total,
                     speed: volvid_i18n::format_speed(speed, locale),
                     done: false,
-                    err: None,
                 },
             );
             last_emit = Instant::now();
@@ -123,7 +122,6 @@ pub async fn download_file(
             total_b: if total > 0 { total } else { done },
             speed: String::new(),
             done: true,
-            err: None,
         },
     );
     Ok(destination.to_path_buf())

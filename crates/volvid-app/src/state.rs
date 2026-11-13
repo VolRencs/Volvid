@@ -10,7 +10,7 @@ use volvid_core::{
     PlaylistEntry, PlaylistInfo, QualityChoice, SearchResult, SubtitleTrack, UpdateInfo,
     format_fragment_label, parse_bounded_fragment_range,
 };
-use volvid_engine::{AppPaths, Config, PreviewImage, Theme};
+use volvid_engine::{AppPaths, Config, PreviewImage};
 use volvid_i18n::{
     audio_output_profiles, default_quality, engine_error_text, quality_profile, strings,
     thumbnail_profile, video_output_profiles,
@@ -190,6 +190,7 @@ pub struct SlotView {
     pub total_b: i64,
     pub speed: String,
     pub speed_bps: i64,
+    pub eta_secs: i64,
     pub label: String,
     pub proc: bool,
 }
@@ -248,16 +249,24 @@ impl JobView {
                     slot.label.clear();
                     slot.proc = false;
                 }
-                DlEventType::Dest => slot.title = update.text.clone(),
                 DlEventType::Progress => {
                     slot.pct = update.pct;
                     slot.done_b = update.done_b;
                     slot.total_b = update.total_b;
                     slot.speed = update.speed.clone();
                     slot.speed_bps = update.speed_bps;
-                    slot.proc = false;
+                    slot.eta_secs = update.eta_secs;
+                    slot.label = update.text.clone();
+                    slot.proc = !update.text.is_empty();
                 }
-                DlEventType::Proc | DlEventType::Fallback => {
+                DlEventType::Proc => {
+                    slot.proc = true;
+                    slot.label = update.text.clone();
+                    if update.pct > 0.0 {
+                        slot.pct = update.pct;
+                    }
+                }
+                DlEventType::Fallback => {
                     slot.proc = true;
                     slot.label = update.text.clone();
                 }
@@ -426,6 +435,9 @@ pub struct AppState {
     pub update_modal: bool,
     pub update_progress: Option<FileProgress>,
     pub updating: bool,
+    pub restart_pending: bool,
+    pub restart_at: Option<Instant>,
+    pub restarting: bool,
 
     pub search_modal: bool,
 
@@ -453,6 +465,7 @@ pub struct AppState {
     pub preview_generation: u64,
     pub thumbnail_loading: bool,
     pub thumbnail_error: bool,
+    pub thumbnail_full: bool,
     pub audio_tracks: Vec<AudioTrack>,
     pub sub_tracks: Vec<SubtitleTrack>,
     pub quality_choices: Vec<QualityChoice>,
@@ -504,12 +517,20 @@ impl AppState {
 
     pub fn apply(&mut self, event: AppEvent) {
         match event {
-            AppEvent::Deps(deps) | AppEvent::DepsEnriched(deps) => {
+            AppEvent::Deps(deps) => {
+                self.deps = deps;
+            }
+            AppEvent::DepsEnriched(deps) => {
                 self.deps_checking = false;
                 self.deps = deps;
             }
             AppEvent::UpdateChecked(info) => {
                 self.update_checking = false;
+                // A background refresh can report "no update" after an update
+                // has just been installed; keep the restart prompt alive.
+                if info.is_none() && self.restart_pending {
+                    return;
+                }
                 self.update = info;
             }
             AppEvent::Playlist { op, result } => {
@@ -558,9 +579,15 @@ impl AppState {
                 if op != self.op_id {
                     return;
                 }
+                if stage == ThumbnailStage::Preview && self.thumbnail_full {
+                    return;
+                }
                 self.thumbnail_loading = false;
                 match result {
                     Ok(image) => {
+                        if stage == ThumbnailStage::Full {
+                            self.thumbnail_full = true;
+                        }
                         tracing::debug!(
                             stage = ?stage,
                             width = image.width,
@@ -573,6 +600,9 @@ impl AppState {
                     }
                     Err(err) => {
                         tracing::debug!(?stage, %err, "thumbnail unavailable");
+                        if stage == ThumbnailStage::Full {
+                            self.thumbnail_full = true;
+                        }
                         if self.preview_image.is_none() {
                             self.thumbnail_error = true;
                         }
@@ -674,8 +704,10 @@ impl AppState {
                 self.update_progress = None;
                 match result {
                     Ok(()) => {
-                        self.toast(self.s().update_applied, ToastKind::Success);
-                        self.update_modal = false;
+                        self.restart_pending = true;
+                        self.restart_at = None;
+                        self.restarting = false;
+                        self.update_modal = true;
                     }
                     Err(err) => self.toast(
                         format!(
@@ -872,6 +904,15 @@ impl AppState {
             .count()
     }
 
+    pub fn has_finished_jobs(&self) -> bool {
+        self.jobs.iter().any(|job| {
+            matches!(
+                job.status,
+                JobStatus::Completed | JobStatus::Failed | JobStatus::Cancelled
+            )
+        })
+    }
+
     pub fn localize_playlist_title(&self) -> String {
         let title = self
             .playlist
@@ -923,10 +964,6 @@ impl AppState {
                 .map(|target| target.canonical_url.clone())
                 .unwrap_or_default()
         }
-    }
-
-    pub fn theme(&self) -> Theme {
-        self.config.theme
     }
 }
 
@@ -1004,6 +1041,22 @@ mod tests {
             pending_resume: false,
             thumbnail: None,
         }
+    }
+
+    #[test]
+    fn phase_progress_sets_label_and_eta() {
+        let mut job = test_job(JobStatus::Active);
+        job.apply(&DlUpdate {
+            event_type: DlEventType::Progress,
+            text: "Merging".to_owned(),
+            pct: 42.0,
+            eta_secs: 12,
+            ..DlUpdate::default()
+        });
+        assert!(job.slots[0].proc);
+        assert_eq!(job.slots[0].label, "Merging");
+        assert_eq!(job.slots[0].eta_secs, 12);
+        assert!((job.slots[0].pct - 42.0).abs() < f64::EPSILON);
     }
 
     #[test]

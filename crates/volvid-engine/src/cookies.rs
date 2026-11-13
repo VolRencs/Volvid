@@ -40,7 +40,7 @@ pub fn detect_browser_cookies(home: &Path) -> BrowserCookiesInfo {
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let ytdlp_profile = if cfg!(windows) {
+    let profile_arg = if cfg!(windows) {
         profile_name.clone()
     } else {
         candidate.profile.to_string_lossy().into_owned()
@@ -49,7 +49,7 @@ pub fn detect_browser_cookies(home: &Path) -> BrowserCookiesInfo {
         status: STATUS_ACTIVE.to_owned(),
         browser: candidate.browser,
         profile_name,
-        ytdlp_profile,
+        profile_arg,
     }
 }
 

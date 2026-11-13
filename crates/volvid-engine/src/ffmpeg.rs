@@ -486,6 +486,7 @@ pub fn cleanup_subtitle_sidecars(video_path: &Path, langs: &[String]) {
             }
             for ext in [".srt", ".vtt"] {
                 names.push(format!("{base}.{lang}{ext}"));
+                names.push(format!("{base}.{lang}.auto{ext}"));
             }
         }
     }
