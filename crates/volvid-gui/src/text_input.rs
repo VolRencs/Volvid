@@ -727,6 +727,7 @@ pub fn bind_keys(cx: &mut App) {
 mod tests {
     use super::*;
 
+    #[cfg(not(target_os = "windows"))]
     fn style() -> TextInputStyle {
         TextInputStyle {
             text: gpui::black(),
