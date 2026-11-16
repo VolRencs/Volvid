@@ -526,12 +526,12 @@ fn retry_rename(from: &Path, to: &Path) -> std::io::Result<()> {
 /// copied from a read-only installation, which blocks deletion.
 fn remove_file_force(path: &Path) {
     #[cfg(windows)]
-    if let Ok(metadata) = std::fs::metadata(path) {
+    if let Ok(metadata) = std::fs::metadata(path)
+        && metadata.permissions().readonly()
+    {
         let mut permissions = metadata.permissions();
-        if permissions.readonly() {
-            permissions.set_readonly(false);
-            let _ = std::fs::set_permissions(path, permissions);
-        }
+        permissions.set_readonly(false);
+        let _ = std::fs::set_permissions(path, permissions);
     }
     let _ = std::fs::remove_file(path);
 }
