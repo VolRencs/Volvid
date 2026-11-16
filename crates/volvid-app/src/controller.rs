@@ -660,11 +660,17 @@ impl Controller {
             return;
         };
         self.state.updating = true;
+        self.state.update_install_error = None;
         self.backend.apply_update(info, self.state.locale);
+    }
+
+    pub fn cancel_update(&mut self) {
+        self.backend.cancel_update();
     }
 
     pub fn check_updates(&mut self) {
         self.state.update_checking = true;
+        self.state.update_error = None;
         self.backend.check_update();
     }
 

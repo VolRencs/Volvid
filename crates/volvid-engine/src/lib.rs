@@ -6,6 +6,7 @@ pub mod cookies;
 pub mod deps;
 pub mod download;
 pub mod ffmpeg;
+mod hash;
 pub mod http;
 pub mod install;
 pub mod paths;

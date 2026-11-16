@@ -740,6 +740,8 @@ mod tests {
         }
     }
 
+    // GPUI's window-based test harness hangs on headless Windows runners.
+    #[cfg(not(target_os = "windows"))]
     #[gpui::test]
     fn select_all_and_delete(cx: &mut gpui::TestAppContext) {
         let window = cx.update(|cx| {

@@ -1,5 +1,36 @@
 # Changelog
 
+## 8.1.3
+
+### Added
+
+- Update manifest (`latest.json`) published with every release, containing
+  per-platform downloads, sizes and SHA-256 checksums.
+- `--version` and `--update-check [--json]` diagnostics.
+- Periodic update checks with retry backoff, visible check errors and a
+  downloadable-update progress dialog with cancellation.
+- Integrity checks and a health check before an update is installed.
+
+### Changed
+
+- Releases are built and published atomically from version tags; the GitHub
+  API is only a fallback for older releases.
+- Update checks prefer `releases/latest/download/latest.json`, avoiding the
+  GitHub API rate limit and the gap while release assets are uploading.
+- The updater uses a verified staging file and an atomic swap with rollback
+  instead of `self-replace`.
+- Restarting after an update now exits the old process deterministically.
+- Updated all direct dependencies to their latest stable releases.
+
+### Fixed
+
+- Updates no longer appear missing when a release is published before its
+  assets finish uploading.
+- Corrupted or truncated update downloads are rejected instead of replacing
+  the working executable.
+- Read-only installation folders now produce an actionable error.
+- Stale update files are cleaned up on startup.
+
 ## 8.1.2
 
 ### Changed

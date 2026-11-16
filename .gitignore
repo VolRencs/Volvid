@@ -8,6 +8,13 @@
 # Self-update artifacts
 *.new
 *.new.exe
+*.update-*
+*.old-*
+*.failed-*
+.volvid-download-*
+
+# Python tooling
+__pycache__/
 
 # Local runtime data
 .volvid*

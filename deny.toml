@@ -9,14 +9,14 @@ allow = [
     "Unicode-3.0",
     "Zlib",
     "MPL-2.0",
-    "OFL-1.1",
     "GPL-3.0-or-later",
     "BSL-1.0",
-    "Ubuntu-font-1.0",
     "bzip2-1.0.6",
     "CC0-1.0",
     "MIT-0",
     "CDLA-Permissive-2.0",
+    # libfuzzer-sys, pulled in by rav1e through GPUI's image dependency.
+    "NCSA",
 ]
 confidence-threshold = 0.8
 
@@ -26,12 +26,9 @@ wildcards = "deny"
 allow-wildcard-paths = true
 
 [advisories]
-version = 2
+# GPUI 0.2.2 (the newest release) pulls in several unmaintained transitive
+# crates through cosmic-text, usvg, zed-async-tar and its image dependency.
+# Only direct workspace dependencies should fail this check; transitive
+# advisories are tracked upstream until a newer GPUI is available.
+unmaintained = "workspace"
 yanked = "deny"
-ignore = [
-    # Pulled in transitively by zbus/zvariant through GPUI's desktop portal
-    # integration; no safe upgrade is available in the pinned GPUI release.
-    "RUSTSEC-2026-0370", # zvariant
-    "RUSTSEC-2026-0371", # zbus_names
-    "RUSTSEC-2026-0372", # zvariant_derive
-]

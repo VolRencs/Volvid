@@ -13,7 +13,7 @@ use volvid_core::{
 use volvid_engine::{AppPaths, Config, PreviewImage};
 use volvid_i18n::{
     audio_output_profiles, default_quality, engine_error_text, quality_profile, strings,
-    thumbnail_profile, video_output_profiles,
+    thumbnail_profile, update_error_text, video_output_profiles,
 };
 
 pub const MAX_HISTORY_ITEMS: usize = 100;
@@ -358,7 +358,8 @@ pub enum ThumbnailStage {
 pub enum AppEvent {
     Deps(CheckDepsResult),
     DepsEnriched(CheckDepsResult),
-    UpdateChecked(Option<UpdateInfo>),
+    UpdateChecking,
+    UpdateChecked(Result<Option<UpdateInfo>, String>),
     Playlist {
         op: u64,
         result: Result<PlaylistInfo, String>,
@@ -432,8 +433,10 @@ pub struct AppState {
 
     pub update: Option<UpdateInfo>,
     pub update_checking: bool,
+    pub update_error: Option<String>,
     pub update_modal: bool,
     pub update_progress: Option<FileProgress>,
+    pub update_install_error: Option<String>,
     pub updating: bool,
     pub restart_pending: bool,
     pub restart_at: Option<Instant>,
@@ -524,14 +527,30 @@ impl AppState {
                 self.deps_checking = false;
                 self.deps = deps;
             }
-            AppEvent::UpdateChecked(info) => {
+            AppEvent::UpdateChecking => {
+                self.update_checking = true;
+            }
+            AppEvent::UpdateChecked(result) => {
                 self.update_checking = false;
-                // A background refresh can report "no update" after an update
-                // has just been installed; keep the restart prompt alive.
-                if info.is_none() && self.restart_pending {
-                    return;
+                match result {
+                    Ok(info) => {
+                        self.update_error = None;
+                        // A background refresh can report "no update" after an
+                        // update has just been installed; keep the restart
+                        // prompt alive.
+                        if info.is_none() && self.restart_pending {
+                            return;
+                        }
+                        self.update = info;
+                    }
+                    Err(err) => {
+                        self.update_error = Some(format!(
+                            "{}: {}",
+                            self.s().update_check_failed,
+                            update_error_text(&err, self.locale)
+                        ));
+                    }
                 }
-                self.update = info;
             }
             AppEvent::Playlist { op, result } => {
                 if op != self.op_id {
@@ -696,7 +715,11 @@ impl AppState {
                 }
             }
             AppEvent::UpdateProgress(progress) => {
-                self.updating = !progress.done;
+                // The download reports `done` before verification and install
+                // finish, so keep the modal in the updating state until the
+                // backend emits `UpdateFinished`.
+                self.updating = true;
+                self.update_install_error = None;
                 self.update_progress = Some(progress);
             }
             AppEvent::UpdateFinished(result) => {
@@ -704,19 +727,28 @@ impl AppState {
                 self.update_progress = None;
                 match result {
                     Ok(()) => {
+                        self.update_error = None;
+                        self.update_install_error = None;
                         self.restart_pending = true;
                         self.restart_at = None;
                         self.restarting = false;
                         self.update_modal = true;
                     }
-                    Err(err) => self.toast(
-                        format!(
+                    Err(err) => {
+                        if err.to_ascii_lowercase().contains("operation cancelled") {
+                            // A user-initiated cancellation is not an update
+                            // failure; leave the install button available.
+                            self.update_install_error = None;
+                            return;
+                        }
+                        let message = format!(
                             "{}: {}",
                             self.s().update_failed,
-                            engine_error_text(&err, self.locale)
-                        ),
-                        ToastKind::Error,
-                    ),
+                            update_error_text(&err, self.locale)
+                        );
+                        self.update_install_error = Some(message.clone());
+                        self.toast(message, ToastKind::Error);
+                    }
                 }
             }
             AppEvent::FolderPicked(result) => match result {

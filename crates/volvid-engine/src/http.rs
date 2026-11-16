@@ -109,6 +109,10 @@ pub async fn download_file(
             last_emit = Instant::now();
         }
     }
+    if total > 0 && done != total {
+        drop(file);
+        bail!("incomplete download for {url}: received {done} of {total} bytes");
+    }
     file.flush().await?;
     file.sync_all().await?;
     drop(file);
@@ -151,4 +155,15 @@ pub async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String> {
 
 pub async fn fetch_json(client: &reqwest::Client, url: &str) -> Result<serde_json::Value> {
     Ok(get_ok(client, url).await?.json().await?)
+}
+
+/// Fetches JSON without allowing an unbounded response body.
+pub async fn fetch_json_limited(
+    client: &reqwest::Client,
+    url: &str,
+    max_bytes: usize,
+) -> Result<serde_json::Value> {
+    let response = get_ok(client, url).await?;
+    let bytes = read_body(response, max_bytes, None, "response is too large").await?;
+    serde_json::from_slice(&bytes).context("parse JSON response")
 }

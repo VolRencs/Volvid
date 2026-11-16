@@ -23,6 +23,7 @@ pub fn settings(
     let logs = app.controller.state.logs_dir.clone();
     let config = app.controller.paths().config_dir.clone();
     let update = app.controller.state.update.clone();
+    let update_error = app.controller.state.update_error.clone();
     let checking = app.controller.state.update_checking;
 
     let mut page = div()
@@ -237,35 +238,47 @@ pub fn settings(
         );
     if checking {
         about = about.child(theme::muted(s.checking, &p));
-    } else if let Some(update) = update {
-        about = about.child(
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .child(theme::badge(
-                    format!("{} {}", s.latest_version, update.latest),
-                    p.warning,
-                    p.card_hover,
-                ))
-                .child(
-                    theme::secondary_button("settings-update", s.install_update, &p).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.controller.state.update_modal = true;
-                            cx.notify();
-                        }),
-                    ),
-                ),
-        );
     } else {
-        about = about.child(
-            theme::secondary_button("settings-check", s.check_now, &p).on_click(cx.listener(
-                |this, _, _, cx| {
-                    this.controller.check_updates();
-                    cx.notify();
-                },
-            )),
-        );
+        let has_update = update.is_some();
+        if let Some(update) = update {
+            let action = if app.controller.state.restart_pending {
+                s.restart_now
+            } else {
+                s.install_update
+            };
+            about = about.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(theme::badge(
+                        format!("{} {}", s.latest_version, update.latest),
+                        p.warning,
+                        p.card_hover,
+                    ))
+                    .child(
+                        theme::secondary_button("settings-update", action, &p).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                this.controller.state.update_modal = true;
+                                cx.notify();
+                            }),
+                        ),
+                    ),
+            );
+        }
+        if let Some(error) = update_error {
+            about = about.child(theme::notice("icons/alert.svg", error, p.danger));
+        }
+        if !has_update {
+            about = about.child(
+                theme::secondary_button("settings-check", s.check_now, &p).on_click(cx.listener(
+                    |this, _, _, cx| {
+                        this.controller.check_updates();
+                        cx.notify();
+                    },
+                )),
+            );
+        }
     }
     page.child(about)
 }

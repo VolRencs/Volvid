@@ -10,7 +10,7 @@ pub fn timestamp(seconds: i64, locale: volvid_core::Locale) -> String {
         .ok()
         .map(|timestamp| {
             timestamp
-                .to_zoned(TimeZone::system())
+                .to_zoned_datetime(TimeZone::system())
                 .strftime(pattern)
                 .to_string()
         })

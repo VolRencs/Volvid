@@ -12,12 +12,14 @@ permissions:
 jobs:
   check:
     runs-on: ${{ matrix.os }}
+    env:
+      RUST_BACKTRACE: "1"
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.99.1"
@@ -35,6 +37,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test
+        timeout-minutes: 45
         run: cargo test --workspace --locked
       - name: Build
         run: cargo build --release --locked -p volvid-gui
@@ -42,5 +45,5 @@ jobs:
   deny:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2

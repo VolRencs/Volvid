@@ -87,7 +87,85 @@ impl AssetSource for Assets {
     }
 }
 
+fn update_check(json: bool) {
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(err) => {
+            eprintln!("could not start the update checker: {err}");
+            std::process::exit(1);
+        }
+    };
+    let engine = match volvid_engine::Engine::new() {
+        Ok(engine) => engine,
+        Err(err) => {
+            eprintln!("could not initialize Volvid: {err}");
+            std::process::exit(1);
+        }
+    };
+    match runtime.block_on(engine.check_update()) {
+        Ok(Some(info)) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "current": env!("CARGO_PKG_VERSION"),
+                        "update": {
+                            "version": info.latest,
+                            "url": info.download_url,
+                            "sha256": info.sha256,
+                            "size": info.size,
+                        }
+                    })
+                );
+            } else {
+                println!("current: {}", env!("CARGO_PKG_VERSION"));
+                println!("latest: {}", info.latest);
+                println!("url: {}", info.download_url);
+                if let Some(sha256) = &info.sha256 {
+                    println!("sha256: {sha256}");
+                }
+                if let Some(size) = info.size {
+                    println!("size: {size}");
+                }
+            }
+            std::process::exit(0);
+        }
+        Ok(None) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "current": env!("CARGO_PKG_VERSION"),
+                        "update": null,
+                    })
+                );
+            } else {
+                println!("current: {}", env!("CARGO_PKG_VERSION"));
+                println!("latest: none");
+            }
+            std::process::exit(0);
+        }
+        Err(err) => {
+            eprintln!("update check failed: {err:#}");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--version" || arg == "-V") {
+        println!("Volvid {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+    if args.iter().any(|arg| arg == "--update-check") {
+        update_check(args.iter().any(|arg| arg == "--json"));
+        return;
+    }
+
     let paths = AppPaths::detect();
     let _ = std::fs::create_dir_all(paths.logs_dir());
     let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
@@ -112,7 +190,6 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(url) = args.iter().find(|arg| !arg.starts_with('-')) {
         controller.state.url = url.clone();
         controller.analyze_url();

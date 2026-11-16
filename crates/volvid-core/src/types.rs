@@ -26,6 +26,11 @@ pub struct SearchResult {
 pub struct UpdateInfo {
     pub latest: String,
     pub download_url: String,
+    /// Expected SHA-256 of the downloaded executable, when the release
+    /// manifest or the GitHub API provides one.
+    pub sha256: Option<String>,
+    /// Expected size of the downloaded executable in bytes.
+    pub size: Option<u64>,
 }
 
 /// One dubbed/translated audio language from a probe.

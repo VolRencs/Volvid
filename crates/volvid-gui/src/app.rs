@@ -187,7 +187,7 @@ impl VolvidApp {
         self.job_images.get(&id).map(|(_, image)| image)
     }
 
-    fn maybe_restart(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn maybe_restart(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let state = &mut self.controller.state;
         if !state.restart_pending || state.restarting || state.pending_jobs() > 0 {
             return;
@@ -208,16 +208,29 @@ impl VolvidApp {
         self.controller.save_before_restart();
         match volvid_engine::update::spawn_restart() {
             Ok(()) => {
-                window.remove_window();
+                // The replacement has already been installed. Quit through
+                // GPUI so state is dropped normally, with a watchdog as a
+                // guarantee that the old process cannot keep files locked.
+                std::thread::spawn(|| {
+                    std::thread::sleep(Duration::from_secs(3));
+                    std::process::exit(0);
+                });
+                cx.quit();
             }
             Err(err) => {
+                let rollback = volvid_engine::update::rollback_update();
+                tracing::error!(err = ?err, rollback = ?rollback, "could not restart Volvid");
                 let message = self.s().restart_failed.to_owned();
                 self.controller.state.restarting = false;
                 self.controller.state.restart_pending = false;
                 self.controller.state.restart_at = None;
+                let suffix = rollback
+                    .err()
+                    .map(|rollback| format!(" ({rollback})"))
+                    .unwrap_or_default();
                 self.controller
                     .state
-                    .toast(format!("{message}: {err}"), ToastKind::Error);
+                    .toast(format!("{message}: {err}{suffix}"), ToastKind::Error);
                 cx.notify();
             }
         }

@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use semver::Version;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use volvid_core::{FileProgress, Locale};
 
 use crate::deps::{YTRUST_MAX_MAJOR, YTRUST_MIN_VERSION, probe_version, ytrust_version_supported};
+use crate::hash::verify_sha256;
 use crate::http::{download_file, fetch_json, fetch_text};
 use crate::paths::{AppPaths, binary_name, replace_file};
 
@@ -221,28 +221,6 @@ fn make_executable(path: &Path) -> Result<()> {
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
-    }
-    Ok(())
-}
-
-fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
-    let expected = expected.trim().to_ascii_lowercase();
-    if expected.len() != 64 || !expected.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        bail!("invalid SHA-256 checksum");
-    }
-    let mut file = File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0u8; 1 << 20];
-    loop {
-        let read = file.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    let actual = hex::encode(hasher.finalize());
-    if actual != expected {
-        bail!("sha256 mismatch for {}", path.display());
     }
     Ok(())
 }

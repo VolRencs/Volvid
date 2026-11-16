@@ -22,6 +22,11 @@ impl EventSink {
     }
 }
 
+enum UpdateCommand {
+    Check { manual: bool },
+    Stop,
+}
+
 pub struct Backend {
     pub engine: Arc<Engine>,
     runtime: tokio::runtime::Runtime,
@@ -31,6 +36,9 @@ pub struct Backend {
     metadata_cancels: Arc<Mutex<HashMap<u64, CancellationToken>>>,
     search_cancel: Arc<Mutex<Option<CancellationToken>>>,
     install_cancel: Arc<Mutex<Option<CancellationToken>>>,
+    update_tx: mpsc::UnboundedSender<UpdateCommand>,
+    update_cancel: CancellationToken,
+    update_download_cancel: Arc<Mutex<Option<CancellationToken>>>,
     config_save_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
@@ -43,7 +51,9 @@ impl Backend {
             .build()
             .context("create tokio runtime")?;
         let (tx, rx) = mpsc::unbounded_channel();
-        Ok(Self {
+        let (update_tx, update_rx) = mpsc::unbounded_channel();
+        let update_cancel = CancellationToken::new();
+        let backend = Self {
             engine,
             runtime,
             sink: EventSink { tx },
@@ -52,8 +62,13 @@ impl Backend {
             metadata_cancels: Arc::new(Mutex::new(HashMap::new())),
             search_cancel: Arc::new(Mutex::new(None)),
             install_cancel: Arc::new(Mutex::new(None)),
+            update_tx,
+            update_cancel: update_cancel.clone(),
+            update_download_cancel: Arc::new(Mutex::new(None)),
             config_save_lock: Arc::new(tokio::sync::Mutex::new(())),
-        })
+        };
+        backend.spawn_update_worker(update_rx, update_cancel);
+        Ok(backend)
     }
 
     pub fn paths(&self) -> &AppPaths {
@@ -80,7 +95,7 @@ impl Backend {
 
     pub fn startup(&self) {
         self.refresh_deps();
-        self.check_update();
+        self.request_update_check(false);
     }
 
     pub fn refresh_deps(&self) {
@@ -95,20 +110,84 @@ impl Backend {
         });
     }
 
-    pub fn check_update(&self) {
+    fn request_update_check(&self, manual: bool) {
+        let _ = self.update_tx.send(UpdateCommand::Check { manual });
+    }
+
+    fn spawn_update_worker(
+        &self,
+        mut rx: mpsc::UnboundedReceiver<UpdateCommand>,
+        cancel: CancellationToken,
+    ) {
         let engine = self.engine.clone();
         let sink = self.sink.clone();
         self.runtime.spawn(async move {
-            match engine.check_update().await {
-                Ok(info) => {
-                    sink.send(AppEvent::UpdateChecked(info));
+            const PERIOD: Duration = Duration::from_secs(6 * 60 * 60);
+            const BACKOFF: [Duration; 6] = [
+                Duration::from_secs(60),
+                Duration::from_secs(2 * 60),
+                Duration::from_secs(5 * 60),
+                Duration::from_secs(10 * 60),
+                Duration::from_secs(30 * 60),
+                Duration::from_secs(60 * 60),
+            ];
+
+            let mut delay: Option<Duration> = None;
+            let mut failures = 0usize;
+            let mut manual = false;
+            loop {
+                let wait = async {
+                    match delay {
+                        Some(duration) => tokio::time::sleep(duration).await,
+                        None => std::future::pending::<()>().await,
+                    }
+                };
+                let command = tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    _ = wait => None,
+                    command = rx.recv() => Some(command),
+                };
+                match command {
+                    None => {}
+                    Some(Some(UpdateCommand::Check { manual: requested })) => {
+                        manual |= requested;
+                    }
+                    Some(Some(UpdateCommand::Stop)) | Some(None) => break,
                 }
-                Err(err) => {
-                    tracing::warn!(%err, "update check failed");
-                    sink.send(AppEvent::UpdateChecked(None));
+                if manual {
+                    sink.send(AppEvent::UpdateChecking);
                 }
+                let result = tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    result = engine.check_update() => result,
+                };
+                match result {
+                    Ok(info) => {
+                        failures = 0;
+                        if let Some(info) = &info {
+                            tracing::info!(version = %info.latest, "update available");
+                        }
+                        sink.send(AppEvent::UpdateChecked(Ok(info)));
+                    }
+                    Err(err) => {
+                        failures = failures.saturating_add(1);
+                        tracing::warn!(err = ?err, failures, "update check failed");
+                        sink.send(AppEvent::UpdateChecked(Err(format!("{err:#}"))));
+                    }
+                }
+                manual = false;
+                delay = Some(if failures == 0 {
+                    PERIOD
+                } else {
+                    BACKOFF[(failures - 1).min(BACKOFF.len() - 1)]
+                });
             }
+            tracing::debug!("update worker stopped");
         });
+    }
+
+    pub fn check_update(&self) {
+        self.request_update_check(true);
     }
 
     pub fn load_media(&self, probe_url: String, quality_urls: Vec<String>, op: u64) {
@@ -388,26 +467,53 @@ impl Backend {
     }
 
     pub fn apply_update(&self, info: volvid_core::UpdateInfo, locale: Locale) {
+        let cancel = CancellationToken::new();
+        {
+            let Ok(mut current) = self.update_download_cancel.lock() else {
+                return;
+            };
+            if current.is_some() {
+                return;
+            }
+            *current = Some(cancel.clone());
+        }
         let engine = self.engine.clone();
         let sink = self.sink.clone();
+        let download_cancel = self.update_download_cancel.clone();
+        let task_cancel = cancel.clone();
         self.runtime.spawn(async move {
             let (progress_tx, mut progress_rx) = mpsc::unbounded_channel();
             let task = {
                 let engine = engine.clone();
-                tokio::spawn(
-                    async move { engine.apply_update(&info, locale, None, progress_tx).await },
-                )
+                tokio::spawn(async move {
+                    engine
+                        .apply_update(&info, locale, Some(task_cancel), progress_tx)
+                        .await
+                })
             };
             while let Some(progress) = progress_rx.recv().await {
                 sink.send(AppEvent::UpdateProgress(progress));
             }
             let result = match task.await {
                 Ok(Ok(())) => Ok(()),
-                Ok(Err(err)) => Err(err.to_string()),
+                Ok(Err(err)) => Err(format!("{err:#}")),
                 Err(err) => Err(format!("update task failed: {err}")),
             };
+            if let Ok(mut current) = download_cancel.lock()
+                && current.as_ref().is_some_and(|token| token == &cancel)
+            {
+                *current = None;
+            }
             sink.send(AppEvent::UpdateFinished(result));
         });
+    }
+
+    pub fn cancel_update(&self) {
+        if let Ok(mut current) = self.update_download_cancel.lock()
+            && let Some(token) = current.take()
+        {
+            token.cancel();
+        }
     }
 
     pub fn pick_folder(&self, current: Option<PathBuf>, title: String) {
@@ -469,6 +575,9 @@ impl Backend {
     pub fn shutdown(&self) {
         self.cancel_metadata();
         self.cancel_install();
+        self.cancel_update();
+        self.update_cancel.cancel();
+        let _ = self.update_tx.send(UpdateCommand::Stop);
         if let Ok(cancels) = self.cancels.lock() {
             for cancel in cancels.values() {
                 cancel.cancel();

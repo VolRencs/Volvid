@@ -38,7 +38,7 @@ been removed; the new app is a native GPU-rendered desktop application.
 - **Fragments** — `1:00-2:30`, `1:00-`, `1:00+`, and timestamps from the URL.
 - **Dependency manager** — detects and installs managed ytrust, ffmpeg and node.
 - **Browser cookies** — auto-detects Firefox, Chrome, Chromium, Brave, Vivaldi and Opera profiles.
-- **Self-update** — GitHub release check and in-place binary replacement.
+- **Self-update** — manifest-based release check with SHA-256 verification, atomic replacement and rollback.
 - **Download queue** — queued/active/paused jobs, progress, speed, ETA, pause/resume and session history.
 - **English / Russian** — switch language instantly from the UI.
 - **Wayland-native Linux** — no X11 build; XWayland is not used.
@@ -83,6 +83,21 @@ cargo build --release -p volvid-gui
 .\target\release\Volvid.exe
 ```
 
+### Update diagnostics
+
+Volvid checks for updates at startup and every few hours while it is open.
+Release downloads are verified against `latest.json` (size and SHA-256), run
+once with `--version`, and only then replace the executable atomically.
+
+```bash
+./Volvid --version
+./Volvid --update-check
+./Volvid --update-check --json
+```
+
+`VOLVID_UPDATE_MANIFEST` overrides the manifest URL for testing. See
+[`docs/RELEASING.md`](docs/RELEASING.md) for the release process.
+
 ## Screenshot
 
 ![Volvid home](docs/screenshots/gui.png)
@@ -115,6 +130,7 @@ the UI-independent state machine.
 | `VOLVID_DEPS_DIR` | managed binaries | `DataDir/deps` |
 | `VOLVID_DOWNLOADS_DIR` | fixed download directory | system Downloads |
 | `VOLVID_FFMPEG_SHA256` | pin ffmpeg archive checksum | unset |
+| `VOLVID_UPDATE_MANIFEST` | override the update manifest URL | GitHub latest release |
 
 Configuration is stored in `config.toml`; download history is stored in
 `history.json`. The old `.volvid_locale` and `.volvid_downloads_dir` files are

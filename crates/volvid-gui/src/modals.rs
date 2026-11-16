@@ -225,6 +225,7 @@ fn update(
     let updating = app.controller.state.updating;
     let pending_jobs = app.controller.state.pending_jobs();
     let progress = app.controller.state.update_progress.clone();
+    let install_error = app.controller.state.update_install_error.clone();
 
     let mut body = modal_shell(p, 520.).child(
         div()
@@ -316,13 +317,29 @@ fn update(
                     p,
                 ));
         }
+        body = body.child(
+            theme::secondary_button("update-cancel", s.cancel, p).on_click(cx.listener(
+                |this, _, _, cx| {
+                    this.controller.cancel_update();
+                    cx.notify();
+                },
+            )),
+        );
     } else {
+        if let Some(error) = install_error {
+            body = body.child(theme::notice("icons/alert.svg", error, p.danger));
+        }
+        let install_label = if app.controller.state.update_install_error.is_some() {
+            s.retry
+        } else {
+            s.install_update
+        };
         body = body.child(
             div()
                 .flex()
                 .gap_2()
                 .child(
-                    theme::primary_button("update-install", s.install_update, p).on_click(
+                    theme::primary_button("update-install", install_label, p).on_click(
                         cx.listener(|this, _, _, cx| {
                             this.controller.apply_update();
                             cx.notify();

@@ -13,9 +13,13 @@ struct Candidate {
 /// Detects the newest usable browser cookie database. This intentionally
 /// mirrors the old Go heuristic: use the most recently touched profile.
 pub fn detect_browser_cookies(home: &Path) -> BrowserCookiesInfo {
+    detect_from_roots(browser_roots(home))
+}
+
+fn detect_from_roots(roots: Vec<(&'static str, Vec<PathBuf>)>) -> BrowserCookiesInfo {
     let mut candidates = Vec::new();
     let mut found_root = false;
-    for (browser, roots) in browser_roots(home) {
+    for (browser, roots) in roots {
         for root in roots {
             if root.is_dir() {
                 found_root = true;
@@ -222,6 +226,15 @@ fn cookie_modified(profile: &Path) -> Option<SystemTime> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn missing_roots_report_not_found() {
+        assert_eq!(
+            detect_from_roots(Vec::new()).status,
+            STATUS_NOT_FOUND.to_owned()
+        );
+    }
+
+    #[cfg(unix)]
     #[test]
     fn missing_home_reports_not_found() {
         let info = detect_browser_cookies(Path::new("/definitely/not/a/home"));

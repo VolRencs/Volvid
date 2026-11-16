@@ -194,6 +194,14 @@ define_strings! {
     open_folder_failed: "Failed to open folder", "Не удалось открыть папку";
     install_failed: "Dependency installation failed", "Не удалось установить зависимость";
     update_failed: "Update failed", "Не удалось обновить приложение";
+    update_check_failed: "Could not check for updates", "Не удалось проверить обновления";
+    update_assets_missing: "The release is out, but its files are still uploading. Volvid will retry automatically.", "Релиз вышел, но файлы ещё загружаются. Volvid повторит проверку автоматически.";
+    update_unsupported: "There is no Volvid build for this platform.", "Для этой платформы нет сборки Volvid.";
+    update_readonly: "Volvid cannot update itself in a read-only folder. Download the new version from GitHub.", "Volvid не может обновиться в каталоге только для чтения. Скачайте новую версию с GitHub.";
+    update_corrupt: "The downloaded update failed verification. Nothing was changed.", "Загруженное обновление не прошло проверку. Ничего не изменено.";
+    update_broken: "The new version did not start. The previous version was restored.", "Новая версия не запустилась. Предыдущая версия восстановлена.";
+    update_net_error: "Network error while checking for updates.", "Сетевая ошибка при проверке обновлений.";
+    update_timeout: "The update server did not respond in time.", "Сервер обновлений не ответил вовремя.";
     operation_cancelled: "Operation cancelled", "Операция отменена";
     config_save_failed: "Could not save settings", "Не удалось сохранить настройки";
 
@@ -276,6 +284,42 @@ pub fn engine_error_text(message: &str, locale: Locale) -> String {
         || lower.contains("dns")
     {
         s.err_network.to_owned()
+    } else {
+        message.to_owned()
+    }
+}
+
+/// Translates update-check and update-install errors. Update failures should
+/// not inherit YouTube-specific wording from [`engine_error_text`].
+pub fn update_error_text(message: &str, locale: Locale) -> String {
+    let s = strings(locale);
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("read-only directory") {
+        s.update_readonly.to_owned()
+    } else if lower.contains("no build for") {
+        s.update_unsupported.to_owned()
+    } else if lower.contains("does not include") || lower.contains("still uploading") {
+        s.update_assets_missing.to_owned()
+    } else if lower.contains("sha256 mismatch")
+        || lower.contains("wrong size")
+        || lower.contains("not a windows executable")
+        || lower.contains("not a linux executable")
+        || lower.contains("invalid sha-256")
+        || lower.contains("failed verification")
+    {
+        s.update_corrupt.to_owned()
+    } else if lower.contains("downloaded update") {
+        s.update_broken.to_owned()
+    } else if lower.contains("operation cancelled") {
+        s.operation_cancelled.to_owned()
+    } else if lower.contains("timed out") || lower.contains("timeout") {
+        s.update_timeout.to_owned()
+    } else if lower.contains("error sending request")
+        || lower.contains("network")
+        || lower.contains("connection")
+        || lower.contains("dns")
+    {
+        s.update_net_error.to_owned()
     } else {
         message.to_owned()
     }
@@ -571,6 +615,33 @@ mod tests {
         assert_eq!(
             engine_error_text("custom error", Locale::En),
             "custom error"
+        );
+    }
+
+    #[test]
+    fn localizes_update_errors() {
+        assert_eq!(
+            update_error_text(
+                "Volvid is installed in a read-only directory (/opt/volvid)",
+                Locale::Ru
+            ),
+            strings(Locale::Ru).update_readonly
+        );
+        assert_eq!(
+            update_error_text("downloaded update has the wrong size", Locale::En),
+            strings(Locale::En).update_corrupt
+        );
+        assert_eq!(
+            update_error_text("release 8.1.3 has no build for windows-x86_64", Locale::En),
+            strings(Locale::En).update_unsupported
+        );
+        assert_eq!(
+            update_error_text("error sending request for url", Locale::En),
+            strings(Locale::En).update_net_error
+        );
+        assert_eq!(
+            update_error_text("custom update error", Locale::En),
+            "custom update error"
         );
     }
 }
