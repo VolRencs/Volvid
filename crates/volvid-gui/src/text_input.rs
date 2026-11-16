@@ -723,11 +723,10 @@ pub fn bind_keys(cx: &mut App) {
     ]);
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "windows")))]
 mod tests {
     use super::*;
 
-    #[cfg(not(target_os = "windows"))]
     fn style() -> TextInputStyle {
         TextInputStyle {
             text: gpui::black(),
@@ -742,7 +741,6 @@ mod tests {
     }
 
     // GPUI's window-based test harness hangs on headless Windows runners.
-    #[cfg(not(target_os = "windows"))]
     #[gpui::test]
     fn select_all_and_delete(cx: &mut gpui::TestAppContext) {
         let window = cx.update(|cx| {
