@@ -176,7 +176,7 @@ define_strings! {
     invalid_url: "Does not look like a YouTube URL", "Не похоже на YouTube-ссылку";
     empty_url: "URL cannot be empty", "Ссылка не может быть пустой";
     unsupported_url: "Unsupported YouTube URL", "Неподдерживаемая YouTube-ссылка";
-    missing_ytrust: "ytrust 1.1.2 or newer is required.", "Требуется ytrust 1.1.2 или новее.";
+    missing_ytrust: "ytrust 1.3.0 or newer is required.", "Требуется ytrust 1.3.0 или новее.";
     missing_ffmpeg: "ffmpeg is required for this mode.", "Для этого режима требуется ffmpeg.";
     err_botcheck: "YouTube asks to sign in to confirm you're not a bot. Try browser cookies.", "YouTube просит войти, чтобы подтвердить, что вы не бот. Попробуйте cookies браузера.";
     err_age_restricted: "This video is age-restricted. Browser cookies may help.", "Видео ограничено по возрасту. Могут помочь cookies браузера.";

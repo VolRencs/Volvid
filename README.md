@@ -39,7 +39,9 @@ been removed; the new app is a native GPU-rendered desktop application.
 - **Dependency manager** — detects and installs managed ytrust, ffmpeg and node.
 - **Browser cookies** — auto-detects Firefox, Chrome, Chromium, Brave, Vivaldi and Opera profiles.
 - **Self-update** — manifest-based release check with SHA-256 verification, atomic replacement and rollback.
+- **Parallel downloads** — four range connections per file through ytrust 1.3.
 - **Download queue** — queued/active/paused jobs, progress, speed, ETA, pause/resume and session history.
+- **Clean cancellation** — stopping a download removes its `.part` and temporary files.
 - **English / Russian** — switch language instantly from the UI.
 - **Wayland-native Linux** — no X11 build; XWayland is not used.
 
@@ -48,7 +50,7 @@ been removed; the new app is a native GPU-rendered desktop application.
 ### Requirements
 
 - **Rust 1.99.1+** for building from source.
-- `ytrust` 1.1.2+ (1.x series) and `ffmpeg` are required at runtime. Volvid can
+- `ytrust` 1.3.0+ (1.x series) and `ffmpeg` are required at runtime. Volvid can
   install managed copies from the dependency screen if they are missing. `node`
   20+ is optional and is used to solve YouTube JavaScript challenges for
   ciphered formats.

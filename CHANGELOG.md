@@ -1,5 +1,25 @@
 # Changelog
 
+## 8.1.4
+
+### Added
+
+- Downloads use four parallel range connections per file through
+  `ytrust --concurrent-fragments 4`, speeding up direct HTTP video and audio
+  downloads.
+
+### Changed
+
+- Requires **ytrust 1.3.0** or newer in the 1.x series. ytrust 1.2 adds the
+  `tv_samsung` client and 1.3 adds parallel range downloads.
+- Automatic ytrust installation falls back to the required `v1.3.0` release
+  tag if GitHub's "latest" pointer has not caught up yet.
+
+### Fixed
+
+- Cancelling a download now removes its leftover `.part` files and ytrust
+  temporary files from the output folder.
+
 ## 8.1.3
 
 ### Added

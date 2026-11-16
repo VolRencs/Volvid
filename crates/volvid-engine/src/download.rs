@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::Value;
@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use volvid_core::{
     CheckDepsResult, DlEventType, DlUpdate, DownloadMode, DownloadRequest, Locale, PlaylistEntry,
+    parse_target,
 };
 
 use crate::args::{
@@ -226,6 +227,142 @@ async fn run_playlist_entry(
     result
 }
 
+/// Removes partial files left by ytrust when a download is cancelled. ytrust
+/// cleans these itself on ordinary errors, but a killed process cannot.
+struct PartialCleanup {
+    dir: PathBuf,
+    video_id: Option<String>,
+    started: SystemTime,
+    cancel: CancellationToken,
+}
+
+impl PartialCleanup {
+    fn new(dir: &Path, url: &str, cancel: &CancellationToken) -> Self {
+        let video_id = parse_target(url)
+            .ok()
+            .map(|target| target.video_id)
+            .filter(|id| !id.is_empty());
+        Self {
+            dir: dir.to_path_buf(),
+            video_id,
+            started: SystemTime::now(),
+            cancel: cancel.clone(),
+        }
+    }
+}
+
+impl Drop for PartialCleanup {
+    fn drop(&mut self) {
+        if !self.cancel.is_cancelled() {
+            return;
+        }
+        let Some(video_id) = self.video_id.as_deref() else {
+            return;
+        };
+        cleanup_partial_artifacts(&self.dir, video_id, self.started);
+    }
+}
+
+fn cleanup_partial_artifacts(dir: &Path, video_id: &str, started: SystemTime) {
+    let marker = format!("[{video_id}]");
+    let cutoff = started
+        .checked_sub(Duration::from_secs(2))
+        .unwrap_or(started);
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut removed = 0usize;
+    for entry in entries.flatten() {
+        if !entry
+            .file_type()
+            .map(|kind| kind.is_file())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if !name.contains(&marker) || !is_partial_artifact(name, &marker) {
+            continue;
+        }
+        let path = entry.path();
+        let fresh = std::fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .is_ok_and(|modified| modified >= cutoff);
+        if !fresh {
+            continue;
+        }
+        if remove_with_retries(&path) {
+            removed += 1;
+        }
+    }
+    if removed > 0 {
+        tracing::info!(
+            removed,
+            video_id,
+            dir = %dir.display(),
+            "removed cancelled download artifacts"
+        );
+    }
+}
+
+fn is_partial_artifact(name: &str, marker: &str) -> bool {
+    if name.to_ascii_lowercase().ends_with(".part") {
+        return true;
+    }
+    if !name.starts_with('.') {
+        return false;
+    }
+    let Some((_, after)) = name.rsplit_once(marker) else {
+        return false;
+    };
+    let tail = after.trim_start_matches('.');
+    let mut parts = tail.rsplitn(3, '.');
+    let Some(extension) = parts.next() else {
+        return false;
+    };
+    let Some(pid) = parts.next() else {
+        return false;
+    };
+    let Some(kind) = parts.next() else {
+        return false;
+    };
+    !extension.is_empty()
+        && pid.parse::<u32>().is_ok()
+        && matches!(
+            kind.to_ascii_lowercase().as_str(),
+            "download" | "merge" | "audio" | "embed" | "remux" | "backup"
+        )
+}
+
+fn remove_with_retries(path: &Path) -> bool {
+    for attempt in 0..5 {
+        match std::fs::remove_file(path) {
+            Ok(()) => return true,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return true,
+            Err(err) if attempt < 4 => {
+                tracing::debug!(
+                    error = %err,
+                    path = %path.display(),
+                    "waiting for a cancelled download artifact to unlock"
+                );
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    path = %path.display(),
+                    "could not remove a cancelled download artifact"
+                );
+                return false;
+            }
+        }
+    }
+    false
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_one(
     paths: Arc<AppPaths>,
@@ -243,6 +380,7 @@ async fn run_one(
     if formats.is_empty() {
         formats.push(String::new());
     }
+    let _partial_cleanup = PartialCleanup::new(output_dir, url, cancel);
     let mut last_result: Result<(), String> = Err("download failed".to_owned());
     for (index, format) in formats.iter().enumerate() {
         if cancel.is_cancelled() {
@@ -488,7 +626,7 @@ fn handle_line(
             }
         }
         Some("fallback") => {
-            // ytrust 1.1.2 retries cold CDN 403s first, then falls back to a
+            // ytrust 1.3.x retries cold CDN 403s first, then falls back to a
             // muxed format so the UI can explain the quality change.
             send(
                 tx,
@@ -781,5 +919,91 @@ mod tests {
             &mut progress,
         );
         assert_eq!(progress.error_text, "HTTP: error sending request");
+    }
+
+    #[test]
+    fn identifies_ytrust_partial_artifacts() {
+        let marker = "[dQw4w9WgXcQ]";
+        assert!(is_partial_artifact(
+            "Video [dQw4w9WgXcQ].mp4.1234.part",
+            marker
+        ));
+        assert!(is_partial_artifact(
+            ".Video [dQw4w9WgXcQ].137.999.video.part",
+            marker
+        ));
+        assert!(is_partial_artifact(
+            ".Title.with.dots [dQw4w9WgXcQ].merge.1234.mp4",
+            marker
+        ));
+        assert!(is_partial_artifact(
+            ".Video [dQw4w9WgXcQ].audio.1234.mp3",
+            marker
+        ));
+        assert!(!is_partial_artifact("Video [dQw4w9WgXcQ].mp4", marker));
+        assert!(!is_partial_artifact(
+            ".Video [dQw4w9WgXcQ].unknown.1234.mp4",
+            marker
+        ));
+        assert!(!is_partial_artifact(
+            ".Video [dQw4w9WgXcQ].merge.notapid.mp4",
+            marker
+        ));
+    }
+
+    #[test]
+    fn cleans_only_cancelled_video_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let video_id = "dQw4w9WgXcQ";
+        let other_id = "aaaaaaaaaaa";
+        let removed = [
+            format!("Video [{video_id}].mp4.1234.part"),
+            format!(".Video [{video_id}].137.999.video.part"),
+            format!(".Video [{video_id}].merge.1234.mp4"),
+            format!(".Video [{video_id}].audio.1234.mp3"),
+            format!(".Video [{video_id}].download.1234.mp4"),
+        ];
+        let kept = [
+            format!("Other [{other_id}].mp4.1234.part"),
+            format!("Video [{video_id}].mp4"),
+            ".unrelated.merge.1234.mp4".to_owned(),
+        ];
+        for name in removed.iter().chain(kept.iter()) {
+            std::fs::write(dir.path().join(name), b"data").unwrap();
+        }
+
+        cleanup_partial_artifacts(
+            dir.path(),
+            video_id,
+            SystemTime::now() - Duration::from_secs(1),
+        );
+
+        for name in &removed {
+            assert!(!dir.path().join(name).exists(), "{name} should be removed");
+        }
+        for name in &kept {
+            assert!(dir.path().join(name).exists(), "{name} should be kept");
+        }
+    }
+
+    #[test]
+    fn cleanup_guard_removes_artifacts_only_after_cancellation() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancelled_part = dir.path().join("Video [dQw4w9WgXcQ].mp4.1234.part");
+        std::fs::write(&cancelled_part, b"data").unwrap();
+
+        let not_cancelled = CancellationToken::new();
+        {
+            let _guard =
+                PartialCleanup::new(dir.path(), "https://youtu.be/dQw4w9WgXcQ", &not_cancelled);
+        }
+        assert!(cancelled_part.exists());
+
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        {
+            let _guard = PartialCleanup::new(dir.path(), "https://youtu.be/dQw4w9WgXcQ", &cancel);
+        }
+        assert!(!cancelled_part.exists());
     }
 }

@@ -20,11 +20,11 @@ and only then publishes the release.
    ```
 
 4. Commit and push the version bump.
-5. Create and push the tag `8.1.3` (no `v` prefix):
+5. Create and push the tag `8.1.4` (no `v` prefix):
 
    ```bash
-   git tag 8.1.3
-   git push origin 8.1.3
+   git tag 8.1.4
+   git push origin 8.1.4
    ```
 
 6. Wait for the `Release` workflow. It publishes:
@@ -53,15 +53,15 @@ fallback for releases that predate the manifest. Format:
 
 ```json
 {
-  "version": "8.1.3",
+  "version": "8.1.4",
   "assets": {
     "linux-x86_64": {
-      "url": "https://github.com/VolRencs/Volvid/releases/download/8.1.3/Volvid",
+      "url": "https://github.com/VolRencs/Volvid/releases/download/8.1.4/Volvid",
       "size": 27390048,
       "sha256": "..."
     },
     "windows-x86_64": {
-      "url": "https://github.com/VolRencs/Volvid/releases/download/8.1.3/Volvid.exe",
+      "url": "https://github.com/VolRencs/Volvid/releases/download/8.1.4/Volvid.exe",
       "size": 18976768,
       "sha256": "..."
     }
@@ -77,7 +77,7 @@ later start.
 Generate the files locally with:
 
 ```bash
-python3 scripts/release-manifest.py dist 8.1.3 8.1.3
+python3 scripts/release-manifest.py dist 8.1.4 8.1.4
 ```
 
 ## Diagnostics

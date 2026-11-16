@@ -15,6 +15,7 @@ use crate::http::{download_file, fetch_json, fetch_text};
 use crate::paths::{AppPaths, binary_name, replace_file};
 
 const YTRUST_RELEASES: &str = "https://api.github.com/repos/VolRencs/ytrust/releases/latest";
+const YTRUST_RELEASE_TAG_BASE: &str = "https://api.github.com/repos/VolRencs/ytrust/releases/tags";
 const NODE_BASE: &str = "https://nodejs.org/download/release/latest/";
 const FFMPEG_WIN: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
 const FFMPEG_LINUX: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz";
@@ -48,16 +49,8 @@ async fn install_ytrust(
 ) -> Result<()> {
     let platform = platform_info()?;
     std::fs::create_dir_all(&paths.deps_dir)?;
-    let release = fetch_json(client, YTRUST_RELEASES)
-        .await
-        .context("fetch ytrust release metadata")?;
-    let tag = release
-        .get("tag_name")
-        .and_then(Value::as_str)
-        .ok_or_else(|| anyhow::anyhow!("ytrust release has no tag"))?;
-    let version_text = tag.trim_start_matches('v');
-    let version = Version::parse(version_text)
-        .with_context(|| format!("invalid ytrust release version {version_text}"))?;
+    let release = fetch_ytrust_release(client).await?;
+    let version = release_version(&release)?;
     if version.major > YTRUST_MAX_MAJOR {
         bail!(
             "ytrust {version} is newer than the supported {YTRUST_MAX_MAJOR}.x series; update Volvid"
@@ -97,6 +90,34 @@ async fn install_ytrust(
     }
     replace_file(&staged, &paths.ytrust_bin())?;
     Ok(())
+}
+
+fn release_version(release: &Value) -> Result<Version> {
+    let tag = release
+        .get("tag_name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("ytrust release has no tag"))?;
+    let version_text = tag.trim_start_matches('v');
+    Version::parse(version_text)
+        .with_context(|| format!("invalid ytrust release version {version_text}"))
+}
+
+/// Prefer the latest release, but fall back to the minimum supported tag when
+/// GitHub's "latest" pointer lags behind a fresh release.
+async fn fetch_ytrust_release(client: &reqwest::Client) -> Result<Value> {
+    let latest = fetch_json(client, YTRUST_RELEASES)
+        .await
+        .context("fetch ytrust release metadata")?;
+    let latest_version = release_version(&latest)?;
+    if ytrust_version_supported(&latest_version.to_string()) {
+        return Ok(latest);
+    }
+
+    let tag = format!("v{YTRUST_MIN_VERSION}");
+    let url = format!("{YTRUST_RELEASE_TAG_BASE}/{tag}");
+    fetch_json(client, &url)
+        .await
+        .with_context(|| format!("fetch ytrust {tag} release metadata"))
 }
 
 fn release_asset<'a>(release: &'a Value, suffix: &str) -> Result<(&'a str, &'a str)> {
@@ -402,12 +423,26 @@ mod tests {
     }
 
     #[test]
+    fn parses_ytrust_release_versions() {
+        let release: Value = serde_json::from_str(r#"{"tag_name":"v1.3.0"}"#).unwrap();
+        assert_eq!(
+            release_version(&release).unwrap(),
+            Version::parse("1.3.0").unwrap()
+        );
+        let release: Value = serde_json::from_str(r#"{"tag_name":"2.0.0"}"#).unwrap();
+        assert_eq!(
+            release_version(&release).unwrap(),
+            Version::parse("2.0.0").unwrap()
+        );
+    }
+
+    #[test]
     fn accepts_only_supported_ytrust_releases() {
         assert!(!ytrust_version_supported("1.0.0"));
-        assert!(!ytrust_version_supported("1.1.0"));
-        assert!(!ytrust_version_supported("1.1.1"));
-        assert!(ytrust_version_supported("1.1.2"));
-        assert!(ytrust_version_supported("1.2.3"));
+        assert!(!ytrust_version_supported("1.1.2"));
+        assert!(!ytrust_version_supported("1.2.3"));
+        assert!(ytrust_version_supported("1.3.0"));
+        assert!(ytrust_version_supported("1.3.4"));
         assert!(!ytrust_version_supported("0.4.3"));
         assert!(!ytrust_version_supported("2.0.0"));
     }

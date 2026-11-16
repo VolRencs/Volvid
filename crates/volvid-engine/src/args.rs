@@ -2,6 +2,9 @@ use volvid_core::{CheckDepsResult, DownloadMode, DownloadRequest, OutputProfile}
 
 use crate::deps::ytrust_command_args;
 
+/// Parallel range connections per direct HTTP download (ytrust 1.3.0+).
+pub const YTRUST_DOWNLOAD_CONNECTIONS: u32 = 4;
+
 pub fn stream_protocol_args() -> Vec<String> {
     vec!["--progress-json".to_owned()]
 }
@@ -150,7 +153,12 @@ fn fragment_section_arg(fragment: &volvid_core::DownloadFragment) -> Option<Stri
 }
 
 fn reliability_args(_req: &DownloadRequest) -> Vec<String> {
-    vec!["--retries".to_owned(), "3".to_owned()]
+    vec![
+        "--concurrent-fragments".to_owned(),
+        YTRUST_DOWNLOAD_CONNECTIONS.to_string(),
+        "--retries".to_owned(),
+        "3".to_owned(),
+    ]
 }
 
 pub fn download_formats(req: &DownloadRequest) -> (Vec<String>, Vec<String>) {
@@ -216,19 +224,24 @@ mod tests {
         assert!(args.iter().any(|arg| arg == "-P"));
         assert!(args.iter().any(|arg| arg == "-o"));
         assert!(args.iter().any(|arg| arg == "--retries"));
+        let connections = args
+            .iter()
+            .position(|arg| arg == "--concurrent-fragments")
+            .and_then(|index| args.get(index + 1));
+        let expected = YTRUST_DOWNLOAD_CONNECTIONS.to_string();
+        assert_eq!(connections.map(String::as_str), Some(expected.as_str()));
         for noop in [
             "--continue",
             "--part",
             "--fragment-retries",
             "--retry-sleep",
             "--abort-on-unavailable-fragments",
-            "--concurrent-fragments",
             "--force-keyframes-at-cuts",
             "--windows-filenames",
         ] {
             assert!(
                 !args.iter().any(|arg| arg == noop),
-                "{noop} is a no-op in ytrust 1.1"
+                "{noop} is a no-op in ytrust 1.3"
             );
         }
     }
