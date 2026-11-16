@@ -526,6 +526,15 @@ fn retry_rename(from: &Path, to: &Path) -> std::io::Result<()> {
 /// copied from a read-only installation, which blocks deletion.
 fn remove_file_force(path: &Path) {
     #[cfg(windows)]
+    clear_readonly_attribute(path);
+    let _ = std::fs::remove_file(path);
+}
+
+#[cfg(windows)]
+// `set_readonly(false)` is the portable API for clearing FILE_ATTRIBUTE_READONLY
+// on Windows; the lint targets Unix where it would make a file world-writable.
+#[allow(clippy::permissions_set_readonly_false)]
+fn clear_readonly_attribute(path: &Path) {
     if let Ok(metadata) = std::fs::metadata(path)
         && metadata.permissions().readonly()
     {
@@ -533,7 +542,6 @@ fn remove_file_force(path: &Path) {
         permissions.set_readonly(false);
         let _ = std::fs::set_permissions(path, permissions);
     }
-    let _ = std::fs::remove_file(path);
 }
 
 fn ensure_install_dir_writable(dir: &Path) -> Result<()> {
