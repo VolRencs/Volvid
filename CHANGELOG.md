@@ -1,5 +1,15 @@
 # Changelog
 
+## 8.1.5
+
+### Fixed
+
+- Thumbnails and previews render with correct colors instead of having their
+  red and blue channels swapped.
+- The playlist scrollbar no longer overlaps video durations.
+- Double-clicking the download URL selects the whole link, and triple-clicking
+  selects all text, matching common browser behavior.
+
 ## 8.1.4
 
 ### Added

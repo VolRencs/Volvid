@@ -865,11 +865,14 @@ fn extract_youtube_url(text: &str) -> Option<String> {
 }
 
 fn preview_image(image: &volvid_engine::PreviewImage) -> Option<Arc<gpui::RenderImage>> {
-    let buffer = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
-        image.width,
-        image.height,
-        image.rgba.to_vec(),
-    )?;
+    // The engine decodes thumbnails as RGBA, while GPUI's `RenderImage` stores
+    // pixels as BGRA. Swap the red and blue channels so colors render correctly.
+    let mut bgra = image.rgba.to_vec();
+    for pixel in bgra.as_chunks_mut::<4>().0 {
+        pixel.swap(0, 2);
+    }
+    let buffer =
+        image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(image.width, image.height, bgra)?;
     let frame = image::Frame::new(buffer);
     Some(Arc::new(gpui::RenderImage::new(smallvec::smallvec![frame])))
 }
@@ -877,6 +880,17 @@ fn preview_image(image: &volvid_engine::PreviewImage) -> Option<Arc<gpui::Render
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preview_images_are_converted_to_bgra_for_gpui() {
+        let image = volvid_engine::PreviewImage {
+            width: 1,
+            height: 1,
+            rgba: Arc::from(vec![255, 0, 0, 255]),
+        };
+        let render = preview_image(&image).expect("valid preview");
+        assert_eq!(render.as_bytes(0), Some(&[0, 0, 255, 255][..]));
+    }
 
     #[test]
     fn extracts_youtube_urls_from_text() {

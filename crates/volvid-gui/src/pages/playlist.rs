@@ -126,6 +126,8 @@ pub fn playlist(
                         .h(px(40.))
                         .w_full()
                         .px_2()
+                        // Keep the duration clear of the overlay scrollbar.
+                        .pr_4()
                         .flex()
                         .items_center()
                         .gap_2()
@@ -291,6 +293,8 @@ pub fn playlist(
                         .flex()
                         .gap_2()
                         .px_2()
+                        // Align with the row gutter reserved for the scrollbar.
+                        .pr_4()
                         .text_size(px(11.5))
                         .text_color(p.muted)
                         .child(div().w(px(15.)))
@@ -349,7 +353,9 @@ fn playlist_scrollbar(app: &mut VolvidApp, p: &Palette, cx: &mut Context<VolvidA
         .absolute()
         .top(px(4.))
         .bottom(px(4.))
-        .right(px(2.))
+        // Sit in the card's right padding so the track never covers a row,
+        // with the text gutter keeping a visible gap from the thumb.
+        .right(px(-10.))
         .w(px(8.))
         .rounded_full()
         .bg(p.track.opacity(0.7))

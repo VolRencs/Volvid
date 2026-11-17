@@ -172,6 +172,24 @@ impl TextInput {
         cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus_handle);
+
+        if event.click_count >= 3 {
+            self.is_selecting = false;
+            self.selected_range = 0..self.content.len();
+            self.selection_reversed = false;
+            cx.notify();
+            return;
+        }
+
+        if event.click_count == 2 {
+            self.is_selecting = false;
+            let offset = self.index_for_mouse_position(event.position);
+            self.selected_range = token_range(&self.content, offset);
+            self.selection_reversed = false;
+            cx.notify();
+            return;
+        }
+
         self.is_selecting = true;
 
         if event.modifiers.shift {
@@ -318,6 +336,51 @@ impl TextInput {
             .find_map(|(idx, _)| (idx > offset).then_some(idx))
             .unwrap_or(self.content.len())
     }
+}
+
+/// Range of the space-delimited token at `offset`, used by double-click selection.
+///
+/// URLs contain no whitespace, so double-clicking a URL selects it in full;
+/// in ordinary text the same rule selects a single word.
+fn token_range(text: &str, offset: usize) -> Range<usize> {
+    let offset = offset.min(text.len());
+    let mut start = offset;
+    while let Some((index, ch)) = text[..start].char_indices().next_back() {
+        if ch.is_whitespace() {
+            break;
+        }
+        start = index;
+    }
+    let mut end = offset;
+    while let Some(ch) = text[end..].chars().next() {
+        if ch.is_whitespace() {
+            break;
+        }
+        end += ch.len_utf8();
+    }
+    if start == end {
+        // The click landed on whitespace. Prefer the token before the caret,
+        // then fall back to the token after it.
+        let mut before = offset;
+        while let Some((index, ch)) = text[..before].char_indices().next_back() {
+            if ch.is_whitespace() {
+                break;
+            }
+            before = index;
+        }
+        if before < offset {
+            return before..offset;
+        }
+        let mut after = offset;
+        while let Some(ch) = text[after..].chars().next() {
+            if ch.is_whitespace() {
+                break;
+            }
+            after += ch.len_utf8();
+        }
+        return offset..after;
+    }
+    start..end
 }
 
 impl EntityInputHandler for TextInput {
@@ -721,6 +784,43 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("end", End, Some("TextInput")),
         KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, Some("TextInput")),
     ]);
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::token_range;
+
+    #[test]
+    fn selects_a_whole_url() {
+        let url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+        assert_eq!(token_range(url, 0), 0..url.len());
+        assert_eq!(token_range(url, 8), 0..url.len());
+        assert_eq!(token_range(url, url.len()), 0..url.len());
+        assert_eq!(token_range(url, url.len() + 5), 0..url.len());
+    }
+
+    #[test]
+    fn selects_words_in_plain_text() {
+        let text = "hello world";
+        assert_eq!(token_range(text, 2), 0..5);
+        assert_eq!(token_range(text, 5), 0..5);
+        assert_eq!(token_range(text, 8), 6..11);
+        assert_eq!(token_range(text, text.len()), 6..11);
+    }
+
+    #[test]
+    fn selects_cyrillic_words() {
+        let text = "скачать видео";
+        assert_eq!(token_range(text, 4), 0..14);
+        assert_eq!(token_range(text, 10), 0..14);
+        assert_eq!(token_range(text, 19), 15..25);
+    }
+
+    #[test]
+    fn handles_empty_and_whitespace_only_text() {
+        assert_eq!(token_range("", 0), 0..0);
+        assert_eq!(token_range("   ", 2), 2..2);
+    }
 }
 
 #[cfg(all(test, not(target_os = "windows")))]
